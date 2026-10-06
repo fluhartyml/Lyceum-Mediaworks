@@ -11,7 +11,7 @@ import Foundation
 
 enum BuildStamp {
     /// Short SHA of HEAD when this build was stamped. "+" suffix = uncommitted changes.
-    static let commit = "433930c+"
+    static let commit = "81f059f"
 
     /// Branch HEAD was on when this build was stamped.
     static let branch = "main"
