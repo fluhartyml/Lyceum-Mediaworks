@@ -1,0 +1,35 @@
+#!/bin/sh
+# Git post-checkout hook — restamps the build number after HEAD moves WITHOUT a commit.
+#
+# ─── THE GAP THIS CLOSES ────────────────────────────────────────────────────────
+# post-commit stamps AFTER the commit is written, so the commit's own project.pbxproj
+# still carries the PREVIOUS count. That is harmless while you build from the tip —
+# the working tree was restamped a moment later. It is NOT harmless the moment you
+# check something out:
+#
+#     git checkout stable-91   ->   working tree says CURRENT_PROJECT_VERSION = 90
+#
+# The rollback build then calls itself 90 and there are now two different binaries
+# claiming to be build 90. That is precisely the confusion the standard exists to end:
+# "a working iPad and three broken iPhones could not be told apart."
+#
+# Caught by hand on 2026-09-07 (the stable-91 tag committed 90) and stamped manually
+# that night. A thing caught by hand is a thing that will be missed by hand.
+#   -> feedback_dont_spend_reliability_on_what_machinery_can_do
+#
+# ─── WHY post-checkout AND NOT A BUILD PHASE ────────────────────────────────────
+# Same reason stamp-build.sh gives: ENABLE_USER_SCRIPT_SANDBOXING = YES means a Run
+# Script phase cannot read .git. The stamp is written before the build, so every way
+# HEAD can move needs a hook. post-commit covers committing; this covers checking out.
+#
+# ─── $3 IS NOT OPTIONAL ─────────────────────────────────────────────────────────
+# Git calls this hook for FILE checkouts too (`git checkout -- SomeFile.swift`), where
+# HEAD has not moved at all. The third argument is 1 for a branch/tag checkout and 0
+# for a file checkout. Without this test the hook would rewrite project.pbxproj every
+# time a single file is restored.
+set -e
+[ "$3" = "1" ] || exit 0
+GIT=/usr/bin/git
+ROOT=$($GIT rev-parse --show-toplevel) || exit 0
+[ -x "$ROOT/Scripts/stamp-build.sh" ] || exit 0
+exec /bin/sh "$ROOT/Scripts/stamp-build.sh" >/dev/null 2>&1

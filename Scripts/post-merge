@@ -1,0 +1,12 @@
+#!/bin/sh
+# Git post-merge hook — restamps after a merge or a pull.
+#
+# The third way HEAD moves. `git pull` fast-forwards the branch without running
+# post-commit and without running post-checkout, so without this the tree keeps the
+# stamp it had before the pull. Same one-behind failure as the tag checkout that
+# post-checkout exists for.
+set -e
+GIT=/usr/bin/git
+ROOT=$($GIT rev-parse --show-toplevel) || exit 0
+[ -x "$ROOT/Scripts/stamp-build.sh" ] || exit 0
+exec /bin/sh "$ROOT/Scripts/stamp-build.sh" >/dev/null 2>&1
