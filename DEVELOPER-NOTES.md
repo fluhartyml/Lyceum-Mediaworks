@@ -84,8 +84,9 @@ month subscription fee."* Free to the user; built to the bar of a premium paid p
 - [ ] Name Format · identification: **iTunes first, Shazam as a last resort**
 - [ ] Every move, rename and delete recorded and undoable, like git
 
-### Phase 3 — Playlists and tags
-- [ ] A folder is a playlist; one file can sit in many playlists
+### Phase 3 — Playlists and tags · LOCKED
+*"the media lives in one folder but is referenced in multiple playlists."* His downloader makes numbered folder copies per YouTube playlist and downloads a video once per playlist it is in — intake keeps ONE copy (byte-identical only) and turns each YouTube playlist into a playlist that references it.
+- [ ] Each video stored once, in one folder; playlists reference it
 - [ ] Tags · playlists follow a file by fingerprint, not path · M3U export
 
 ### Phase 4 — The server
