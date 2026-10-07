@@ -22,7 +22,7 @@ entry once it is done, and move anything that became a decision into the section
 ### 2026-10-06 ~21:5x — right-click menus
 - His report: *"i cant right click to rename a file or folder"* + *"or make new or delete on right click too"*.
 - **Right-click menu in Library (list + icons) and both Commander panes:** Open/Play · Rename… · New Folder · Show in Finder · Move to Trash. Right-click on empty space → New Folder.
-- Rename/New Folder/Trash now shared in `FileOperations.swift`, so both views behave the same (never overwrite; journaled; Trash honors the instant-delete setting with a confirm).
+- Rename/New Folder/Trash now shared in `FileOperations.swift`, so both views behave the same (never overwrite; journaled; Trash honors the instant-delete setting, no confirm).
 - Onboarding + Settings buttons: title font set on the label itself (18 pt) — the modifier on the button did not reach the title on the Mac.
 - Claude cannot click — right-click behavior untested by Claude.
 
@@ -30,7 +30,7 @@ entry once it is done, and move anything that became a decision into the section
 - His design: Library = browse (and onboarding) · **Commander = its own view with its own menu** · Theater view. *"yes please"* to build all three.
 - **Read-write sandbox** (`ENABLE_USER_SELECTED_FILES = readwrite`) — at his yes. Old read-only bookmarks are detected (`libraryBookmarkAccess` ≠ readwrite) and onboarding asks for the folder once more.
 - **Commander:** two panes (paths persisted), Copy/Move to Other Pane (⌥⌘C / ⌥⌘M), Rename (⌥⌘R), New Folder (⇧⌘N), Move to Trash (⌘⌫). **Never overwrites** — a clash stops the operation and names the files. Every operation → `journal.tsv` (Application Support/Lyceum Mediaworks). Undo is NOT built yet.
-- **Trash per locked line 031:** hidden `.Lyceum Trash/<date>/<original path>` at the library root (a same-share rename); days older than 30 are purged at launch; Settings → "Delete instantly" (confirm dialog) skips it. No restore UI yet.
+- **Trash per locked line 031:** hidden `.Lyceum Trash/<date>/<original path>` at the library root (a same-share rename); days older than 30 are purged at launch; Settings → "Delete instantly" skips it — NO confirm dialog (his ruling: requiring it is being a "hover mom"). No restore UI yet.
 - **Theater:** double-click media in Library → plays (AVKit), resumes position per file.
 - Settings button text forced to 18 pt (was smaller — seen on his screen).
 - ⚠️ Click-level behavior is untested by Claude (cannot click). Needs his hands.

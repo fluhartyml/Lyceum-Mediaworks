@@ -42,8 +42,6 @@ struct CommanderView: View {
     @State private var problem: String?
     @State private var renaming: RenameTarget?
     @State private var newName = ""
-    @State private var confirmingDelete = false
-    @State private var pendingDelete: [URL] = []
 
     private var activeSide: PaneSide { PaneSide(rawValue: activeSideRaw) ?? .left }
 
@@ -95,13 +93,6 @@ struct CommanderView: View {
             Button("OK") { problem = nil }
         } message: {
             Text(problem ?? "")
-        }
-        .alert("Delete \(pendingDelete.count) item\(pendingDelete.count == 1 ? "" : "s") permanently?",
-               isPresented: $confirmingDelete) {
-            Button("Delete", role: .destructive) { trash(pendingDelete) }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Instant delete is on in Settings, so this cannot be undone.")
         }
         .sheet(item: $renaming) { target in
             RenameSheet(original: target.url.lastPathComponent, newName: $newName) {
@@ -218,8 +209,7 @@ struct CommanderView: View {
 
     private func trashRequested(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
-        pendingDelete = urls
-        if instantDelete { confirmingDelete = true } else { trash(urls) }
+        trash(urls)
     }
 
     private func trash(_ urls: [URL]) {

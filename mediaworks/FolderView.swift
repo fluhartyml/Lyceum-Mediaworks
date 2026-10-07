@@ -54,8 +54,6 @@ struct FolderView: View {
     @State private var renaming: RenameTarget?
     @State private var newName = ""
     @State private var problem: String?
-    @State private var pendingDelete: [URL] = []
-    @State private var confirmingDelete = false
 
     var body: some View {
         Group {
@@ -108,13 +106,6 @@ struct FolderView: View {
         } message: {
             Text(problem ?? "")
         }
-        .alert("Delete \(pendingDelete.count) item\(pendingDelete.count == 1 ? "" : "s") permanently?",
-               isPresented: $confirmingDelete) {
-            Button("Delete", role: .destructive) { trash(pendingDelete) }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Instant delete is on in Settings, so this cannot be undone.")
-        }
     }
 
     // MARK: Right-click actions
@@ -126,8 +117,7 @@ struct FolderView: View {
                             rename: { url in newName = url.lastPathComponent; renaming = RenameTarget(url: url) },
                             newFolder: newFolder,
                             trash: { urls in
-                                pendingDelete = urls
-                                if instantDelete { confirmingDelete = true } else { trash(urls) }
+                                trash(urls)
                             })
         }
     }
