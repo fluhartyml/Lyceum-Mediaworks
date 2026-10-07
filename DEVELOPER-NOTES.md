@@ -19,6 +19,12 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-07 ~17:5x — pane preview + ⌘Y Quick Look, build 35 (not yet run by him)
+- His ask: *"how about the media player and media (picture and album art) previewer that takes up the bottom portion of the pane"* → *"yes build it now please"*. Then: *"i think at the lastp few builds we modified it instead of a preview section it was a quickview PiP?"* (true — Library Commander builds 64–65) → ruling: ***"i like an option of viewing it in the pane or a command y for PiP"*** — **BOTH.**
+- **Show Preview** (tools row, per pane, saved): lower 40% of the pane. Video = poster art from metadata, else a frame ~3 s in — **never auto-plays** (NightGard rule). Music = album art + title/artist/album. Pictures/other = Quick Look thumbnail. Folder = folder/file count + first 4 pictures (one level only — network cost). A video playing from this pane shows IN the preview (the mini player's own AVPlayer); shrink button brings the still back.
+- **⌘Y** (Commander menu "Quick Look"): Finder's floating Quick Look window; opens and closes; follows the active pane's highlight; arrows step through highlighted files.
+- NightGard's player toggles were ▶ Next · ⇄ Switch · ✕ Fade (5 s crossfade). Next/Switch = Lyceum's Continuous Same/Other Pane. **Fade NOT built** — not asked.
+
 ### 2026-10-07 ~14:xx — reveal chevrons, build 34 (not yet run by him)
 - His: *"the folders need  >reveal ceveron"*. Commander rows show a ▸ on real folders; it reveals the contents underneath, indented (flat rows with a depth, so every command works on a revealed file). Revealed folders persist per pane and refresh every 10 s with the folder. Hiding a folder that holds the highlight moves the highlight to that folder. Your Order reorders only the folder on show (depth 0).
 

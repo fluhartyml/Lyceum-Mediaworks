@@ -179,6 +179,12 @@ final class PaneState {
     var selection: Set<URL> = [] { didSet { save(selection.map(\.path), "Selection") } }
     var sort: SortKey { didSet { save(sort.rawValue, "Sort") } }
     var showHidden: Bool { didSet { save(showHidden, "Hidden") } }
+    /// The preview area in the lower part of the pane — on or off, per pane, saved.
+    // REM  PER PANE, as in NightGard Commander: he may want pictures on the side he is sorting and
+    // REM  the full list on the side he is filing into.
+    var showPreview: Bool { didSet { save(showPreview, "Preview") } }
+    /// True when he shrank a playing video so the still preview shows again. Saved, like everything.
+    var playerShrunk: Bool { didSet { save(playerShrunk, "PlayerShrunk") } }
 
     /// What is in the folder, as last read. Written by the pane view.
     var entries: [FolderEntry] = []
@@ -222,6 +228,8 @@ final class PaneState {
         #endif
         sort = SortKey(rawValue: d.string(forKey: prefix + "Sort") ?? "") ?? .name
         showHidden = d.bool(forKey: prefix + "Hidden")
+        showPreview = d.bool(forKey: prefix + "Preview")
+        playerShrunk = d.bool(forKey: prefix + "PlayerShrunk")
         pendingSelection = Set((d.stringArray(forKey: prefix + "Selection") ?? []).map { URL(fileURLWithPath: $0) })
         revealed = Set(d.stringArray(forKey: prefix + "Revealed") ?? [])
         drives = Drives.mounted()

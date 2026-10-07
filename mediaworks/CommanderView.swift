@@ -23,6 +23,7 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
+import QuickLook
 #if os(macOS)
 import AppKit
 #endif
@@ -50,6 +51,8 @@ struct CommanderActions {
     var rename: () -> Void
     var newFolder: () -> Void
     var trash: () -> Void
+    var quickLookOpen: Bool
+    var toggleQuickLook: () -> Void
 }
 
 extension FocusedValues {
@@ -69,6 +72,8 @@ struct CommanderView: View {
     @State private var problem: String?
     @State private var renaming: RenameTarget?
     @State private var newName = ""
+    /// The file in the floating Quick Look window, or nil while it is closed.
+    @State private var quickLookURL: URL?
     #if os(macOS)
     @State private var keyMonitor: Any?
     #endif
@@ -89,6 +94,17 @@ struct CommanderView: View {
             Divider()
             pane(right)
         }
+        // REM  TWO WAYS TO LOOK, HIS CHOICE, 2026-10-07: "i like an option of viewing it in the pane or a
+        // REM  command y for PiP." The pane preview (PanePreview.swift, Show Preview) stays IN the pane;
+        // REM  ⌘Y floats Finder's own Quick Look window over everything — Library Commander's way
+        // REM  (builds 64–65), and Finder's own key for it. ⌘Y opens AND closes it.
+        // REM  Its arrows step through everything highlighted in the active pane, in the order shown.
+        .quickLookPreview($quickLookURL, in: quickLookList)
+        // REM  QUICK LOOK FOLLOWS THE HIGHLIGHT while it is open (Library Commander build 64, his goal:
+        // REM  scroll through files with the window open). Nothing highlighted → it closes, rather than
+        // REM  keep showing a file he has moved away from. Tab to the other pane follows that pane.
+        .onChange(of: active.selection) { quickLookFollow() }
+        .onChange(of: activeSideRaw) { quickLookFollow() }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             MiniPlayerBar(twoPanes: true, openInTheater: play)
         }
@@ -119,7 +135,9 @@ struct CommanderView: View {
             moveToOther: { transfer(move: true) },
             rename: { startRename() },
             newFolder: { newFolder() },
-            trash: { trash(Array(active.selection)) }))
+            trash: { trash(Array(active.selection)) },
+            quickLookOpen: quickLookURL != nil,
+            toggleQuickLook: { toggleQuickLook() }))
         // Every Commander warning also stays in the status bar after its alert is closed.
         .onChange(of: problem) { _, problem in if let problem { library.report(problem) } }
         .alert("Commander", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
@@ -175,6 +193,30 @@ struct CommanderView: View {
         }
     }
     #endif
+
+    // MARK: Quick Look — ⌘Y
+
+    /// The highlighted files in the active pane, in the order on screen. Folders are left out:
+    /// Quick Look has nothing to show for a folder but its icon.
+    private var quickLookList: [URL] {
+        active.rows.filter { active.selection.contains($0.id) && !$0.entry.isFolder }.map(\.id)
+    }
+
+    private func toggleQuickLook() {
+        if quickLookURL != nil { quickLookURL = nil; return }
+        guard let first = quickLookList.first else {
+            library.report("Highlight a file first — then ⌘Y shows it in Quick Look")
+            return
+        }
+        quickLookURL = first
+    }
+
+    private func quickLookFollow() {
+        guard quickLookURL != nil else { return }
+        let list = quickLookList
+        if let current = quickLookURL, list.contains(current) { return }
+        quickLookURL = list.first
+    }
 
     // MARK: Operations
 
@@ -313,13 +355,30 @@ private struct CommanderPane: View {
 
     private var source: MiniPlayer.Source { pane.side == .left ? .left : .right }
 
+    /// What the preview shows: the one highlighted item. Several highlighted → nothing, because a
+    /// single picture would only describe one of them.
+    private var previewItem: FolderEntry? {
+        guard pane.selection.count == 1, let url = pane.selection.first else { return nil }
+        return pane.rows.first(where: { $0.id == url })?.entry
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
             Divider()
             tools
             Divider()
-            if pane.showingDrives { driveList } else { fileList }
+            // REM  THE PREVIEW TAKES THE LOWER 40% OF THE PANE (NightGard Commander's proportion) — the
+            // REM  list keeps the larger share because Commander is a file commander first.
+            GeometryReader { space in
+                VStack(spacing: 0) {
+                    if pane.showingDrives { driveList } else { fileList }
+                    if pane.showPreview && !pane.showingDrives {
+                        PanePreview(item: previewItem, source: source, playerShrunk: $pane.playerShrunk)
+                            .frame(height: space.size.height * 0.4)
+                    }
+                }
+            }
         }
         // REM  THE ACTIVE PANE GETS THE ACCENT BORDER — the source, the one the keys drive. A border
         // REM  and not just a tinted header, so it reads at a glance from across the room.
@@ -500,6 +559,14 @@ private struct CommanderPane: View {
                 Label(pane.showHidden ? "Hide Hidden" : "Show Hidden", systemImage: pane.showHidden ? "eye.slash" : "eye")
             }
             .help("Show or hide hidden files and folders — a name starting with a period, or hidden by macOS. Hidden ones show in red.")
+
+            // REM  The preview switch sits with the view tools, its icon showing the state it is in.
+            Button { pane.showPreview.toggle() } label: {
+                Label(pane.showPreview ? "Hide Preview" : "Show Preview",
+                      systemImage: pane.showPreview ? "rectangle.bottomhalf.inset.filled" : "rectangle.split.1x2")
+            }
+            .help(pane.showPreview ? "Hide the preview area at the bottom of this pane"
+                                   : "Show a preview of the highlighted file or folder at the bottom of this pane — a playing video shows there too")
 
             #if os(macOS)
             Button { exportPlaylist() } label: { Label("Export Playlist…", systemImage: "music.note.list") }
@@ -693,6 +760,10 @@ struct CommanderMenu: View {
             .disabled(actions?.hasSelection != true)
         Button("New Folder") { actions?.newFolder() }
             .keyboardShortcut("n", modifiers: [.command, .shift])
+            .disabled(actions == nil)
+        Divider()
+        Button(actions?.quickLookOpen == true ? "Close Quick Look" : "Quick Look") { actions?.toggleQuickLook() }
+            .keyboardShortcut("y", modifiers: .command)
             .disabled(actions == nil)
         Divider()
         Button("Move to Trash") { actions?.trash() }

@@ -13,6 +13,7 @@
 import SwiftUI
 import AVFoundation
 import Observation
+import UniformTypeIdentifiers
 
 @Observable
 final class MiniPlayer {
@@ -40,12 +41,18 @@ final class MiniPlayer {
     private(set) var isPlaying = false
     private(set) var elapsed: Double = 0
     private(set) var duration: Double = 0
+    /// True when what is loaded is a video — the pane preview then shows it.
+    var currentIsVideo: Bool {
+        (current.flatMap { UTType(filenameExtension: $0.pathExtension) }?.conforms(to: .movie)) ?? false
+    }
 
     var continuous: Continuous {
         didSet { UserDefaults.standard.set(continuous.rawValue, forKey: "miniPlayerContinuous") }
     }
 
-    @ObservationIgnored private let player = AVPlayer()
+    // REM  Not private: the pane preview draws THIS player's picture while a video plays, so the
+    // REM  video in the pane and the mini player bar are one player, never two copies out of step.
+    @ObservationIgnored let player = AVPlayer()
     @ObservationIgnored private var lists: [Source: [URL]] = [:]
     @ObservationIgnored private var highlighted: [Source: URL] = [:]
     @ObservationIgnored private var lastPlayed: [Source: URL] = [:]
