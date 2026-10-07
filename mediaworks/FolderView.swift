@@ -34,6 +34,7 @@ struct FolderRow: Identifiable {
 struct FolderView: View {
     let folder: FolderNode
     let open: (URL) -> Void
+    let play: (URL) -> Void
 
     @AppStorage("viewMode") private var viewMode: FolderViewMode = .list
     @AppStorage("tileSize") private var tileSize: Double = 200
@@ -142,8 +143,9 @@ struct FolderView: View {
         .font(.lyceumBody)
         .contextMenu(forSelectionType: URL.self) { _ in
         } primaryAction: { urls in
-            // Double-click (or Return) on a folder opens it.
-            if let url = urls.first, entries.first(where: { $0.url == url })?.isFolder == true { open(url) }
+            // Double-click (or Return): a folder opens, a video or song plays in Theater.
+            guard let url = urls.first, let entry = entries.first(where: { $0.url == url }) else { return }
+            if entry.isFolder { open(url) } else if entry.isMedia { play(url) }
         }
     }
 
@@ -154,7 +156,9 @@ struct FolderView: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: tileSize), spacing: 20)], spacing: 24) {
                 ForEach(rows) { row in
                     EntryTile(entry: row.entry, length: row.length, width: tileSize)
-                        .onTapGesture(count: 2) { if row.entry.isFolder { open(row.entry.url) } }
+                        .onTapGesture(count: 2) {
+                            if row.entry.isFolder { open(row.entry.url) } else if row.entry.isMedia { play(row.entry.url) }
+                        }
                 }
             }
             .padding(20)

@@ -13,9 +13,21 @@ import UniformTypeIdentifiers
 struct SettingsView: View {
     @Environment(LibraryStore.self) private var library
     @State private var choosingFolder = false
+    @AppStorage("instantDelete") private var instantDelete = false
 
     var body: some View {
         Form {
+            Section {
+                Toggle("Delete instantly (skip the 30-day Trash)", isOn: $instantDelete)
+                    .font(.lyceumBody)
+            } header: {
+                Text("Deleting").font(.lyceumHeadline)
+            } footer: {
+                Text(instantDelete ? "Deleted items are gone at once and cannot be recovered."
+                                   : "Deleted items wait 30 days in the library's own Trash, then are removed.")
+                    .foregroundStyle(.secondary)
+            }
+
             Section {
                 LabeledContent("Library folder") {
                     Text(library.root?.path ?? "None chosen")
@@ -23,6 +35,8 @@ struct SettingsView: View {
                         .multilineTextAlignment(.trailing)
                 }
                 Button("Change Library Folder…") { choosingFolder = true }
+                    .font(.lyceumBody)
+                    .controlSize(.large)
             } header: {
                 Text("Library").font(.lyceumHeadline)
             } footer: {

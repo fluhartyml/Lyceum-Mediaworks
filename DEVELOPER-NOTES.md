@@ -19,6 +19,15 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-06 ~21:4x — three views: Library · Commander · Theater
+- His design: Library = browse (and onboarding) · **Commander = its own view with its own menu** · Theater view. *"yes please"* to build all three.
+- **Read-write sandbox** (`ENABLE_USER_SELECTED_FILES = readwrite`) — at his yes. Old read-only bookmarks are detected (`libraryBookmarkAccess` ≠ readwrite) and onboarding asks for the folder once more.
+- **Commander:** two panes (paths persisted), Copy/Move to Other Pane (⌥⌘C / ⌥⌘M), Rename (⌥⌘R), New Folder (⇧⌘N), Move to Trash (⌘⌫). **Never overwrites** — a clash stops the operation and names the files. Every operation → `journal.tsv` (Application Support/Lyceum Mediaworks). Undo is NOT built yet.
+- **Trash per locked line 031:** hidden `.Lyceum Trash/<date>/<original path>` at the library root (a same-share rename); days older than 30 are purged at launch; Settings → "Delete instantly" (confirm dialog) skips it. No restore UI yet.
+- **Theater:** double-click media in Library → plays (AVKit), resumes position per file.
+- Settings button text forced to 18 pt (was smaller — seen on his screen).
+- ⚠️ Click-level behavior is untested by Claude (cannot click). Needs his hands.
+
 ### 2026-10-06 ~21:3x — Settings
 - **Settings** (his: *"it needs a settings drop down menu and you should be able to set the library parent folder"*): Mac = app menu → Settings… (⌘,); iOS = gear button. Shows the library folder + **Change Library Folder…**.
 - ⬜ **Open question to him:** a setting for *other players you use* (Infuse, Jellyfin, Plex, smart TV) so Commander names/arranges files the way those apps expect. **He agreed ("yes"): it comes with Commander (Phase 2).**

@@ -4,9 +4,9 @@
 //
 //  Created by Michael Fluharty on 10/6/26.
 //
-//  Folders as the front door (roadmap Phase 1): the library's own folder tree is the
-//  sidebar, and the folder you are standing in fills the window. Until a library is
-//  chosen, onboarding takes the whole window.
+//  Three views, switched at the top of the window and remembered: Library (browse your
+//  collection by folder), Commander (two panes to organize), Theater (play). Until a
+//  library is chosen, onboarding takes the whole window.
 //
 
 import SwiftUI
@@ -22,7 +22,11 @@ struct ContentView: View {
     var body: some View {
         Group {
             if let root = library.root {
-                libraryView(root: root)
+                switch library.mode {
+                case .library: libraryView(root: root)
+                case .commander: NavigationStack { CommanderView(root: root.url).toolbar { modeSwitch } }
+                case .theater: NavigationStack { TheaterView().toolbar { modeSwitch } }
+                }
             } else {
                 OnboardingView()
             }
@@ -33,6 +37,36 @@ struct ContentView: View {
         } message: {
             Text(library.errorMessage ?? "")
         }
+        #if os(iOS)
+        .sheet(isPresented: $showingAbout) { AboutView() }
+        .sheet(isPresented: $showingSettings) {
+            NavigationStack { SettingsView().navigationTitle("Settings") }
+                .environment(library)
+        }
+        #endif
+    }
+
+    /// The Library / Commander / Theater switch, plus (on iPhone and iPad) Settings and About.
+    @ToolbarContentBuilder
+    private var modeSwitch: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            @Bindable var library = library
+            Picker("View", selection: $library.mode) {
+                ForEach(AppMode.allCases) { mode in
+                    Label(mode.title, systemImage: mode.symbol).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .help("Library, Commander or Theater")
+        }
+        #if os(iOS)
+        ToolbarItem {
+            Button("Settings", systemImage: "gearshape") { showingSettings = true }
+        }
+        ToolbarItem {
+            Button("About", systemImage: "info.circle") { showingAbout = true }
+        }
+        #endif
     }
 
     private func libraryView(root: FolderNode) -> some View {
@@ -54,32 +88,21 @@ struct ContentView: View {
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { Task { await library.refreshIfChanged() } }
             }
-            #if os(iOS)
-            .toolbar {
-                ToolbarItem {
-                    Button("Settings", systemImage: "gearshape") { showingSettings = true }
-                }
-                ToolbarItem {
-                    Button("About", systemImage: "info.circle") { showingAbout = true }
-                }
-            }
-            .sheet(isPresented: $showingAbout) { AboutView() }
-            .sheet(isPresented: $showingSettings) {
-                NavigationStack { SettingsView().navigationTitle("Settings") }
-                    .environment(library)
-            }
-            #endif
         } detail: {
             if let folder = library.selection {
-                FolderView(folder: folder) { url in
-                    library.selection = FolderNode(url: url)
-                }
+                FolderView(folder: folder,
+                           open: { url in library.selection = FolderNode(url: url) },
+                           play: { url in
+                               library.nowPlaying = url
+                               library.mode = .theater
+                           })
             } else {
                 Text("Choose a folder in the sidebar")
                     .font(.lyceumBody)
                     .foregroundStyle(.secondary)
             }
         }
+        .toolbar { modeSwitch }
     }
 }
 

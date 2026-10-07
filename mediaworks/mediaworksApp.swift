@@ -24,6 +24,9 @@ struct mediaworksApp: App {
             CommandGroup(replacing: .appInfo) {
                 Button("About Lyceum Mediaworks") { openWindow(id: "about") }
             }
+            CommandMenu("Commander") {
+                CommanderMenu()
+            }
         }
         #endif
 

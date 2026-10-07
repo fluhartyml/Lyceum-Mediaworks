@@ -21,7 +21,9 @@ struct OnboardingView: View {
                 .foregroundStyle(.tint)
             Text("Welcome to Lyceum Mediaworks")
                 .font(.lyceumTitle)
-            Text("Choose the parent folder that houses your media library — on this device, a drive, or a network share.")
+            Text(library.needsWriteAccess
+                 ? "Lyceum Mediaworks can now organize your files. Choose your library folder once more to give it permission to move, rename and trash."
+                 : "Choose the parent folder that houses your media library — on this device, a drive, or a network share.")
                 .font(.lyceumBody)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 560)
