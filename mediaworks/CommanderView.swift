@@ -353,6 +353,10 @@ private struct CommanderPane: View {
     @FocusState private var pathFocused: Bool
     @State private var refreshes = 0
     @State private var driveSelection = Set<URL>()
+    /// When the current one-item highlight began — the slow second click is measured from it.
+    @State private var highlightedSince = Date.distantPast
+    /// A slow-click rename waiting to see whether the click was really half of a double-click.
+    @State private var pendingRename: Task<Void, Never>?
 
     private var source: MiniPlayer.Source { pane.side == .left ? .left : .right }
 
@@ -616,6 +620,7 @@ private struct CommanderPane: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .help(entry.name)
+                        .simultaneousGesture(TapGesture().onEnded { slowClick(entry.url) })
                 }
             }
             .width(min: 200, ideal: 320)
@@ -656,12 +661,16 @@ private struct CommanderPane: View {
                             open: { entry in if entry.isFolder { pane.open(entry.url) } else { play(entry.url) } },
                             rename: rename, newFolder: newFolder, trash: trash)
         } primaryAction: { urls in
+            // REM  A double-click opens — so a slow-click rename that was really its first half is called off.
+            pendingRename?.cancel()
             guard let url = urls.first, let entry = pane.rows.first(where: { $0.id == url })?.entry else { return }
             if entry.isFolder { pane.open(url) } else if entry.isMedia { play(url) }
         }
         .onChange(of: pane.selection) {
             // REM  A highlight HE makes activates the pane. The highlight restored at launch does not
             // REM  — otherwise the second pane to load would steal "active" from the one he left active.
+            highlightedSince = .now
+            pendingRename?.cancel()
             if pane.restoringHighlight { pane.restoringHighlight = false }
             else if !pane.selection.isEmpty { activate() }
             // A highlight cues the mini player; Play starts it.
@@ -693,6 +702,38 @@ private struct CommanderPane: View {
                 pane.listed(fresh.0, inside: fresh.1)
             }
         }
+    }
+
+    // MARK: Slow second click renames
+
+    /// Finder's slow click: click to highlight, then — after a pause — click the NAME again to rename.
+    // REM  HIS ASK, 2026-10-07: "when i tap to highlight and then tap again slowly iy should let me
+    // REM  rename the file or folder." Finder's rule, kept exactly:
+    // REM  · only on the item that is ALREADY the one highlighted item — a first click never renames;
+    // REM  · only if the highlight is older than a double-click — a fast pair is a double-click;
+    // REM  · the rename waits one double-click interval before opening, and a double-click (open/
+    // REM    play) or a highlight change in that wait calls it off. Without the wait, the first click
+    // REM    of a double-click on an already-highlighted file would pop the rename sheet AND open it.
+    // REM  Only the NAME starts it (as in Finder) — clicks on Size, Date or the chevron never do.
+    // REM  The rename itself is the same Rename sheet as ⌥⌘R and the right-click menu.
+    private func slowClick(_ url: URL) {
+        guard pane.selection == [url] else { return }
+        let wait = Self.doubleClickInterval
+        guard Date.now.timeIntervalSince(highlightedSince) > wait else { return }
+        pendingRename?.cancel()
+        pendingRename = Task {
+            try? await Task.sleep(for: .seconds(wait))
+            guard !Task.isCancelled, pane.selection == [url] else { return }
+            rename(url)
+        }
+    }
+
+    private static var doubleClickInterval: Double {
+        #if os(macOS)
+        NSEvent.doubleClickInterval
+        #else
+        0.5
+        #endif
     }
 
     #if os(macOS)
