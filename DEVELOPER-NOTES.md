@@ -95,7 +95,7 @@ The server runs on the **Mac mini** (the MacBook during development); the **Terr
 ### Phase 5 — The Theater · LOCKED
 - [ ] Apple TV app with folders, playlists and tags on the top level
 
-### Phase 6 — Spin-offs
+### Phase 6 — Spin-offs · LOCKED
 - [ ] Commander, Library and Theater as their own self-contained apps (no shared package)
 
 ---
