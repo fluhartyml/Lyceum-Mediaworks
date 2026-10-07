@@ -63,7 +63,7 @@ month subscription fee."* Free to the user; built to the bar of a premium paid p
 
 ## PROJECT ROADMAP
 
-### Phase 0 — Foundation
+### Phase 0 — Foundation · LOCKED by Michael 2026-10-06
 - [x] Xcode project · Multiplatform · Storage None · Swift Testing
 - [x] Build-number kit installed (`Scripts/install-hooks.sh`) — build number = commit count, shown in the app
 - [x] Display name "Lyceum Mediaworks" · category Video · temporary knight icon
