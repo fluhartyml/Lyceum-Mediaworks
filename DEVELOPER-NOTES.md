@@ -21,7 +21,8 @@ entry once it is done, and move anything that became a decision into the section
 
 ### 2026-10-06 ~21:3x — Settings
 - **Settings** (his: *"it needs a settings drop down menu and you should be able to set the library parent folder"*): Mac = app menu → Settings… (⌘,); iOS = gear button. Shows the library folder + **Change Library Folder…**.
-- ⬜ **Open question to him:** a setting for *other players you use* (Infuse, Jellyfin, Plex, smart TV) so Commander names/arranges files the way those apps expect. Claude's REC: add it with Commander (Phase 2), since nothing uses it before then. Unanswered.
+- ⬜ **Open question to him:** a setting for *other players you use* (Infuse, Jellyfin, Plex, smart TV) so Commander names/arranges files the way those apps expect. **He agreed ("yes"): it comes with Commander (Phase 2).**
+- ⬜ His follow-on: *"we need to format my currrent media so it complies"* — proposed: read-only compliance check (Infuse + Jellyfin naming) → his review → rename with undo record. Awaiting his go on the check.
 
 ### 2026-10-06 ~21:2x — sidebar remembers + stays current
 - Seen on his screen: the sidebar came back collapsed, and a moved folder (Media → Library/Media) still showed. Both fixed at his *"yes fix both"*.
