@@ -78,7 +78,8 @@ month subscription fee."* Free to the user; built to the bar of a premium paid p
 - [ ] Point it at a library root (Nineveh, a mini, a drive); the folder tree is the main view
 - [ ] Posters and file details *inside* each folder, not a flat wall
 
-### Phase 2 — Commander's tools, written new
+### Phase 2 — Lyceum Mediaworks Commander, written new · LOCKED
+*"yes we will make lyceum mediaworks commander."* Library Commander (build 68) is the reference for what works, never a source to copy.
 - [ ] Two panes · move/copy with progress · clash and merge rules · Quick Look · keyboard and Sticky Keys stepping
 - [ ] Name Format · identification: **iTunes first, Shazam as a last resort**
 - [ ] Every move, rename and delete recorded and undoable, like git
