@@ -34,7 +34,7 @@ struct SettingsView: View {
                         .textSelection(.enabled)
                         .multilineTextAlignment(.trailing)
                 }
-                Button("Change Library Folder…") { choosingFolder = true }
+                Button { choosingFolder = true } label: { Text("Change Library Folder…").font(.lyceumBody) }
                     .font(.lyceumBody)
                     .controlSize(.large)
             } header: {

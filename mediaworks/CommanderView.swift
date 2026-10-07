@@ -13,9 +13,6 @@ import SwiftUI
 
 enum PaneSide: String { case left, right }
 
-/// The item being renamed, wrapped so it can drive a sheet.
-private struct RenameTarget: Identifiable { let url: URL; var id: URL { url } }
-
 /// What the Commander menu can do right now. Published by CommanderView while it is showing.
 struct CommanderActions {
     var hasSelection: Bool
@@ -46,16 +43,25 @@ struct CommanderView: View {
     @State private var renaming: RenameTarget?
     @State private var newName = ""
     @State private var confirmingDelete = false
+    @State private var pendingDelete: [URL] = []
 
     private var activeSide: PaneSide { PaneSide(rawValue: activeSideRaw) ?? .left }
 
     var body: some View {
         HStack(spacing: 0) {
             CommanderPane(root: root, folder: folderBinding(.left), selection: $leftSelection,
-                          isActive: activeSide == .left, reloadToken: reloadToken) { activeSideRaw = PaneSide.left.rawValue }
+                          isActive: activeSide == .left, reloadToken: reloadToken,
+                          activate: { activeSideRaw = PaneSide.left.rawValue },
+                          play: play, rename: beginRename,
+                          newFolder: { activeSideRaw = PaneSide.left.rawValue; newFolder() },
+                          trash: { urls in activeSideRaw = PaneSide.left.rawValue; trashRequested(urls) })
             Divider()
             CommanderPane(root: root, folder: folderBinding(.right), selection: $rightSelection,
-                          isActive: activeSide == .right, reloadToken: reloadToken) { activeSideRaw = PaneSide.right.rawValue }
+                          isActive: activeSide == .right, reloadToken: reloadToken,
+                          activate: { activeSideRaw = PaneSide.right.rawValue },
+                          play: play, rename: beginRename,
+                          newFolder: { activeSideRaw = PaneSide.right.rawValue; newFolder() },
+                          trash: { urls in activeSideRaw = PaneSide.right.rawValue; trashRequested(urls) })
         }
         .overlay(alignment: .bottom) {
             if let busy {
@@ -74,7 +80,7 @@ struct CommanderView: View {
                     .disabled(activeSelection.isEmpty || busy != nil)
                 Button("New Folder", systemImage: "folder.badge.plus") { newFolder() }
                     .disabled(busy != nil)
-                Button("Move to Trash", systemImage: "trash") { trashRequested() }
+                Button("Move to Trash", systemImage: "trash") { trashRequested(Array(activeSelection)) }
                     .disabled(activeSelection.isEmpty || busy != nil)
             }
         }
@@ -84,15 +90,15 @@ struct CommanderView: View {
             moveToOther: { transfer(move: true) },
             rename: { startRename() },
             newFolder: { newFolder() },
-            trash: { trashRequested() }))
+            trash: { trashRequested(Array(activeSelection)) }))
         .alert("Commander", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
             Button("OK") { problem = nil }
         } message: {
             Text(problem ?? "")
         }
-        .alert("Delete \(activeSelection.count) item\(activeSelection.count == 1 ? "" : "s") permanently?",
+        .alert("Delete \(pendingDelete.count) item\(pendingDelete.count == 1 ? "" : "s") permanently?",
                isPresented: $confirmingDelete) {
-            Button("Delete", role: .destructive) { trash() }
+            Button("Delete", role: .destructive) { trash(pendingDelete) }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Instant delete is on in Settings, so this cannot be undone.")
@@ -173,20 +179,16 @@ struct CommanderView: View {
         }
     }
 
+    private func play(_ url: URL) {
+        library.nowPlaying = url
+        library.mode = .theater
+    }
+
     private func newFolder() {
-        var name = "untitled folder"
-        var number = 2
-        while FileManager.default.fileExists(atPath: activeFolder.appendingPathComponent(name).path) {
-            name = "untitled folder \(number)"
-            number += 1
-        }
-        let url = activeFolder.appendingPathComponent(name, isDirectory: true)
         do {
-            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
-            library.journal("new folder", from: url, to: nil)
+            let url = try FileOperations.newFolder(in: activeFolder, library: library)
             finished()
-            newName = name
-            renaming = RenameTarget(url: url)
+            beginRename(url)
         } catch {
             problem = error.localizedDescription
         }
@@ -197,57 +199,35 @@ struct CommanderView: View {
             problem = "Select one item to rename."
             return
         }
+        beginRename(url)
+    }
+
+    private func beginRename(_ url: URL) {
         newName = url.lastPathComponent
         renaming = RenameTarget(url: url)
     }
 
     private func rename(_ url: URL, to name: String) {
-        let trimmed = name.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty, !trimmed.contains("/"), !trimmed.hasPrefix(".") else {
-            problem = "A name cannot be empty, contain “/”, or start with a period."
-            return
-        }
-        guard trimmed != url.lastPathComponent else { return }
-        let target = url.deletingLastPathComponent().appendingPathComponent(trimmed)
-        guard !FileManager.default.fileExists(atPath: target.path) else {
-            problem = "“\(trimmed)” already exists here. Nothing was renamed."
-            return
-        }
         do {
-            try FileManager.default.moveItem(at: url, to: target)
-            library.journal("rename", from: url, to: target)
+            _ = try FileOperations.rename(url, to: name, library: library)
             finished()
         } catch {
             problem = error.localizedDescription
         }
     }
 
-    private func trashRequested() {
-        guard !activeSelection.isEmpty else { return }
-        if instantDelete { confirmingDelete = true } else { trash() }
+    private func trashRequested(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        pendingDelete = urls
+        if instantDelete { confirmingDelete = true } else { trash(urls) }
     }
 
-    private func trash() {
-        let items = Array(activeSelection)
-        guard let trashFolder = library.trashFolder else { return }
-        let instant = instantDelete
-        let libraryRoot = root
-        busy = instant ? "Deleting…" : "Moving to Trash…"
+    private func trash(_ urls: [URL]) {
+        busy = instantDelete ? "Deleting…" : "Moving to Trash…"
         Task {
-            let result: Result<[(URL, URL?)], Error> = await Task.detached {
-                Result {
-                    if instant {
-                        try items.forEach { try FileManager.default.removeItem(at: $0) }
-                        return items.map { ($0, nil) }
-                    }
-                    return try LibraryStore.moveToTrash(items, libraryRoot: libraryRoot, trash: trashFolder).map { ($0.0, Optional($0.1)) }
-                }
-            }.value
+            do { try await FileOperations.trash(urls, instant: instantDelete, library: library) }
+            catch { problem = error.localizedDescription }
             busy = nil
-            switch result {
-            case .success(let done): done.forEach { library.journal(instant ? "delete" : "trash", from: $0.0, to: $0.1) }
-            case .failure(let error): problem = error.localizedDescription
-            }
             finished()
         }
     }
@@ -262,6 +242,10 @@ private struct CommanderPane: View {
     let isActive: Bool
     let reloadToken: Int
     let activate: () -> Void
+    let play: (URL) -> Void
+    let rename: (URL) -> Void
+    let newFolder: () -> Void
+    let trash: ([URL]) -> Void
 
     @State private var entries: [FolderEntry] = []
 
@@ -305,9 +289,13 @@ private struct CommanderPane: View {
                 .width(min: 140, ideal: 180)
             }
             .font(.lyceumBody)
-            .contextMenu(forSelectionType: URL.self) { _ in
+            .contextMenu(forSelectionType: URL.self) { urls in
+                FileContextMenu(urls: urls, entries: entries,
+                                open: { entry in if entry.isFolder { folder = entry.url } else { play(entry.url) } },
+                                rename: rename, newFolder: newFolder, trash: trash)
             } primaryAction: { urls in
-                if let url = urls.first, entries.first(where: { $0.url == url })?.isFolder == true { folder = url }
+                guard let url = urls.first, let entry = entries.first(where: { $0.url == url }) else { return }
+                if entry.isFolder { folder = url } else if entry.isMedia { play(url) }
             }
         }
         .onChange(of: selection) { if !selection.isEmpty { activate() } }
@@ -326,36 +314,6 @@ private struct CommanderPane: View {
                 }
             }
         }
-    }
-}
-
-// MARK: - Rename
-
-private struct RenameSheet: View {
-    let original: String
-    @Binding var newName: String
-    let commit: () -> Void
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Rename “\(original)”")
-                .font(.lyceumHeadline)
-            TextField("Name", text: $newName)
-                .font(.lyceumBody)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit { commit(); dismiss() }
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button("Rename") { commit(); dismiss() }
-                    .keyboardShortcut(.defaultAction)
-            }
-            .font(.lyceumBody)
-        }
-        .padding(24)
-        .frame(minWidth: 460)
     }
 }
 

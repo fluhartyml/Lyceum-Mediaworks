@@ -19,6 +19,13 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-06 ~21:5x — right-click menus
+- His report: *"i cant right click to rename a file or folder"* + *"or make new or delete on right click too"*.
+- **Right-click menu in Library (list + icons) and both Commander panes:** Open/Play · Rename… · New Folder · Show in Finder · Move to Trash. Right-click on empty space → New Folder.
+- Rename/New Folder/Trash now shared in `FileOperations.swift`, so both views behave the same (never overwrite; journaled; Trash honors the instant-delete setting with a confirm).
+- Onboarding + Settings buttons: title font set on the label itself (18 pt) — the modifier on the button did not reach the title on the Mac.
+- Claude cannot click — right-click behavior untested by Claude.
+
 ### 2026-10-06 ~21:4x — three views: Library · Commander · Theater
 - His design: Library = browse (and onboarding) · **Commander = its own view with its own menu** · Theater view. *"yes please"* to build all three.
 - **Read-write sandbox** (`ENABLE_USER_SELECTED_FILES = readwrite`) — at his yes. Old read-only bookmarks are detected (`libraryBookmarkAccess` ≠ readwrite) and onboarding asks for the folder once more.

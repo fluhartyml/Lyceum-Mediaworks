@@ -41,6 +41,8 @@ struct FolderView: View {
     @AppStorage("sortKey") private var sortKey = "name"
     @AppStorage("sortAscending") private var sortAscending = true
     @AppStorage("listColumns") private var savedColumns = Data()
+    @AppStorage("instantDelete") private var instantDelete = false
+    @Environment(LibraryStore.self) private var library
 
     @State private var entries: [FolderEntry] = []
     @State private var lengths: [URL: Double] = [:]
@@ -48,6 +50,12 @@ struct FolderView: View {
     @State private var selection = Set<URL>()
     @State private var sortOrder: [KeyPathComparator<FolderRow>] = []
     @State private var columns = TableColumnCustomization<FolderRow>()
+    @State private var reloadToken = 0
+    @State private var renaming: RenameTarget?
+    @State private var newName = ""
+    @State private var problem: String?
+    @State private var pendingDelete: [URL] = []
+    @State private var confirmingDelete = false
 
     var body: some View {
         Group {
@@ -57,6 +65,7 @@ struct FolderView: View {
             } else if entries.isEmpty {
                 ContentUnavailableView("This folder is empty", systemImage: "folder")
                     .font(.lyceumBody)
+                    .contextMenu { Button("New Folder") { newFolder() } }
             } else if viewMode == .list {
                 listView
             } else {
@@ -85,7 +94,66 @@ struct FolderView: View {
         .onAppear(perform: restoreSettings)
         .onChange(of: sortOrder) { saveSort() }
         .onChange(of: columns) { saveColumns() }
-        .task(id: folder.url) { await load() }
+        .task(id: "\(folder.path)#\(reloadToken)") { await load() }
+        .sheet(item: $renaming) { target in
+            RenameSheet(original: target.url.lastPathComponent, newName: $newName) {
+                do {
+                    _ = try FileOperations.rename(target.url, to: newName, library: library)
+                    changed()
+                } catch { problem = error.localizedDescription }
+            }
+        }
+        .alert("Library", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
+            Button("OK") { problem = nil }
+        } message: {
+            Text(problem ?? "")
+        }
+        .alert("Delete \(pendingDelete.count) item\(pendingDelete.count == 1 ? "" : "s") permanently?",
+               isPresented: $confirmingDelete) {
+            Button("Delete", role: .destructive) { trash(pendingDelete) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Instant delete is on in Settings, so this cannot be undone.")
+        }
+    }
+
+    // MARK: Right-click actions
+
+    private var contextMenuActions: (Set<URL>) -> FileContextMenu {
+        { urls in
+            FileContextMenu(urls: urls, entries: entries,
+                            open: { entry in entry.isFolder ? open(entry.url) : play(entry.url) },
+                            rename: { url in newName = url.lastPathComponent; renaming = RenameTarget(url: url) },
+                            newFolder: newFolder,
+                            trash: { urls in
+                                pendingDelete = urls
+                                if instantDelete { confirmingDelete = true } else { trash(urls) }
+                            })
+        }
+    }
+
+    private func newFolder() {
+        do {
+            let url = try FileOperations.newFolder(in: folder.url, library: library)
+            changed()
+            newName = url.lastPathComponent
+            renaming = RenameTarget(url: url)
+        } catch { problem = error.localizedDescription }
+    }
+
+    private func trash(_ urls: [URL]) {
+        Task {
+            do { try await FileOperations.trash(urls, instant: instantDelete, library: library) }
+            catch { problem = error.localizedDescription }
+            changed()
+        }
+    }
+
+    /// Re-read this folder and the sidebar after a change made here.
+    private func changed() {
+        selection = []
+        reloadToken += 1
+        library.refreshNow()
     }
 
     // MARK: List
@@ -141,7 +209,8 @@ struct FolderView: View {
             .customizationID("modified")
         }
         .font(.lyceumBody)
-        .contextMenu(forSelectionType: URL.self) { _ in
+        .contextMenu(forSelectionType: URL.self) { urls in
+            contextMenuActions(urls)
         } primaryAction: { urls in
             // Double-click (or Return): a folder opens, a video or song plays in Theater.
             guard let url = urls.first, let entry = entries.first(where: { $0.url == url }) else { return }
@@ -156,6 +225,7 @@ struct FolderView: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: tileSize), spacing: 20)], spacing: 24) {
                 ForEach(rows) { row in
                     EntryTile(entry: row.entry, length: row.length, width: tileSize)
+                        .contextMenu { contextMenuActions([row.entry.url]) }
                         .onTapGesture(count: 2) {
                             if row.entry.isFolder { open(row.entry.url) } else if row.entry.isMedia { play(row.entry.url) }
                         }

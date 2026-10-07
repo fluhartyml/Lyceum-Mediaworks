@@ -27,7 +27,7 @@ struct OnboardingView: View {
                 .font(.lyceumBody)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 560)
-            Button("Choose Library Folder…") { choosingFolder = true }
+            Button { choosingFolder = true } label: { Text("Choose Library Folder…").font(.lyceumBody) }
                 .font(.lyceumBody)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
