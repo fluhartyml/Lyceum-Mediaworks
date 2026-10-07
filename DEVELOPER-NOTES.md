@@ -52,7 +52,7 @@ month subscription fee."* Free to the user; built to the bar of a premium paid p
 
 - **Lyceum Mediaworks is every app first; spin-offs come later.** Under the same trunk and IDs:
   `commander/` (`.commander`) organizes · `library/` (`.library`) serves · `theater/` (`.theater`)
-  plays on the Apple TV. **No shared package** — *"no it will end up like cryokit"*: CryoKit was shared by several apps, a change for one broke another, and it ended up locked. Each spin-off is self-contained.
+  plays on the Apple TV. **No shared package** — *"no it will end up like cryokit"*: CryoKit was shared by several apps, a change for one broke another, and it was retired on 2026-07-12, its code folded back into each app. Each spin-off is self-contained.
 - **Library Commander** (`~/Developer.complex/Library Commander`, build 68) is **deprecated** for this
   app. It stays on disk untouched, as the reference for *what* works.
 - **NightGard Librarian** (idea draft, Sept 25–26) — its decisions carry over: *"yes they carry over
