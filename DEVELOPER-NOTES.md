@@ -60,6 +60,8 @@ Lyceum Mediaworks keeps the folder tree on top and still gives the library featu
 2. **Media server** — serve the library to other devices (what Plex does).
 3. **Player** — watch and listen.
 
+**Audio and video, equally** — *"i want lyceum to be audio as well and not limited to video only."*
+
 **Free and open source** — *"but you treat it with the respect of being sold for a 99 dollar per
 month subscription fee."* Free to the user; built to the bar of a premium paid product.
 
