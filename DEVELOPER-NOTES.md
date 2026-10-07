@@ -52,7 +52,7 @@ month subscription fee."* Free to the user; built to the bar of a premium paid p
 
 - **Lyceum Mediaworks is every app first; spin-offs come later.** Under the same trunk and IDs:
   `commander/` (`.commander`) organizes · `library/` (`.library`) serves · `theater/` (`.theater`)
-  plays on the Apple TV · `LyceumKit/` holds the shared code (proposed).
+  plays on the Apple TV. **No shared package** — *"no it will end up like cryokit"*: CryoKit was shared by several apps, a change for one broke another, and it ended up locked. Each spin-off is self-contained.
 - **Library Commander** (`~/Developer.complex/Library Commander`, build 68) is **deprecated** for this
   app. It stays on disk untouched, as the reference for *what* works.
 - **NightGard Librarian** (idea draft, Sept 25–26) — its decisions carry over: *"yes they carry over
@@ -70,7 +70,6 @@ month subscription fee."* Free to the user; built to the bar of a premium paid p
 - [x] GitHub repo (public) + Forgejo pull mirror
 - [x] App Store Connect record — name reserved; Mac 1.0 (4) uploaded, not submitted
 - [ ] About panel with the build line
-- [ ] `LyceumKit` shared package
 - [ ] 18 pt minimum text everywhere; every setting persists across launches
 
 ### Phase 1 — Folders as the front door · LOCKED · built on the Mac first
@@ -97,7 +96,7 @@ The server runs on the **Mac mini** (the MacBook during development); the **Terr
 - [ ] Apple TV app with folders, playlists and tags on the top level
 
 ### Phase 6 — Spin-offs
-- [ ] Commander, Library and Theater as their own apps on `LyceumKit`
+- [ ] Commander, Library and Theater as their own self-contained apps (no shared package)
 
 ---
 
