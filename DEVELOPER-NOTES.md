@@ -19,6 +19,16 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-06 ~20:3x — first code
+- **Phase 0 finished and Phase 1 built** at his word *"the amber sheet is locked now load it and code it."*
+  Mac + iOS Simulator BUILD SUCCEEDED. **Not run by Michael yet** — he decides when it runs.
+- Files: `LibraryStore.swift` (root bookmark + current folder, persisted) · `FolderListing.swift`
+  (reads a folder off the main thread) · `FolderView.swift` (tiles: thumbnail, length, size) ·
+  `AboutView.swift` · `Typography.swift` (18 pt floor).
+- Sandbox is **read-only** for user-picked folders (Phase 1 only browses). **Phase 2 (Commander)
+  will need `ENABLE_USER_SELECTED_FILES = readwrite`** — that is a permission change; say so to him first.
+- Unit tests not written/run — the test host launches the app; ask first.
+
 ### 2026-10-06 ~20:00 — first entry
 - The project exists and is on the App Store Connect record, but **has no features yet.** It shows
   its name and build line only.
@@ -69,13 +79,13 @@ month subscription fee."* Free to the user; built to the bar of a premium paid p
 - [x] Display name "Lyceum Mediaworks" · category Video · temporary knight icon
 - [x] GitHub repo (public) + Forgejo pull mirror
 - [x] App Store Connect record — name reserved; Mac 1.0 (4) uploaded, not submitted
-- [ ] About panel with the build line
-- [ ] 18 pt minimum text everywhere; every setting persists across launches
+- [x] About panel with the build line (Mac: app menu → About; iOS: info button)
+- [x] 18 pt minimum text everywhere (`Typography.swift`); every setting persists across launches (library, current folder, tile size)
 
 ### Phase 1 — Folders as the front door · LOCKED · built on the Mac first
 *"create mac first the folder structure and then the commander to populate and coriograph and manipulate media as we go."* Mac first is the build order; the first release is still Mac, iPad and iPhone.
-- [ ] Point it at a library root (Nineveh, a mini, a drive); the folder tree is the main view
-- [ ] Posters and file details *inside* each folder, not a flat wall
+- [x] Point it at a library root (Nineveh, a mini, a drive); the folder tree is the main view — **built, not yet run by Michael**
+- [x] Posters and file details *inside* each folder, not a flat wall — thumbnails, length, size — **built, not yet run by Michael**
 
 ### Phase 2 — Lyceum Mediaworks Commander, written new · LOCKED
 *"yes we will make lyceum mediaworks commander."* Library Commander (build 68) is the reference for what works, never a source to copy.
