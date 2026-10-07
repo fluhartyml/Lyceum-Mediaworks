@@ -134,4 +134,5 @@ private struct FolderTreeRow: View {
 #Preview {
     ContentView()
         .environment(LibraryStore())
+        .environment(MiniPlayer())
 }

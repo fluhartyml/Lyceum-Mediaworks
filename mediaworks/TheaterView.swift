@@ -41,7 +41,7 @@ struct TheaterView: View {
                     Label("Nothing playing", systemImage: "play.rectangle")
                         .font(.lyceumTitle)
                 } description: {
-                    Text("Open a video or song, or double-click one in Library.")
+                    Text("Open a video or song to play it here.")
                         .font(.lyceumBody)
                 } actions: {
                     Button { choosingFile = true } label: { Text("Open…").font(.lyceumBody) }

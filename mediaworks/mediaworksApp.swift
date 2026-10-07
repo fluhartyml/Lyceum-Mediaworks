@@ -10,6 +10,7 @@ import SwiftUI
 @main
 struct mediaworksApp: App {
     @State private var library = LibraryStore()
+    @State private var mini = MiniPlayer()
     #if os(macOS)
     @Environment(\.openWindow) private var openWindow
     #endif
@@ -18,6 +19,7 @@ struct mediaworksApp: App {
         WindowGroup {
             ContentView()
                 .environment(library)
+                .environment(mini)
         }
         #if os(macOS)
         .commands {

@@ -43,6 +43,7 @@ struct FolderView: View {
     @AppStorage("listColumns") private var savedColumns = Data()
     @AppStorage("instantDelete") private var instantDelete = false
     @Environment(LibraryStore.self) private var library
+    @Environment(MiniPlayer.self) private var mini
 
     @State private var entries: [FolderEntry] = []
     @State private var lengths: [URL: Double] = [:]
@@ -89,6 +90,17 @@ struct FolderView: View {
                 }
             }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            MiniPlayerBar(twoPanes: false, openInTheater: play)
+        }
+        .onChange(of: selection) {
+            // A highlight cues the mini player; Play starts it.
+            if selection.count == 1, let url = selection.first,
+               entries.first(where: { $0.url == url })?.isMedia == true {
+                mini.cue(url, from: .library)
+            }
+        }
+        .onChange(of: rows.map(\.id)) { mini.setList(rows.filter(\.entry.isMedia).map(\.id), for: .library) }
         .onAppear(perform: restoreSettings)
         .onChange(of: sortOrder) { saveSort() }
         .onChange(of: columns) { saveColumns() }

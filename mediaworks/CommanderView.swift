@@ -48,18 +48,21 @@ struct CommanderView: View {
     var body: some View {
         HStack(spacing: 0) {
             CommanderPane(root: root, folder: folderBinding(.left), selection: $leftSelection,
-                          isActive: activeSide == .left, reloadToken: reloadToken,
+                          side: .left, isActive: activeSide == .left, reloadToken: reloadToken,
                           activate: { activeSideRaw = PaneSide.left.rawValue },
                           play: play, rename: beginRename,
                           newFolder: { activeSideRaw = PaneSide.left.rawValue; newFolder() },
                           trash: { urls in activeSideRaw = PaneSide.left.rawValue; trashRequested(urls) })
             Divider()
             CommanderPane(root: root, folder: folderBinding(.right), selection: $rightSelection,
-                          isActive: activeSide == .right, reloadToken: reloadToken,
+                          side: .right, isActive: activeSide == .right, reloadToken: reloadToken,
                           activate: { activeSideRaw = PaneSide.right.rawValue },
                           play: play, rename: beginRename,
                           newFolder: { activeSideRaw = PaneSide.right.rawValue; newFolder() },
                           trash: { urls in activeSideRaw = PaneSide.right.rawValue; trashRequested(urls) })
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            MiniPlayerBar(twoPanes: true, openInTheater: play)
         }
         .overlay(alignment: .bottom) {
             if let busy {
@@ -229,6 +232,7 @@ private struct CommanderPane: View {
     let root: URL
     @Binding var folder: URL
     @Binding var selection: Set<URL>
+    let side: MiniPlayer.Source
     let isActive: Bool
     let reloadToken: Int
     let activate: () -> Void
@@ -238,6 +242,7 @@ private struct CommanderPane: View {
     let trash: ([URL]) -> Void
 
     @State private var entries: [FolderEntry] = []
+    @Environment(MiniPlayer.self) private var mini
 
     var body: some View {
         VStack(spacing: 0) {
@@ -288,7 +293,15 @@ private struct CommanderPane: View {
                 if entry.isFolder { folder = url } else if entry.isMedia { play(url) }
             }
         }
-        .onChange(of: selection) { if !selection.isEmpty { activate() } }
+        .onChange(of: selection) {
+            if !selection.isEmpty { activate() }
+            // A highlight cues the mini player; Play starts it.
+            if selection.count == 1, let url = selection.first,
+               entries.first(where: { $0.url == url })?.isMedia == true {
+                mini.cue(url, from: side)
+            }
+        }
+        .onChange(of: entries) { mini.setList(entries.filter(\.isMedia).map(\.url), for: side) }
         .onTapGesture { activate() }
         .task(id: "\(folder.path)#\(reloadToken)") {
             let url = folder

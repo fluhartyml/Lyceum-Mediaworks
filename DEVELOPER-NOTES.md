@@ -19,6 +19,12 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-06 ~22:1x — mini player
+- His design: *"you highlight and the mini player is cued up but you have to press play to start the player and toggle on continuous for it to play the next song same pane or toggled to switch to the other pane"* · *"AND if you double click it opens in the theater"* · double-click is **not advertised** in the UI.
+- `MiniPlayer.swift`: bar at the bottom of Library and Commander. Highlight = cue (never interrupts what is playing). Play/Pause · Next · scrubber · **Continuous: Off / Same Pane / Other Pane** (Other Pane only in Commander; alternates the two panes like two decks) · Open in Theater. Continuous choice persists.
+- No space-bar shortcut (it would swallow spaces typed while renaming).
+- Untested by clicks.
+
 ### 2026-10-06 ~21:5x — right-click menus
 - His report: *"i cant right click to rename a file or folder"* + *"or make new or delete on right click too"*.
 - **Right-click menu in Library (list + icons) and both Commander panes:** Open/Play · Rename… · New Folder · Show in Finder · Move to Trash. Right-click on empty space → New Folder.
