@@ -19,6 +19,9 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-07 ~14:xx — reveal chevrons, build 34 (not yet run by him)
+- His: *"the folders need  >reveal ceveron"*. Commander rows show a ▸ on real folders; it reveals the contents underneath, indented (flat rows with a depth, so every command works on a revealed file). Revealed folders persist per pane and refresh every 10 s with the folder. Hiding a folder that holds the highlight moves the highlight to that folder. Your Order reorders only the folder on show (depth 0).
+
 ### 2026-10-07 ~14:xx — SORT IS CRITICAL FOR A FUTURE WORKFLOW + PLAYLIST EXPORT (his words, not built)
 - *"the sort options will be critical for a future workpatch, unsorted(manual reposition), sort by name type date time will be important for a future workflow. and it is supposed to be able to be exported as a playlist"*
 - Wanted: **Unsorted = manual reposition** (he drags rows into his own order, and it is kept) · **Name · Type · Date · Time** · the pane's order **exports as a playlist**.

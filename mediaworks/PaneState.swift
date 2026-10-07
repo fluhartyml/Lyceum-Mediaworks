@@ -32,6 +32,18 @@ import AppKit
 
 enum PaneSide: String { case left, right }
 
+/// One row on screen: an item, and how deep it sits inside revealed folders.
+// REM  REVEAL, his ask (Library Commander 2026-09-28, and again 2026-10-07: "the folders need
+// REM  >reveal ceveron"): a folder's contents show BELOW it, indented, without opening it — like
+// REM  Finder. depth 0 = in the folder on show, 1 = inside a revealed folder, and so on.
+// REM  Built as a FLAT list of rows with a depth, not a nested outline, so highlighting, ⇧-ranges,
+// REM  the arrows and every file command work on a revealed file exactly as on a top-level one.
+struct PaneRow: Identifiable, Hashable {
+    let entry: FolderEntry
+    let depth: Int
+    var id: URL { entry.url }
+}
+
 // MARK: - Drives (Mac)
 
 /// A drive the Mac can see right now. Listing needs no permission; opening one does, once.
@@ -170,6 +182,14 @@ final class PaneState {
 
     /// What is in the folder, as last read. Written by the pane view.
     var entries: [FolderEntry] = []
+    /// Every row on screen — the folder's items with revealed folders' items under them.
+    private(set) var rows: [PaneRow] = []
+    /// The folders whose contents are revealed, by path. Saved (everything persists).
+    private(set) var revealed: Set<String> = [] { didSet { save(Array(revealed), "Revealed") } }
+    /// The contents of each revealed folder, as last read.
+    @ObservationIgnored private var inside: [String: [FolderEntry]] = [:]
+    // REM  A depth cap, so a folder that links back into itself cannot loop forever.
+    private static let deepest = 8
     var drives: [Drive] = []
 
     /// A highlight saved at launch, applied once the folder has been read.
@@ -203,18 +223,23 @@ final class PaneState {
         sort = SortKey(rawValue: d.string(forKey: prefix + "Sort") ?? "") ?? .name
         showHidden = d.bool(forKey: prefix + "Hidden")
         pendingSelection = Set((d.stringArray(forKey: prefix + "Selection") ?? []).map { URL(fileURLWithPath: $0) })
+        revealed = Set(d.stringArray(forKey: prefix + "Revealed") ?? [])
         drives = Drives.mounted()
     }
 
     /// The pane view hands over a fresh listing. Keeps the highlight on the same items.
     // REM  If a highlighted file is gone, its highlight goes to NOTHING — never to a row he did not
     // REM  pick (the no-auto-highlight rule above).
-    func listed(_ fresh: [FolderEntry]) {
+    func listed(_ fresh: [FolderEntry], inside freshInside: [String: [FolderEntry]] = [:]) {
         // REM  His own order is laid over the name-order listing here, so every reload — the 10-second
         // REM  check included — keeps his order. Only a real difference redraws.
         let ordered = sort == .manual ? ManualOrder.apply(fresh, in: folder) : fresh
         if ordered != entries { entries = ordered }
-        let present = Set(fresh.map(\.url))
+        inside = sort == .manual
+            ? freshInside.reduce(into: [:]) { $0[$1.key] = ManualOrder.apply($1.value, in: URL(fileURLWithPath: $1.key)) }
+            : freshInside
+        rebuildRows()
+        let present = Set(rows.map(\.id))
         if !pendingSelection.isEmpty {
             let restored = pendingSelection.intersection(present)
             pendingSelection = []
@@ -228,11 +253,64 @@ final class PaneState {
         }
     }
 
+    // MARK: Reveal
+
+    func isRevealed(_ url: URL) -> Bool { revealed.contains(url.standardizedFileURL.path) }
+
+    /// The ▸ chevron: shows or hides a folder's contents under it.
+    // REM  HIS HIGHLIGHT RULE (2026-09-28): the folder "should stay highlighted unless the mouse
+    // REM  selects a different folder" — so revealing or hiding NEVER moves the highlight. The one
+    // REM  forced exception: a highlighted item inside a folder being hidden would vanish from the
+    // REM  screen, so its highlight goes to that folder (as Finder does), never to nothing unseen.
+    func toggleReveal(_ url: URL) {
+        let path = url.standardizedFileURL.path
+        if revealed.contains(path) {
+            revealed.remove(path)
+            let hidden = selection.filter { $0.standardizedFileURL.path.hasPrefix(path + "/") }
+            if !hidden.isEmpty {
+                selection.subtract(hidden)
+                selection.insert(url)
+            }
+        } else {
+            revealed.insert(path)
+        }
+        rebuildRows()
+    }
+
+    /// Revealed folders under the folder on show — the ones the view must read.
+    var revealedHere: [String] {
+        let base = folder.standardizedFileURL.path + "/"
+        return revealed.filter { $0.hasPrefix(base) }.sorted()
+    }
+
+    private func rebuildRows() {
+        var out: [PaneRow] = []
+        func add(_ list: [FolderEntry], depth: Int) {
+            for entry in list {
+                out.append(PaneRow(entry: entry, depth: depth))
+                let path = entry.url.standardizedFileURL.path
+                if entry.isFolder, depth < Self.deepest, revealed.contains(path), let items = inside[path] {
+                    add(items, depth: depth + 1)
+                }
+            }
+        }
+        add(entries, depth: 0)
+        if out != rows { rows = out }
+    }
+
     // MARK: His order — Unsorted
 
     /// Moves rows to a spot in the list and saves that as his order for this folder.
     // REM  The rows move TOGETHER, keeping their order among themselves, and stay highlighted so he
     // REM  can keep nudging them. Only in Unsorted: in any other sort the sort decides the order.
+    // REM  Only rows in the folder on show (depth 0) move. A revealed folder's own order is set by
+    // REM  opening that folder — dragging a file out of a revealed folder would be a FILE move, and
+    // REM  reordering must never move a file.
+    func move(_ urls: Set<URL>, toRow rowIndex: Int) {
+        let index = rows.prefix(min(max(rowIndex, 0), rows.count)).filter { $0.depth == 0 }.count
+        move(urls.intersection(entries.map(\.url)), to: index)
+    }
+
     func move(_ urls: Set<URL>, to index: Int) {
         guard sort == .manual, !urls.isEmpty else { return }
         var list = entries
@@ -243,12 +321,14 @@ final class PaneState {
         list.insert(contentsOf: moving, at: max(0, min(index - above, list.count)))
         entries = list
         ManualOrder.save(list, in: folder)
+        rebuildRows()
     }
 
     /// Move Up / Move Down — one row at a time, for the highlighted rows.
     // REM  WHY BUTTONS AS WELL AS DRAG: he works one-handed with Sticky Keys; a drag is the hardest
     // REM  gesture for that. Buttons (and keys, step 2) reorder with no dragging at all.
     func nudge(up: Bool) {
+        let selection = self.selection.intersection(entries.map(\.url))
         let rows = entries.indices.filter { selection.contains(entries[$0].url) }
         guard let first = rows.first, let last = rows.last else { return }
         if up, first > 0 { move(selection, to: first - 1) }

@@ -523,21 +523,42 @@ private struct CommanderPane: View {
     // REM  MULTI-SELECT LIKE FINDER (his "yes like finder", 2026-09-28): click, ⌘-click, ⇧-click and
     // REM  ⇧↑/⇧↓ — the Mac table does all four natively, so nothing custom is written for them.
     private var fileList: some View {
-        Table(of: FolderEntry.self, selection: $pane.selection) {
-            TableColumn("Name") { entry in
-                Label(entry.name, systemImage: entry.isFolder ? "folder.fill" : (entry.isVideo ? "film" : (entry.isAudio ? "music.note" : "doc")))
-                    .foregroundStyle(entry.isHidden ? Color.red : Color.primary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .help(entry.name)
+        Table(of: PaneRow.self, selection: $pane.selection) {
+            TableColumn("Name") { row in
+                let entry = row.entry
+                HStack(spacing: 4) {
+                    // REM  Indent per level so what is inside a revealed folder reads as inside it.
+                    Spacer().frame(width: CGFloat(row.depth) * 20)
+                    // REM  THE REVEAL CHEVRON — on real folders only (a package is one item). Every row
+                    // REM  keeps the same width here, chevron or not, so the names line up.
+                    if entry.isFolder {
+                        Button { pane.toggleReveal(entry.url) } label: {
+                            Image(systemName: "chevron.right")
+                                .rotationEffect(.degrees(pane.isRevealed(entry.url) ? 90 : 0))
+                                .frame(width: 18)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help(pane.isRevealed(entry.url) ? "Hide what is inside" : "Show what is inside, without opening it")
+                    } else {
+                        Spacer().frame(width: 18)
+                    }
+                    Label(entry.name, systemImage: entry.isFolder ? "folder.fill" : (entry.isVideo ? "film" : (entry.isAudio ? "music.note" : "doc")))
+                        .foregroundStyle(entry.isHidden ? Color.red : Color.primary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .help(entry.name)
+                }
             }
             .width(min: 200, ideal: 320)
-            TableColumn("Size") { entry in
+            TableColumn("Size") { row in
+                let entry = row.entry
                 Text(entry.isFolder ? "—" : ByteCountFormatter.string(fromByteCount: entry.size ?? 0, countStyle: .file))
                     .foregroundStyle(.secondary)
             }
             .width(min: 80, ideal: 100)
-            TableColumn("Date Modified") { entry in
+            TableColumn("Date Modified") { row in
+                let entry = row.entry
                 Text(entry.modified.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "—")
                     .foregroundStyle(.secondary)
             }
@@ -548,26 +569,26 @@ private struct CommanderPane: View {
             // REM  the files themselves: a file dragged out of here onto Finder would be COPIED or MOVED
             // REM  by Finder. Dropped anywhere else, the token is just harmless text.
             if pane.sort == .manual {
-                ForEach(pane.entries) { entry in
-                    TableRow(entry).draggable(RowToken.make(entry.url, selection: pane.selection))
+                ForEach(pane.rows) { row in
+                    TableRow(row).draggable(RowToken.make(row.id, selection: pane.selection))
                 }
                 .dropDestination(for: String.self) { index, tokens in
                     // REM  Rows from the OTHER pane are ignored here — reordering never moves a file.
                     let urls = Set(tokens.flatMap(RowToken.read)).intersection(pane.entries.map(\.url))
-                    pane.move(urls, to: index)
+                    pane.move(urls, toRow: index)
                     if !urls.isEmpty { store.report("Moved \(urls.count) row\(urls.count == 1 ? "" : "s") in your order") }
                 }
             } else {
-                ForEach(pane.entries) { TableRow($0) }
+                ForEach(pane.rows) { TableRow($0) }
             }
         }
         .font(.lyceumBody)
         .contextMenu(forSelectionType: URL.self) { urls in
-            FileContextMenu(urls: urls, entries: pane.entries,
+            FileContextMenu(urls: urls, entries: pane.rows.map(\.entry),
                             open: { entry in if entry.isFolder { pane.open(entry.url) } else { play(entry.url) } },
                             rename: rename, newFolder: newFolder, trash: trash)
         } primaryAction: { urls in
-            guard let url = urls.first, let entry = pane.entries.first(where: { $0.url == url }) else { return }
+            guard let url = urls.first, let entry = pane.rows.first(where: { $0.id == url })?.entry else { return }
             if entry.isFolder { pane.open(url) } else if entry.isMedia { play(url) }
         }
         .onChange(of: pane.selection) {
@@ -577,20 +598,31 @@ private struct CommanderPane: View {
             else if !pane.selection.isEmpty { activate() }
             // A highlight cues the mini player; Play starts it.
             if pane.selection.count == 1, let url = pane.selection.first,
-               pane.entries.first(where: { $0.url == url })?.isMedia == true {
+               pane.rows.first(where: { $0.id == url })?.entry.isMedia == true {
                 mini.cue(url, from: source)
             }
         }
         .onChange(of: pane.entries) { mini.setList(pane.entries.filter(\.isMedia).map(\.url), for: source) }
-        .task(id: "\(pane.folder.path)#\(pane.sort.rawValue)#\(pane.showHidden)#\(reloadToken)#\(refreshes)") {
-            let url = pane.folder, hidden = pane.showHidden, sort = pane.sort
-            pane.listed(await Task.detached { FolderListing.entries(in: url, showHidden: hidden, sort: sort) }.value)
+        .task(id: "\(pane.folder.path)#\(pane.sort.rawValue)#\(pane.showHidden)#\(reloadToken)#\(refreshes)#\(pane.revealedHere.joined(separator: "|"))") {
+            let url = pane.folder, hidden = pane.showHidden, sort = pane.sort, open = pane.revealedHere
+            // REM  The folder AND every revealed folder under it are read together, off the main thread,
+            // REM  so a revealed folder stays as current as the folder itself.
+            let read = {
+                await Task.detached {
+                    (FolderListing.entries(in: url, showHidden: hidden, sort: sort),
+                     open.reduce(into: [String: [FolderEntry]]()) {
+                         $0[$1] = FolderListing.entries(in: URL(fileURLWithPath: $1, isDirectory: true), showHidden: hidden, sort: sort)
+                     })
+                }.value
+            }
+            let first = await read()
+            pane.listed(first.0, inside: first.1)
             // REM  Stay current while on screen — a network share does not announce server-side changes.
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(10))
                 if Task.isCancelled { return }
-                let fresh = await Task.detached { FolderListing.entries(in: url, showHidden: hidden, sort: sort) }.value
-                if fresh != pane.entries { pane.listed(fresh) }
+                let fresh = await read()
+                pane.listed(fresh.0, inside: fresh.1)
             }
         }
     }
