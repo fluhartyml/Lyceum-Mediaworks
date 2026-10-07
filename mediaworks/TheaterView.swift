@@ -8,6 +8,7 @@
 
 import SwiftUI
 import AVKit
+import UniformTypeIdentifiers
 
 struct TheaterView: View {
     @Environment(LibraryStore.self) private var library
@@ -15,6 +16,7 @@ struct TheaterView: View {
     @AppStorage("theaterPosition") private var position: Double = 0
 
     @State private var player: AVPlayer?
+    @State private var choosingFile = false
 
     var body: some View {
         Group {
@@ -39,10 +41,27 @@ struct TheaterView: View {
                     Label("Nothing playing", systemImage: "play.rectangle")
                         .font(.lyceumTitle)
                 } description: {
-                    Text("Double-click a video or song in Library to play it here.")
+                    Text("Open a video or song, or double-click one in Library.")
                         .font(.lyceumBody)
+                } actions: {
+                    Button { choosingFile = true } label: { Text("Open…").font(.lyceumBody) }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
                 }
             }
+        }
+        .toolbar {
+            ToolbarItem {
+                Button("Open…", systemImage: "folder") { choosingFile = true }
+                    .keyboardShortcut("o", modifiers: .command)
+                    .help("Open a video or song (⌘O)")
+            }
+        }
+        .fileImporter(isPresented: $choosingFile, allowedContentTypes: [.audiovisualContent]) { result in
+            guard case .success(let url) = result else { return }
+            // A file picked from outside the library needs its own sandbox grant.
+            _ = url.startAccessingSecurityScopedResource()
+            library.nowPlaying = url
         }
         .task(id: library.nowPlaying) { start() }
         .onDisappear { savePosition(); player?.pause() }

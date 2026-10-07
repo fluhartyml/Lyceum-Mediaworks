@@ -31,7 +31,7 @@ entry once it is done, and move anything that became a decision into the section
 - **Read-write sandbox** (`ENABLE_USER_SELECTED_FILES = readwrite`) — at his yes. Old read-only bookmarks are detected (`libraryBookmarkAccess` ≠ readwrite) and onboarding asks for the folder once more.
 - **Commander:** two panes (paths persisted), Copy/Move to Other Pane (⌥⌘C / ⌥⌘M), Rename (⌥⌘R), New Folder (⇧⌘N), Move to Trash (⌘⌫). **Never overwrites** — a clash stops the operation and names the files. Every operation → `journal.tsv` (Application Support/Lyceum Mediaworks). Undo is NOT built yet.
 - **Trash per locked line 031:** hidden `.Lyceum Trash/<date>/<original path>` at the library root (a same-share rename); days older than 30 are purged at launch; Settings → "Delete instantly" skips it — NO confirm dialog (his ruling: requiring it is being a "hover mom"). No restore UI yet.
-- **Theater:** double-click media in Library → plays (AVKit), resumes position per file.
+- **Theater:** double-click media in Library → plays (AVKit), resumes position per file. **Open… picker** (empty state + toolbar, ⌘O) for any video/audio — his: *"it should offer a picker/open"*.
 - Settings button text forced to 18 pt (was smaller — seen on his screen).
 - ⚠️ Click-level behavior is untested by Claude (cannot click). Needs his hands.
 
