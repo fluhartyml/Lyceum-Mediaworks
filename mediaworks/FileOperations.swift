@@ -89,6 +89,14 @@ enum FileOperations {
                        : "Moved \(what) to the Trash")
     }
 
+    // REM  THE LABEL SAYS WHAT WILL HAPPEN — his catch, 2026-10-07: "in settings i have delete
+    // REM  emediately and not use the trashcan but the right click popup says move to trash." A
+    // REM  command whose name promises a Trash that will not be used is a lie at the moment that
+    // REM  matters most. Every delete label in the app (right-click, toolbar, Commander menu) comes
+    // REM  from here, so they can never disagree with Settings or with each other again.
+    static func deleteTitle(instant: Bool) -> String { instant ? "Delete Immediately" : "Move to Trash" }
+    static func deleteSymbol(instant: Bool) -> String { instant ? "xmark.bin" : "trash" }
+
     static func showInFinder(_ urls: [URL]) {
         #if os(macOS)
         NSWorkspace.shared.activateFileViewerSelecting(urls)
@@ -137,6 +145,7 @@ struct FileContextMenu: View {
     let rename: (URL) -> Void
     let newFolder: () -> Void
     let trash: ([URL]) -> Void
+    @AppStorage("instantDelete") private var instantDelete = false
 
     var body: some View {
         if urls.count == 1, let url = urls.first, let entry = entries.first(where: { $0.url == url }) {
@@ -152,7 +161,7 @@ struct FileContextMenu: View {
             Button("Show in Finder") { FileOperations.showInFinder(Array(urls)) }
             #endif
             Divider()
-            Button("Move to Trash", role: .destructive) { trash(Array(urls)) }
+            Button(FileOperations.deleteTitle(instant: instantDelete), role: .destructive) { trash(Array(urls)) }
         }
     }
 }

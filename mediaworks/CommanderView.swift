@@ -125,7 +125,8 @@ struct CommanderView: View {
                     .disabled(active.selection.isEmpty || busy != nil)
                 Button("New Folder", systemImage: "folder.badge.plus") { newFolder() }
                     .disabled(busy != nil || active.showingDrives)
-                Button("Move to Trash", systemImage: "trash") { trash(Array(active.selection)) }
+                Button(FileOperations.deleteTitle(instant: instantDelete),
+                       systemImage: FileOperations.deleteSymbol(instant: instantDelete)) { trash(Array(active.selection)) }
                     .disabled(active.selection.isEmpty || busy != nil)
             }
         }
@@ -746,6 +747,7 @@ private struct CommanderPane: View {
 
 struct CommanderMenu: View {
     @FocusedValue(\.commanderActions) private var actions
+    @AppStorage("instantDelete") private var instantDelete = false
 
     var body: some View {
         Button("Copy to Other Pane") { actions?.copyToOther() }
@@ -766,7 +768,7 @@ struct CommanderMenu: View {
             .keyboardShortcut("y", modifiers: .command)
             .disabled(actions == nil)
         Divider()
-        Button("Move to Trash") { actions?.trash() }
+        Button(FileOperations.deleteTitle(instant: instantDelete)) { actions?.trash() }
             .keyboardShortcut(.delete, modifiers: .command)
             .disabled(actions?.hasSelection != true)
     }
