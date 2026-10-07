@@ -19,6 +19,12 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-07 ~14:xx — SORT IS CRITICAL FOR A FUTURE WORKFLOW + PLAYLIST EXPORT (his words, not built)
+- *"the sort options will be critical for a future workpatch, unsorted(manual reposition), sort by name type date time will be important for a future workflow. and it is supposed to be able to be exported as a playlist"*
+- Wanted: **Unsorted = manual reposition** (he drags rows into his own order, and it is kept) · **Name · Type · Date · Time** · the pane's order **exports as a playlist**.
+- His go: *"tou can add it now if you are able to it will set us up to move forward in the future"*. **BUILT in build 33** (not yet run by him): Sort = **Unsorted — Your Order** · Name · **Type** · **Date & Time** · Size. Your Order: drag rows (text token, never the files) or **Move Up / Move Down** buttons; saved per folder in Application Support `manual-order.json` (never in his media folders); new arrivals go to the end; renames keep their place. **Export Playlist…** (Mac) = `.m3u8`, media only, order on screen, paths relative to where it is saved.
+- ⬜ Asked him: did "time" mean a media file's LENGTH? Read as Date & Time for now.
+
 ### 2026-10-07 ~14:xx — Commander, step 1 of 4 BUILT (not yet run by him)
 - His instruction: *"bring over the ideas, not xerox copy the code but generate fresh code in this app"* (Library Commander build 68 = the reference) · *"use rem statements to document all of your descisions and reasons why"* — **every decision gets a `// REM` line with its reason.**
 - Step 1 = `PaneState.swift` (place, highlight, sort, Show Hidden — all saved; drives; Grants = saved security-scoped bookmarks) + a fresh `CommanderView.swift`: accent border on the active pane, **Tab** swaps (window key monitor, not on the list), header **drive picker · path box · (^)..** (drive list at the top, Mac only), tools row **Sort · New Folder · Refresh · Show Hidden** (hidden in red), item count. Trash now: inside library → Lyceum Trash; outside → Mac Trash; no-Trash drive refuses.

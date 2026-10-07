@@ -22,9 +22,25 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 #if os(macOS)
 import AppKit
 #endif
+
+/// The text a row drag carries: which rows, never the files themselves.
+enum RowToken {
+    private static let prefix = "lyceum-rows:"
+    // REM  Dragging a highlighted row drags ALL the highlighted rows, as in Finder; dragging an
+    // REM  unhighlighted row drags just that one.
+    static func make(_ url: URL, selection: Set<URL>) -> String {
+        let rows = selection.contains(url) ? selection.map(\.path) : [url.path]
+        return prefix + rows.joined(separator: "\n")
+    }
+    static func read(_ token: String) -> [URL] {
+        guard token.hasPrefix(prefix) else { return [] }
+        return token.dropFirst(prefix.count).split(separator: "\n").map { URL(fileURLWithPath: String($0)) }
+    }
+}
 
 /// What the Commander menu can do right now. Published by CommanderView while it is showing.
 struct CommanderActions {
@@ -251,6 +267,7 @@ struct CommanderView: View {
     private func rename(_ url: URL, to name: String) {
         do {
             let renamed = try FileOperations.rename(url, to: name, library: library)
+            ManualOrder.renamed(url, to: renamed)
             // REM  The highlight follows the item to its new name, so he does not lose his place.
             for state in [left, right] where state.selection.contains(url) {
                 state.selection.remove(url)
@@ -454,12 +471,21 @@ private struct CommanderPane: View {
                 }
                 .pickerStyle(.inline)
             } label: {
-                Label("Sort: \(pane.sort.title)", systemImage: "arrow.up.arrow.down")
+                Label("Sort: \(pane.sort.short)", systemImage: "arrow.up.arrow.down")
                     .font(.lyceumBody)
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
-            .help("How this pane orders its files. Folders always come first.")
+            .help("How this pane orders its files. Your Order: drag rows, or use Move Up and Move Down.")
+
+            if pane.sort == .manual {
+                Button { pane.nudge(up: true) } label: { Label("Move Up", systemImage: "arrow.up") }
+                    .disabled(pane.selection.isEmpty || pane.showingDrives)
+                    .help("Move the highlighted rows up one place in your order")
+                Button { pane.nudge(up: false) } label: { Label("Move Down", systemImage: "arrow.down") }
+                    .disabled(pane.selection.isEmpty || pane.showingDrives)
+                    .help("Move the highlighted rows down one place in your order")
+            }
 
             Button { newFolder() } label: { Label("New Folder", systemImage: "folder.badge.plus") }
                 .disabled(pane.showingDrives)
@@ -474,6 +500,12 @@ private struct CommanderPane: View {
                 Label(pane.showHidden ? "Hide Hidden" : "Show Hidden", systemImage: pane.showHidden ? "eye.slash" : "eye")
             }
             .help("Show or hide hidden files and folders — a name starting with a period, or hidden by macOS. Hidden ones show in red.")
+
+            #if os(macOS)
+            Button { exportPlaylist() } label: { Label("Export Playlist…", systemImage: "music.note.list") }
+                .disabled(pane.showingDrives || !pane.entries.contains(where: \.isMedia))
+                .help("Save the videos and songs in this pane, in the order shown, as a playlist (.m3u8)")
+            #endif
 
             Spacer(minLength: 8)
             Text(pane.showingDrives ? "\(pane.drives.count) drive\(pane.drives.count == 1 ? "" : "s")"
@@ -491,7 +523,7 @@ private struct CommanderPane: View {
     // REM  MULTI-SELECT LIKE FINDER (his "yes like finder", 2026-09-28): click, ⌘-click, ⇧-click and
     // REM  ⇧↑/⇧↓ — the Mac table does all four natively, so nothing custom is written for them.
     private var fileList: some View {
-        Table(pane.entries, selection: $pane.selection) {
+        Table(of: FolderEntry.self, selection: $pane.selection) {
             TableColumn("Name") { entry in
                 Label(entry.name, systemImage: entry.isFolder ? "folder.fill" : (entry.isVideo ? "film" : (entry.isAudio ? "music.note" : "doc")))
                     .foregroundStyle(entry.isHidden ? Color.red : Color.primary)
@@ -510,6 +542,24 @@ private struct CommanderPane: View {
                     .foregroundStyle(.secondary)
             }
             .width(min: 140, ideal: 180)
+        } rows: {
+            // REM  DRAG TO REORDER — only in Unsorted, so in every other sort a click-drag still does the
+            // REM  Mac's ordinary multi-row selection. The drag carries a TEXT token naming the rows, never
+            // REM  the files themselves: a file dragged out of here onto Finder would be COPIED or MOVED
+            // REM  by Finder. Dropped anywhere else, the token is just harmless text.
+            if pane.sort == .manual {
+                ForEach(pane.entries) { entry in
+                    TableRow(entry).draggable(RowToken.make(entry.url, selection: pane.selection))
+                }
+                .dropDestination(for: String.self) { index, tokens in
+                    // REM  Rows from the OTHER pane are ignored here — reordering never moves a file.
+                    let urls = Set(tokens.flatMap(RowToken.read)).intersection(pane.entries.map(\.url))
+                    pane.move(urls, to: index)
+                    if !urls.isEmpty { store.report("Moved \(urls.count) row\(urls.count == 1 ? "" : "s") in your order") }
+                }
+            } else {
+                ForEach(pane.entries) { TableRow($0) }
+            }
         }
         .font(.lyceumBody)
         .contextMenu(forSelectionType: URL.self) { urls in
@@ -544,6 +594,29 @@ private struct CommanderPane: View {
             }
         }
     }
+
+    #if os(macOS)
+    /// Saves the pane's videos and songs, in the order on screen, as an .m3u8 playlist.
+    // REM  The save panel opens IN this pane's folder, so by default the playlist sits beside the
+    // REM  files and is written with relative paths — it then works from any machine on the share.
+    // REM  MAC ONLY FOR NOW: on iPhone and iPad a file's path is a private one inside the app, which
+    // REM  no other player could follow, so an iOS playlist needs a different design — later.
+    private func exportPlaylist() {
+        let panel = NSSavePanel()
+        panel.directoryURL = pane.folder
+        panel.nameFieldStringValue = pane.folder.lastPathComponent + ".m3u8"
+        panel.allowedContentTypes = [UTType(filenameExtension: "m3u8") ?? .m3uPlaylist]
+        panel.message = "The videos and songs in this pane, in the order shown."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let media = pane.entries.filter(\.isMedia)
+        do {
+            try Playlist.m3u8(media, savedAt: url).write(to: url, atomically: true, encoding: .utf8)
+            store.report("Saved the playlist “\(url.lastPathComponent)” — \(media.count) item\(media.count == 1 ? "" : "s")")
+        } catch {
+            store.report("The playlist was not saved: \(error.localizedDescription)")
+        }
+    }
+    #endif
 
     // MARK: The drive list
 

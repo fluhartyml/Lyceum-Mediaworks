@@ -210,7 +210,10 @@ final class PaneState {
     // REM  If a highlighted file is gone, its highlight goes to NOTHING — never to a row he did not
     // REM  pick (the no-auto-highlight rule above).
     func listed(_ fresh: [FolderEntry]) {
-        entries = fresh
+        // REM  His own order is laid over the name-order listing here, so every reload — the 10-second
+        // REM  check included — keeps his order. Only a real difference redraws.
+        let ordered = sort == .manual ? ManualOrder.apply(fresh, in: folder) : fresh
+        if ordered != entries { entries = ordered }
         let present = Set(fresh.map(\.url))
         if !pendingSelection.isEmpty {
             let restored = pendingSelection.intersection(present)
@@ -223,6 +226,33 @@ final class PaneState {
             let kept = selection.intersection(present)
             if kept != selection { selection = kept }
         }
+    }
+
+    // MARK: His order — Unsorted
+
+    /// Moves rows to a spot in the list and saves that as his order for this folder.
+    // REM  The rows move TOGETHER, keeping their order among themselves, and stay highlighted so he
+    // REM  can keep nudging them. Only in Unsorted: in any other sort the sort decides the order.
+    func move(_ urls: Set<URL>, to index: Int) {
+        guard sort == .manual, !urls.isEmpty else { return }
+        var list = entries
+        let moving = list.filter { urls.contains($0.url) }
+        guard !moving.isEmpty else { return }
+        let above = list.prefix(min(max(index, 0), list.count)).filter { urls.contains($0.url) }.count
+        list.removeAll { urls.contains($0.url) }
+        list.insert(contentsOf: moving, at: max(0, min(index - above, list.count)))
+        entries = list
+        ManualOrder.save(list, in: folder)
+    }
+
+    /// Move Up / Move Down — one row at a time, for the highlighted rows.
+    // REM  WHY BUTTONS AS WELL AS DRAG: he works one-handed with Sticky Keys; a drag is the hardest
+    // REM  gesture for that. Buttons (and keys, step 2) reorder with no dragging at all.
+    func nudge(up: Bool) {
+        let rows = entries.indices.filter { selection.contains(entries[$0].url) }
+        guard let first = rows.first, let last = rows.last else { return }
+        if up, first > 0 { move(selection, to: first - 1) }
+        if !up, last < entries.count - 1 { move(selection, to: last + 2) }
     }
 
     /// Opens a folder. The highlight starts empty (no auto-highlight).

@@ -32,17 +32,26 @@ nonisolated struct FolderEntry: Identifiable, Hashable, Sendable {
 // REM  Folders ALWAYS come first, whatever the order (Library Commander, 2026-09-28). Finder's name
 // REM  order ("Track 2" before "Track 10") breaks every tie, so rows never jump between reloads.
 // REM  Date newest first and Size largest first: the end he is most likely looking for.
+// REM  HIS LIST, 2026-10-07: "unsorted(manual reposition), sort by name type date time will be
+// REM  important for a future workflow. and it is supposed to be able to be exported as a playlist."
+// REM  So: Unsorted (his own order, dragged into place, kept) · Name · Type · Date & Time. Size stays
+// REM  from build 32 — he did not ask for it to go. "date time" is read as ONE sort, the date and
+// REM  time a file was last changed; asked him whether "time" meant a media file's LENGTH instead.
+// REM  The raw values are the build-32 names on purpose, so a saved choice survives the update.
 nonisolated enum SortKey: String, CaseIterable, Identifiable, Sendable {
-    case name, dateModified, size, kind
+    case manual, name, kind, dateModified, size
     var id: String { rawValue }
     var title: String {
         switch self {
+        case .manual: "Unsorted — Your Order"
         case .name: "Name"
-        case .dateModified: "Date Modified"
+        case .kind: "Type"
+        case .dateModified: "Date & Time"
         case .size: "Size"
-        case .kind: "Kind"
         }
     }
+    /// Short form for the button.
+    var short: String { self == .manual ? "Your Order" : title }
 }
 
 nonisolated enum FolderListing {
@@ -69,7 +78,7 @@ nonisolated enum FolderListing {
             if a.isFolder != b.isFolder { return a.isFolder }
             let byName = a.name.localizedStandardCompare(b.name)
             switch sort {
-            case .name: break
+            case .name, .manual: break   // REM  .manual starts from name order; PaneState lays his order over it.
             case .dateModified:
                 let x = a.modified ?? .distantPast, y = b.modified ?? .distantPast
                 if x != y { return x > y }
