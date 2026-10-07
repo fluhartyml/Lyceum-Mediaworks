@@ -44,6 +44,12 @@ struct PaneRow: Identifiable, Hashable {
     var id: URL { entry.url }
 }
 
+// REM  One key path per column, for the table's header clicks to name which column was clicked. The
+// REM  value is never used to sort — the pane sorts (Columns.swift) — it only has to be told apart.
+extension PaneRow {
+    subscript(column id: ColumnID) -> String { id.rawValue }
+}
+
 // MARK: - Drives (Mac)
 
 /// A drive the Mac can see right now. Listing needs no permission; opening one does, once.
@@ -177,7 +183,19 @@ final class PaneState {
     private(set) var showingDrives: Bool { didSet { save(showingDrives, "Drives") } }
     /// What is highlighted. Every file command acts on all of it.
     var selection: Set<URL> = [] { didSet { save(selection.map(\.path), "Selection") } }
-    var sort: SortKey { didSet { save(sort.rawValue, "Sort") } }
+    /// Every column, in screen order: shown or not, and its sort arrow. Saved.
+    // REM  REPLACES the build-32 Sort menu: the arrows on the columns ARE the sort now, left to right
+    // REM  (Columns.swift has his rule). The old "Sort" value is read once, to carry his choice over.
+    var columns: [ColumnSetting] {
+        didSet {
+            if let data = try? JSONEncoder().encode(columns) { save(data, "Columns") }
+            resort()
+        }
+    }
+    /// The columns on screen, left to right.
+    var shownColumns: [ColumnSetting] { columns.filter(\.visible) }
+    /// No arrow on any shown column: his own dragged order.
+    var isYourOrder: Bool { !shownColumns.contains { $0.arrow != nil } }
     var showHidden: Bool { didSet { save(showHidden, "Hidden") } }
     /// The preview area in the lower part of the pane — on or off, per pane, saved.
     // REM  PER PANE, as in NightGard Commander: he may want pictures on the side he is sorting and
@@ -194,6 +212,10 @@ final class PaneState {
     private(set) var revealed: Set<String> = [] { didSet { save(Array(revealed), "Revealed") } }
     /// The contents of each revealed folder, as last read.
     @ObservationIgnored private var inside: [String: [FolderEntry]] = [:]
+    /// The listing as read, before sorting — kept so a new arrow or newly read tags re-sort at once,
+    /// without reading the folder again.
+    @ObservationIgnored private var readEntries: [FolderEntry] = []
+    @ObservationIgnored private var readInside: [String: [FolderEntry]] = [:]
     // REM  A depth cap, so a folder that links back into itself cannot loop forever.
     private static let deepest = 8
     var drives: [Drive] = []
@@ -226,7 +248,15 @@ final class PaneState {
         #else
         showingDrives = false
         #endif
-        sort = SortKey(rawValue: d.string(forKey: prefix + "Sort") ?? "") ?? .name
+        if let data = d.data(forKey: prefix + "Columns"),
+           let saved = try? JSONDecoder().decode([ColumnSetting].self, from: data) {
+            // REM  A column added in a later build joins at the end, hidden — never reshuffles his order.
+            columns = saved + ColumnSetting.defaults.filter { c in !saved.contains { $0.id == c.id } }.map {
+                ColumnSetting(id: $0.id, visible: false, arrow: nil)
+            }
+        } else {
+            columns = ColumnSetting.migrated(fromOldSort: d.string(forKey: prefix + "Sort"))
+        }
         showHidden = d.bool(forKey: prefix + "Hidden")
         showPreview = d.bool(forKey: prefix + "Preview")
         playerShrunk = d.bool(forKey: prefix + "PlayerShrunk")
@@ -241,12 +271,9 @@ final class PaneState {
     func listed(_ fresh: [FolderEntry], inside freshInside: [String: [FolderEntry]] = [:]) {
         // REM  His own order is laid over the name-order listing here, so every reload — the 10-second
         // REM  check included — keeps his order. Only a real difference redraws.
-        let ordered = sort == .manual ? ManualOrder.apply(fresh, in: folder) : fresh
-        if ordered != entries { entries = ordered }
-        inside = sort == .manual
-            ? freshInside.reduce(into: [:]) { $0[$1.key] = ManualOrder.apply($1.value, in: URL(fileURLWithPath: $1.key)) }
-            : freshInside
-        rebuildRows()
+        readEntries = fresh
+        readInside = freshInside
+        order()
         let present = Set(rows.map(\.id))
         if !pendingSelection.isEmpty {
             let restored = pendingSelection.intersection(present)
@@ -260,6 +287,50 @@ final class PaneState {
             if kept != selection { selection = kept }
         }
     }
+
+    /// Puts the listing in order: his own order, or the arrows left to right.
+    private func order() {
+        let ordered = isYourOrder ? ManualOrder.apply(readEntries, in: folder) : ColumnSort.sorted(readEntries, by: columns)
+        if ordered != entries { entries = ordered }
+        inside = readInside.reduce(into: [:]) {
+            $0[$1.key] = isYourOrder ? ManualOrder.apply($1.value, in: URL(fileURLWithPath: $1.key))
+                                     : ColumnSort.sorted($1.value, by: columns)
+        }
+        rebuildRows()
+    }
+
+    /// Re-sorts what is already read — after an arrow changes or new media tags arrive.
+    func resort() {
+        guard !readEntries.isEmpty || !readInside.isEmpty else { return }
+        order()
+    }
+
+    // MARK: Columns
+
+    /// A click on a column's header: ▲ → ▼ → no arrow.
+    func cycleArrow(_ id: ColumnID) {
+        guard let i = columns.firstIndex(where: { $0.id == id }) else { return }
+        columns[i].cycle()
+    }
+
+    /// Shows or hides a column. Name always shows — the chevron and the slow-click rename live in it.
+    func setShown(_ id: ColumnID, _ shown: Bool) {
+        guard id != .name, let i = columns.firstIndex(where: { $0.id == id }) else { return }
+        columns[i].visible = shown
+    }
+
+    /// Moves a column one place left (-1) or right (+1) among the SHOWN columns — and so moves its
+    /// place in the sort.
+    // REM  It swaps with the next SHOWN neighbour, skipping hidden ones, so every press visibly moves it.
+    func shift(_ id: ColumnID, by step: Int) {
+        guard let i = columns.firstIndex(where: { $0.id == id }) else { return }
+        var j = i + step
+        while columns.indices.contains(j), !columns[j].visible { j += step }
+        guard columns.indices.contains(j) else { return }
+        columns.swapAt(i, j)
+    }
+
+    func resetColumns() { columns = ColumnSetting.defaults }
 
     // MARK: Reveal
 
@@ -320,7 +391,7 @@ final class PaneState {
     }
 
     func move(_ urls: Set<URL>, to index: Int) {
-        guard sort == .manual, !urls.isEmpty else { return }
+        guard isYourOrder, !urls.isEmpty else { return }
         var list = entries
         let moving = list.filter { urls.contains($0.url) }
         guard !moving.isEmpty else { return }

@@ -357,6 +357,9 @@ private struct CommanderPane: View {
     @State private var highlightedSince = Date.distantPast
     /// A slow-click rename waiting to see whether the click was really half of a double-click.
     @State private var pendingRename: Task<Void, Never>?
+    /// What the table's header reports when a header is clicked. Read once and emptied at once.
+    @State private var headerClick: [KeyPathComparator<PaneRow>] = []
+    @State private var showingColumns = false
 
     private var source: MiniPlayer.Source { pane.side == .left ? .left : .right }
 
@@ -529,20 +532,19 @@ private struct CommanderPane: View {
     // REM  Sort and Show Hidden are saved per pane (everything persists).
     private var tools: some View {
         HStack(spacing: 14) {
-            Menu {
-                Picker("Sort by", selection: $pane.sort) {
-                    ForEach(SortKey.allCases) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.inline)
-            } label: {
-                Label("Sort: \(pane.sort.short)", systemImage: "arrow.up.arrow.down")
-                    .font(.lyceumBody)
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .help("How this pane orders its files. Your Order: drag rows, or use Move Up and Move Down.")
+            // REM  THE SORT MENU IS GONE — the arrows on the column headers are the sort now (his design,
+            // REM  Columns.swift). Columns… is where columns are shown, hidden and moved; the line after it
+            // REM  says in words what the arrows add up to, because a two-column sort is easy to miss.
+            Button { showingColumns = true } label: { Label("Columns…", systemImage: "tablecells") }
+                .help("Choose which columns show, move them, and set their sort arrows")
+                .popover(isPresented: $showingColumns, arrowEdge: .bottom) { ColumnsPanel(pane: pane) }
+            Text(sortSummary)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .help(sortSummary)
 
-            if pane.sort == .manual {
+            if pane.isYourOrder {
                 Button { pane.nudge(up: true) } label: { Label("Move Up", systemImage: "arrow.up") }
                     .disabled(pane.selection.isEmpty || pane.showingDrives)
                     .help("Move the highlighted rows up one place in your order")
@@ -595,53 +597,26 @@ private struct CommanderPane: View {
     // REM  MULTI-SELECT LIKE FINDER (his "yes like finder", 2026-09-28): click, ⌘-click, ⇧-click and
     // REM  ⇧↑/⇧↓ — the Mac table does all four natively, so nothing custom is written for them.
     private var fileList: some View {
-        Table(of: PaneRow.self, selection: $pane.selection) {
-            TableColumn("Name") { row in
-                let entry = row.entry
-                HStack(spacing: 4) {
-                    // REM  Indent per level so what is inside a revealed folder reads as inside it.
-                    Spacer().frame(width: CGFloat(row.depth) * 20)
-                    // REM  THE REVEAL CHEVRON — on real folders only (a package is one item). Every row
-                    // REM  keeps the same width here, chevron or not, so the names line up.
-                    if entry.isFolder {
-                        Button { pane.toggleReveal(entry.url) } label: {
-                            Image(systemName: "chevron.right")
-                                .rotationEffect(.degrees(pane.isRevealed(entry.url) ? 90 : 0))
-                                .frame(width: 18)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .help(pane.isRevealed(entry.url) ? "Hide what is inside" : "Show what is inside, without opening it")
-                    } else {
-                        Spacer().frame(width: 18)
-                    }
-                    Label(entry.name, systemImage: entry.isFolder ? "folder.fill" : (entry.isVideo ? "film" : (entry.isAudio ? "music.note" : "doc")))
-                        .foregroundStyle(entry.isHidden ? Color.red : Color.primary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .help(entry.name)
-                        .simultaneousGesture(TapGesture().onEnded { slowClick(entry.url) })
+        Table(of: PaneRow.self, selection: $pane.selection, sortOrder: $headerClick) {
+            // REM  THE COLUMNS COME FROM THE PANE'S OWN LIST, in his order, each title carrying its arrow.
+            // REM  HOW A HEADER CLICK BECOMES HIS THREE-STATE ARROW: the table is handed a sort that is
+            // REM  always EMPTY. A click makes the table report the clicked column; that report is read,
+            // REM  the column's arrow is cycled (▲ → ▼ → none), and the report is emptied again. So the
+            // REM  table never sorts anything itself and never draws its own single arrow — the pane sorts,
+            // REM  by every arrow, left to right.
+            TableColumnForEach(pane.shownColumns) { column in
+                TableColumn(column.id.title + (column.arrow.map { "  " + $0.symbol } ?? ""),
+                            sortUsing: KeyPathComparator(\PaneRow.[column: column.id])) { row in
+                    cell(row, column.id)
                 }
+                .width(min: column.id.minWidth, ideal: column.id.idealWidth)
             }
-            .width(min: 200, ideal: 320)
-            TableColumn("Size") { row in
-                let entry = row.entry
-                Text(entry.isFolder ? "—" : ByteCountFormatter.string(fromByteCount: entry.size ?? 0, countStyle: .file))
-                    .foregroundStyle(.secondary)
-            }
-            .width(min: 80, ideal: 100)
-            TableColumn("Date Modified") { row in
-                let entry = row.entry
-                Text(entry.modified.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "—")
-                    .foregroundStyle(.secondary)
-            }
-            .width(min: 140, ideal: 180)
         } rows: {
             // REM  DRAG TO REORDER — only in Unsorted, so in every other sort a click-drag still does the
             // REM  Mac's ordinary multi-row selection. The drag carries a TEXT token naming the rows, never
             // REM  the files themselves: a file dragged out of here onto Finder would be COPIED or MOVED
             // REM  by Finder. Dropped anywhere else, the token is just harmless text.
-            if pane.sort == .manual {
+            if pane.isYourOrder {
                 ForEach(pane.rows) { row in
                     TableRow(row).draggable(RowToken.make(row.id, selection: pane.selection))
                 }
@@ -680,8 +655,28 @@ private struct CommanderPane: View {
             }
         }
         .onChange(of: pane.entries) { mini.setList(pane.entries.filter(\.isMedia).map(\.url), for: source) }
-        .task(id: "\(pane.folder.path)#\(pane.sort.rawValue)#\(pane.showHidden)#\(reloadToken)#\(refreshes)#\(pane.revealedHere.joined(separator: "|"))") {
-            let url = pane.folder, hidden = pane.showHidden, sort = pane.sort, open = pane.revealedHere
+        // A header click: cycle that column's arrow, then empty the report (see the Table above).
+        .onChange(of: headerClick) {
+            guard let clicked = headerClick.first?.keyPath else { return }
+            if let column = pane.shownColumns.first(where: { (\PaneRow.[column: $0.id] as PartialKeyPath<PaneRow>) == clicked }) {
+                pane.cycleArrow(column.id)
+                store.report(sortSummary)
+            }
+            headerClick = []
+        }
+        // REM  MEDIA TAGS ARE READ ONLY WHILE A TAG COLUMN SHOWS (the network cost he was told about).
+        // REM  The pane re-sorts as tags land only when a tag column carries an arrow.
+        .task(id: "\(pane.folder.path)#\(needsTags)#\(pane.rows.count)#\(reloadToken)#\(refreshes)") {
+            guard needsTags else { return }
+            await MediaInfoCache.shared.request(pane.rows.map(\.entry))
+        }
+        .onChange(of: MediaInfoCache.shared.version) {
+            if pane.shownColumns.contains(where: { $0.id.readsTags && $0.arrow != nil }) { pane.resort() }
+        }
+        .task(id: "\(pane.folder.path)#\(pane.showHidden)#\(reloadToken)#\(refreshes)#\(pane.revealedHere.joined(separator: "|"))") {
+            // REM  The folder is always READ in name order; the pane then sorts it by the arrows (or his
+            // REM  order), so changing an arrow re-sorts at once without reading the share again.
+            let url = pane.folder, hidden = pane.showHidden, sort = SortKey.name, open = pane.revealedHere
             // REM  The folder AND every revealed folder under it are read together, off the main thread,
             // REM  so a revealed folder stays as current as the folder itself.
             let read = {
@@ -702,6 +697,80 @@ private struct CommanderPane: View {
                 pane.listed(fresh.0, inside: fresh.1)
             }
         }
+    }
+
+    // MARK: Cells
+
+    @ViewBuilder
+    private func cell(_ row: PaneRow, _ id: ColumnID) -> some View {
+        let entry = row.entry
+        switch id {
+        case .name: nameCell(row)
+        case .size: detail(entry.isFolder ? nil : ByteCountFormatter.string(fromByteCount: entry.size ?? 0, countStyle: .file))
+        case .modified: detail(entry.modified.map { $0.formatted(date: .abbreviated, time: .shortened) })
+        case .created: detail(entry.created.map { $0.formatted(date: .abbreviated, time: .shortened) })
+        case .kind: detail(entry.kind)
+        default:
+            // REM  Tag columns: a blank while a media file's tags are still being read, "—" once read
+            // REM  and empty, and "—" at once for anything that is not media.
+            let info = MediaInfoCache.shared.info(for: entry)
+            if entry.isMedia && info == nil {
+                Text("")
+            } else {
+                switch id {
+                case .length: detail(info?.length.map { FolderView.lengthText($0) })
+                case .resolution: detail(info?.resolution)
+                case .artist: detail(info?.artist)
+                case .album: detail(info?.album)
+                case .year: detail(info?.year.map(String.init))
+                default: detail(info?.genre)
+                }
+            }
+        }
+    }
+
+    private func detail(_ text: String?) -> some View {
+        Text(text ?? "—")
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .help(text ?? "")
+    }
+
+    private func nameCell(_ row: PaneRow) -> some View {
+        let entry = row.entry
+        return HStack(spacing: 4) {
+                    // REM  Indent per level so what is inside a revealed folder reads as inside it.
+                    Spacer().frame(width: CGFloat(row.depth) * 20)
+                    // REM  THE REVEAL CHEVRON — on real folders only (a package is one item). Every row
+                    // REM  keeps the same width here, chevron or not, so the names line up.
+                    if entry.isFolder {
+                        Button { pane.toggleReveal(entry.url) } label: {
+                            Image(systemName: "chevron.right")
+                                .rotationEffect(.degrees(pane.isRevealed(entry.url) ? 90 : 0))
+                                .frame(width: 18)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help(pane.isRevealed(entry.url) ? "Hide what is inside" : "Show what is inside, without opening it")
+                    } else {
+                        Spacer().frame(width: 18)
+                    }
+                    Label(entry.name, systemImage: entry.isFolder ? "folder.fill" : (entry.isVideo ? "film" : (entry.isAudio ? "music.note" : "doc")))
+                        .foregroundStyle(entry.isHidden ? Color.red : Color.primary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .help(entry.name)
+                        .simultaneousGesture(TapGesture().onEnded { slowClick(entry.url) })
+                }
+    }
+
+    private var needsTags: Bool { pane.shownColumns.contains { $0.id.readsTags } }
+
+    /// The arrows in words, left to right — or "Your Order".
+    private var sortSummary: String {
+        let keys = pane.shownColumns.compactMap { c in c.arrow.map { "\(c.id.title) \($0.symbol)" } }
+        return keys.isEmpty ? "Your Order" : "Sorted by " + keys.joined(separator: ", then ")
     }
 
     // MARK: Slow second click renames
@@ -812,5 +881,47 @@ struct CommanderMenu: View {
         Button(FileOperations.deleteTitle(instant: instantDelete)) { actions?.trash() }
             .keyboardShortcut(.delete, modifiers: .command)
             .disabled(actions?.hasSelection != true)
+    }
+}
+
+// MARK: - Columns…
+
+/// Shows, hides and moves a pane's columns, and sets their arrows — the same arrows a header click sets.
+// REM  BUTTONS, NOT DRAGGING, to move a column: he works one-handed with Sticky Keys, and a drag is the
+// REM  hardest gesture for that (the same reason Your Order has Move Up / Move Down). The list reads
+// REM  top to bottom = left to right on screen = first to last in the sort.
+private struct ColumnsPanel: View {
+    @Bindable var pane: PaneState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Columns — top to bottom is left to right, and the order they sort in")
+                .font(.lyceumHeadline)
+            ForEach(pane.columns) { column in
+                HStack(spacing: 12) {
+                    Toggle(column.id.title, isOn: Binding(get: { column.visible },
+                                                          set: { pane.setShown(column.id, $0) }))
+                        .disabled(column.id == .name)
+                        .frame(width: 220, alignment: .leading)
+                        .help(column.id == .name ? "Name always shows" : "Show or hide this column")
+                    Button { pane.cycleArrow(column.id) } label: {
+                        Text(column.arrow?.symbol ?? "–").frame(width: 28)
+                    }
+                    .help("Sort arrow: ▲ up, ▼ down, – none (skipped)")
+                    Button { pane.shift(column.id, by: -1) } label: { Image(systemName: "arrow.up") }
+                        .disabled(!column.visible)
+                        .help("Move left — sorts earlier")
+                    Button { pane.shift(column.id, by: 1) } label: { Image(systemName: "arrow.down") }
+                        .disabled(!column.visible)
+                        .help("Move right — sorts later")
+                }
+                .foregroundStyle(column.visible ? Color.primary : Color.secondary)
+            }
+            Divider()
+            Button("Reset Columns") { pane.resetColumns() }
+                .help("Back to Name ▲ · Size · Date Modified")
+        }
+        .font(.lyceumBody)
+        .padding(20)
     }
 }

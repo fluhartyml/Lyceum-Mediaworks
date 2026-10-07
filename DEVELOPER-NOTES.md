@@ -19,6 +19,14 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-07 ~18:xx — columns: choose, move, and sort left to right — build 38 (not yet run by him)
+- His ask: choose/rearrange columns incl. metadata; per-column sort arrow ▲ / ▼ / off. **His rule:** *"the arrange by goes in order from left most colum to right most colum … if sort by name was sort up then size was no sort toggle so it was skipped then date modified was toggles so it would sort by name and then sort be date modified"* → *"yes build it"*.
+- `Columns.swift`: 11 columns (Name · Size · Date Modified · Type · Date Created · Length · Resolution · Artist · Album · Year · Genre), per pane, saved. **Screen order = sort priority**; no-arrow columns skipped; hidden columns don't sort; **no arrows = Your Order**. Folders first in arrow sorts. Empty values last both ways. Name always shown.
+- **The Sort menu is GONE** (replaced by the arrows); old Sort choice migrated once. Tools row: **Columns…** popover (show/hide, arrow, Move left/right by buttons — one-handed) + a "Sorted by Name ▲, then …" line.
+- Header click cycles ▲ → ▼ → none: the Table gets an always-empty sortOrder; a click's report is read, the arrow cycled, the report emptied. ⚠️ **Untested by clicks** — if a header click does nothing, this is where to look.
+- Tag columns read file headers 4 at a time, only while a tag column shows (`MediaInfoCache`, keyed path+date).
+- ⬜ Not built: dragging header columns to reorder (buttons instead) · saved column widths.
+
 ### 2026-10-07 ~17:5x — pane preview + ⌘Y Quick Look, build 35 (not yet run by him)
 - His ask: *"how about the media player and media (picture and album art) previewer that takes up the bottom portion of the pane"* → *"yes build it now please"*. Then: *"i think at the lastp few builds we modified it instead of a preview section it was a quickview PiP?"* (true — Library Commander builds 64–65) → ruling: ***"i like an option of viewing it in the pane or a command y for PiP"*** — **BOTH.**
 - **Show Preview** (tools row, per pane, saved): lower 40% of the pane. Video = poster art from metadata, else a frame ~3 s in — **never auto-plays** (NightGard rule). Music = album art + title/artist/album. Pictures/other = Quick Look thumbnail. Folder = folder/file count + first 4 pictures (one level only — network cost). A video playing from this pane shows IN the preview (the mini player's own AVPlayer); shrink button brings the still back.

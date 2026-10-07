@@ -19,6 +19,8 @@ nonisolated struct FolderEntry: Identifiable, Hashable, Sendable {
     /// A name starting with a period, or hidden by macOS.
     // REM  Shown only with Show Hidden, and in RED so a hidden item is never mistaken for an ordinary one.
     var isHidden = false
+    /// When the file was made — for the Date Created column.
+    var created: Date? = nil
 
     var id: URL { url }
     var name: String { url.lastPathComponent }
@@ -56,7 +58,7 @@ nonisolated enum SortKey: String, CaseIterable, Identifiable, Sendable {
 
 nonisolated enum FolderListing {
     private static let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey, .isHiddenKey, .fileSizeKey,
-                                                 .contentTypeKey, .contentModificationDateKey]
+                                                 .contentTypeKey, .contentModificationDateKey, .creationDateKey]
 
     /// Everything in the folder. Hidden items only when asked for. Folders first, then files.
     /// Name: A→Z · Date Modified: newest first · Size: largest first · Kind: A→Z by kind.
@@ -72,7 +74,8 @@ nonisolated enum FolderListing {
                                size: values?.fileSize.map(Int64.init),
                                type: values?.contentType,
                                modified: values?.contentModificationDate,
-                               isHidden: (values?.isHidden ?? false) || url.lastPathComponent.hasPrefix("."))
+                               isHidden: (values?.isHidden ?? false) || url.lastPathComponent.hasPrefix("."),
+                               created: values?.creationDate)
         }
         return entries.sorted { a, b in
             if a.isFolder != b.isFolder { return a.isFolder }
