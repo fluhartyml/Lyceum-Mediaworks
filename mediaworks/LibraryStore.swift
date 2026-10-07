@@ -23,7 +23,7 @@ final class FolderNode: Identifiable, Hashable {
     /// nil means "no subfolders", which tells the sidebar not to draw a disclosure arrow.
     var children: [FolderNode]? {
         if cachedChildren == nil {
-            cachedChildren = FolderListing.subfolders(of: url).map(FolderNode.init)
+            cachedChildren = FolderListing.subfolders(of: url).map { FolderNode(url: $0) }
         }
         return cachedChildren!.isEmpty ? nil : cachedChildren
     }

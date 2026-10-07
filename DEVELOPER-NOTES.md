@@ -19,6 +19,13 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-06 ~21:0x — list view + onboarding
+- **List view is the default** (his: *"im not a fan of icon view i usually choose list view or colum view in finder"*); Icons kept as an option. **Columns view is next** (agreed order: List, then Columns).
+- **Persistent settings** (his: *"i want persistant settings"*): view mode, sort column + direction, column widths/order, tile size, library, current folder.
+- **The folder picker lives ONLY in onboarding** — first launch asks for *"a parent folder that houses my media library."* The toolbar "Choose Library…" button was removed.
+  ⬜ There is now no way to change the library after onboarding — a Settings item will be needed; ask him.
+- Concurrency warnings fixed (folder reader types are `nonisolated`). Mac + iOS: 0 warnings, BUILD SUCCEEDED. Not run by him yet.
+
 ### 2026-10-06 ~20:3x — first code
 - **Phase 0 finished and Phase 1 built** at his word *"the amber sheet is locked now load it and code it."*
   Mac + iOS Simulator BUILD SUCCEEDED. **Not run by Michael yet** — he decides when it runs.
