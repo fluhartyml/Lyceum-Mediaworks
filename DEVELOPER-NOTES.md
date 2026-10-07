@@ -93,7 +93,7 @@ month subscription fee."* Free to the user; built to the bar of a premium paid p
 The server runs on the **Mac mini** (the MacBook during development); the **TerraMaster (Debian Linux) is storage only** — an App Store app cannot run on it. The mini reads Nineveh over the network; one App Store product. **An Apple walled-garden app** — *"this is an apple walled garden app."* Everything runs on Apple devices; storage can be any drive or share. **Intake runs in the app on the Mac.** His TerraMaster Drop watcher (`nineveh-drop.service`) is his personal setup, not part of the product.
 - [ ] Runs on a Mac mini · the Drop-folder intake · transcoding · DLNA for smart TVs
 
-### Phase 5 — The Theater
+### Phase 5 — The Theater · LOCKED
 - [ ] Apple TV app with folders, playlists and tags on the top level
 
 ### Phase 6 — Spin-offs
