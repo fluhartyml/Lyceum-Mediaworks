@@ -89,7 +89,8 @@ month subscription fee."* Free to the user; built to the bar of a premium paid p
 - [ ] Each video stored once, in one folder; playlists reference it
 - [ ] Tags · playlists follow a file by fingerprint, not path · M3U export
 
-### Phase 4 — The server
+### Phase 4 — The server · LOCKED
+The server runs on the **Mac mini** (the MacBook during development); the **TerraMaster (Debian Linux) is storage only** — an App Store app cannot run on it. The mini reads Nineveh over the network; one App Store product. The existing Drop watcher (`nineveh-drop.service`) stays on the TerraMaster as a small helper.
 - [ ] Runs on a Mac mini · the Drop-folder intake · transcoding · DLNA for smart TVs
 
 ### Phase 5 — The Theater
