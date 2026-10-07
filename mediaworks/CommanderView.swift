@@ -92,6 +92,8 @@ struct CommanderView: View {
             rename: { startRename() },
             newFolder: { newFolder() },
             trash: { trashRequested(Array(activeSelection)) }))
+        // Every Commander warning also stays in the status bar after its alert is closed.
+        .onChange(of: problem) { _, problem in if let problem { library.report(problem) } }
         .alert("Commander", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
             Button("OK") { problem = nil }
         } message: {
@@ -153,6 +155,7 @@ struct CommanderView: View {
         }
 
         busy = "\(move ? "Moving" : "Copying") \(sources.count) item\(sources.count == 1 ? "" : "s") to \(destination.lastPathComponent)…"
+        library.report(busy!, working: true)
         Task {
             let result: Result<[(URL, URL)], Error> = await Task.detached {
                 Result {
@@ -166,7 +169,9 @@ struct CommanderView: View {
             }.value
             busy = nil
             switch result {
-            case .success(let done): done.forEach { library.journal(move ? "move" : "copy", from: $0.0, to: $0.1) }
+            case .success(let done):
+                done.forEach { library.journal(move ? "move" : "copy", from: $0.0, to: $0.1) }
+                library.report("\(move ? "Moved" : "Copied") \(done.count) item\(done.count == 1 ? "" : "s") to \(destination.lastPathComponent)")
             case .failure(let error): problem = error.localizedDescription
             }
             finished()

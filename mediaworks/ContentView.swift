@@ -31,6 +31,9 @@ struct ContentView: View {
                 OnboardingView()
             }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if library.root != nil { StatusBar() }
+        }
         .alert("Library", isPresented: Binding(get: { library.errorMessage != nil },
                                                set: { if !$0 { library.errorMessage = nil } })) {
             Button("OK") { library.errorMessage = nil }
@@ -103,6 +106,41 @@ struct ContentView: View {
             }
         }
         .toolbar { modeSwitch }
+    }
+}
+
+/// The bottom of the window: what the app is doing behind the scenes, one line at a time.
+/// His ask, 2026-10-07. In Library view it also says when the share was last checked for
+/// changes — the check only runs there, so the line is not shown where it would go stale.
+private struct StatusBar: View {
+    @Environment(LibraryStore.self) private var library
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Divider()
+            HStack(spacing: 10) {
+                if library.statusWorking {
+                    ProgressView().controlSize(.small)
+                }
+                Text(library.statusTime, format: .dateTime.hour().minute().second())
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                Text(library.status)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(library.status)
+                Spacer(minLength: 20)
+                if library.mode == .library, let checked = library.lastChecked {
+                    Text("Checked for changes \(checked.formatted(.dateTime.hour().minute().second()))")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .font(.lyceumBody)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+        }
+        .background(.bar)
     }
 }
 

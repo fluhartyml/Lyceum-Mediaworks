@@ -113,6 +113,8 @@ struct FolderView: View {
                 } catch { problem = error.localizedDescription }
             }
         }
+        // Every warning also stays in the status bar after its alert is closed.
+        .onChange(of: problem) { _, problem in if let problem { library.report(problem) } }
         .alert("Library", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
             Button("OK") { problem = nil }
         } message: {

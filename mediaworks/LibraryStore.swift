@@ -52,7 +52,30 @@ final class FolderNode: Identifiable, Hashable {
 @Observable
 final class LibraryStore {
     private(set) var root: FolderNode?
-    var errorMessage: String?
+    /// Shown as an alert, and kept in the status bar after the alert is dismissed.
+    var errorMessage: String? {
+        didSet { if let errorMessage { report(errorMessage) } }
+    }
+
+    // MARK: Status bar — what is going on behind the scenes
+    // His ask, 2026-10-07: "add the user feedback status bar to the bottom of the window where
+    // it tells the user what is going on behind the scenes."
+
+    /// The latest thing the app did or is doing, one line.
+    private(set) var status = "Ready"
+    /// When `status` was set.
+    private(set) var statusTime = Date.now
+    /// True while an operation is still running — the bar shows a spinner.
+    private(set) var statusWorking = false
+    /// When the library was last checked for changes on disk — proof the app is alive.
+    private(set) var lastChecked: Date?
+
+    /// Puts a line in the status bar. `working: true` while it is still going.
+    func report(_ text: String, working: Bool = false) {
+        status = text
+        statusTime = .now
+        statusWorking = working
+    }
 
     /// True when the saved permission predates Commander (read-only). Onboarding then asks
     /// for the folder once more, so the new grant includes making changes.
@@ -141,6 +164,7 @@ final class LibraryStore {
         if selection == nil || !(selection!.path.hasPrefix(node.path)) { selection = node }
         expanded.insert(node.path)
         revealSelection()
+        report("Library set to \(node.name)")
         purgeOldTrash()
     }
 
@@ -177,6 +201,7 @@ final class LibraryStore {
         }
         expanded.insert(node.path)
         revealSelection()
+        report("Opened your library, \(node.name)")
         purgeOldTrash()
     }
 
@@ -194,14 +219,19 @@ final class LibraryStore {
             }.joined(separator: "\n")
         }.value
 
+        lastChecked = .now
         if signature != lastTreeSignature {
             let firstCheck = lastTreeSignature.isEmpty
             lastTreeSignature = signature
-            if !firstCheck { self.root = FolderNode(url: root.url) }
+            if !firstCheck {
+                self.root = FolderNode(url: root.url)
+                report("Folders changed on disk — the sidebar was updated")
+            }
         }
 
         // The folder you were standing in was moved or deleted: step back to the library root.
         if let selection, !FileManager.default.fileExists(atPath: selection.path) {
+            report("“\(selection.name)” is no longer there — back to \(root.name)")
             self.selection = self.root
         }
     }
@@ -245,14 +275,21 @@ final class LibraryStore {
     /// names are dates — nothing else is ever removed by this.
     private func purgeOldTrash() {
         guard let trash = trashFolder else { return }
-        Task.detached {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withFullDate]
-            let cutoff = Date.now.addingTimeInterval(-30 * 24 * 3600)
-            let days = (try? FileManager.default.contentsOfDirectory(at: trash, includingPropertiesForKeys: nil)) ?? []
-            for day in days {
-                guard let date = formatter.date(from: day.lastPathComponent), date < cutoff else { continue }
-                try? FileManager.default.removeItem(at: day)
+        Task {
+            let emptied = await Task.detached {
+                let formatter = ISO8601DateFormatter()
+                formatter.formatOptions = [.withFullDate]
+                let cutoff = Date.now.addingTimeInterval(-30 * 24 * 3600)
+                let days = (try? FileManager.default.contentsOfDirectory(at: trash, includingPropertiesForKeys: nil)) ?? []
+                var count = 0
+                for day in days {
+                    guard let date = formatter.date(from: day.lastPathComponent), date < cutoff else { continue }
+                    if (try? FileManager.default.removeItem(at: day)) != nil { count += 1 }
+                }
+                return count
+            }.value
+            if emptied > 0 {
+                report("Emptied \(emptied) day\(emptied == 1 ? "" : "s") of Trash older than 30 days")
             }
         }
     }

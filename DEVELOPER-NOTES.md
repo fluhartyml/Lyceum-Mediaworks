@@ -19,6 +19,14 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-07 ~13:4x — Commander works like Midnight Commander (NOT BUILT YET)
+- His ask: take inspiration from Midnight Commander so Commander functions almost identically. Rulings carried over from the Library Commander session of 2026-09-28 (raw `2026 Sep 28 1732`, L894–1000) — ideas, never code (roadmap 011):
+  - Active pane = **source**; Tab switches. The ⌘-arrow pointing at the **destination** copies, ⇧⌘-arrow moves; the arrow pointing back at the source undoes. Worded as source/destination, never left/right.
+  - Copies land in the destination's highlighted folder, else its open folder. At a drive's top, going up shows the drive list (local, then network).
+  - Key row: ⌘1 Help · ⌘2 Menu · ⌘3 View · ⌘4 Edit · ⌘5 Copy · ⌘6 Move · ⌘7 New Folder · ⌘8 Delete · ⌘9 Rename.
+- **New for Lyceum (his point: this app has a Commander menu the old one did not):** the Commander menu holds the numbered commands in that order with those shortcuts; the bottom bar mirrors it. **⌘2 opens the Commander menu** — his *"yes ⌘2 opens the commander menu"*.
+- Step one proposed, awaiting his go: active-pane border + Tab + menu/bottom bar.
+
 ### 2026-10-06 ~22:1x — mini player
 - His design: *"you highlight and the mini player is cued up but you have to press play to start the player and toggle on continuous for it to play the next song same pane or toggled to switch to the other pane"* · *"AND if you double click it opens in the theater"* · double-click is **not advertised** in the UI.
 - `MiniPlayer.swift`: bar at the bottom of Library and Commander. Highlight = cue (never interrupts what is playing). Play/Pause · Next · scrubber · **Continuous: Off / Same Pane / Other Pane** (Other Pane only in Commander; alternates the two panes like two decks) · Open in Theater. Continuous choice persists.
