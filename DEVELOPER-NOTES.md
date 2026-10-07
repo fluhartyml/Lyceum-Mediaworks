@@ -19,7 +19,12 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
-### 2026-10-07 ~13:4x — Commander works like Midnight Commander (NOT BUILT YET)
+### 2026-10-07 ~14:xx — Commander, step 1 of 4 BUILT (not yet run by him)
+- His instruction: *"bring over the ideas, not xerox copy the code but generate fresh code in this app"* (Library Commander build 68 = the reference) · *"use rem statements to document all of your descisions and reasons why"* — **every decision gets a `// REM` line with its reason.**
+- Step 1 = `PaneState.swift` (place, highlight, sort, Show Hidden — all saved; drives; Grants = saved security-scoped bookmarks) + a fresh `CommanderView.swift`: accent border on the active pane, **Tab** swaps (window key monitor, not on the list), header **drive picker · path box · (^)..** (drive list at the top, Mac only), tools row **Sort · New Folder · Refresh · Show Hidden** (hidden in red), item count. Trash now: inside library → Lyceum Trash; outside → Mac Trash; no-Trash drive refuses.
+- ⬜ Step 2: ⌘1–⌘9 key row + numbered Commander menu (⌘2 opens it) + target marker + ⌘-arrow move/copy with one-step undo. ⬜ Step 3: copy/move engine — clash sheet, live bytes, safe replace. ⬜ Step 4: Quick Look ⌘Y, media row (Name Format · iTunes · Shazam), folder reveal triangles, pane preview toggle (NightGard Commander idea).
+
+### 2026-10-07 ~13:4x — Commander works like Midnight Commander (rulings)
 - His ask: take inspiration from Midnight Commander so Commander functions almost identically. Rulings carried over from the Library Commander session of 2026-09-28 (raw `2026 Sep 28 1732`, L894–1000) — ideas, never code (roadmap 011):
   - Active pane = **source**; Tab switches. The ⌘-arrow pointing at the **destination** copies, ⇧⌘-arrow moves; the arrow pointing back at the source undoes. Worded as source/destination, never left/right.
   - Copies land in the destination's highlighted folder, else its open folder. At a drive's top, going up shows the drive list (local, then network).

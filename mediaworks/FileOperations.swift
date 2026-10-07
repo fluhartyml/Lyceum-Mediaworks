@@ -54,16 +54,39 @@ enum FileOperations {
     static func trash(_ urls: [URL], instant: Bool, library: LibraryStore) async throws {
         guard let libraryRoot = library.root?.url, let trashFolder = library.trashFolder else { return }
         let what = urls.count == 1 ? "“\(urls[0].lastPathComponent)”" : "\(urls.count) items"
-        library.report(instant ? "Deleting \(what)…" : "Moving \(what) to the Lyceum Trash…", working: true)
+        library.report(instant ? "Deleting \(what)…" : "Moving \(what) to the Trash…", working: true)
+        // REM  WHERE A DELETED ITEM GOES, decided 2026-10-07 when Commander panes became able to leave
+        // REM  the library (drive picker). Inside the library → the Lyceum Trash (a same-share rename,
+        // REM  instant, 30 days). OUTSIDE it → the Mac's own Trash on that drive. WHY: the Lyceum Trash
+        // REM  lives on the library's share, so trashing a file from another drive into it would COPY
+        // REM  it across drives — slow, and a delete that can fail halfway.
+        // REM  A drive with no Trash (some network drives) REFUSES — Library Commander's rule: never
+        // REM  fall back to a permanent delete on its own; that is his decision, made in Settings.
+        let rootPath = libraryRoot.standardizedFileURL.path
+        let inside = urls.filter { $0.standardizedFileURL.path.hasPrefix(rootPath + "/") }
+        let outside = urls.filter { !$0.standardizedFileURL.path.hasPrefix(rootPath + "/") }
         let done: [(URL, URL?)] = try await Task.detached {
             if instant {
                 try urls.forEach { try FileManager.default.removeItem(at: $0) }
                 return urls.map { ($0, nil) }
             }
-            return try LibraryStore.moveToTrash(urls, libraryRoot: libraryRoot, trash: trashFolder).map { ($0.0, Optional($0.1)) }
+            var moved = try LibraryStore.moveToTrash(inside, libraryRoot: libraryRoot, trash: trashFolder)
+                .map { ($0.0, Optional($0.1)) }
+            for url in outside {
+                var landed: NSURL?
+                do { try FileManager.default.trashItem(at: url, resultingItemURL: &landed) }
+                catch {
+                    throw FileProblem(message: "“\(url.lastPathComponent)” is on a drive with no Trash, so it was not deleted. "
+                                      + "To delete it for good, turn on Delete Instantly in Settings.")
+                }
+                moved.append((url, landed as URL?))
+            }
+            return moved
         }.value
         done.forEach { library.journal(instant ? "delete" : "trash", from: $0.0, to: $0.1) }
-        library.report(instant ? "Deleted \(what)" : "Moved \(what) to the Lyceum Trash — kept 30 days")
+        library.report(instant ? "Deleted \(what)"
+                       : outside.isEmpty ? "Moved \(what) to the Lyceum Trash — kept 30 days"
+                       : "Moved \(what) to the Trash")
     }
 
     static func showInFinder(_ urls: [URL]) {
