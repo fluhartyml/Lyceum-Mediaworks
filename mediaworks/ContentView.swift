@@ -16,6 +16,7 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     #if os(iOS)
     @State private var showingAbout = false
+    @State private var showingSettings = false
     #endif
 
     var body: some View {
@@ -56,10 +57,17 @@ struct ContentView: View {
             #if os(iOS)
             .toolbar {
                 ToolbarItem {
+                    Button("Settings", systemImage: "gearshape") { showingSettings = true }
+                }
+                ToolbarItem {
                     Button("About", systemImage: "info.circle") { showingAbout = true }
                 }
             }
             .sheet(isPresented: $showingAbout) { AboutView() }
+            .sheet(isPresented: $showingSettings) {
+                NavigationStack { SettingsView().navigationTitle("Settings") }
+                    .environment(library)
+            }
             #endif
         } detail: {
             if let folder = library.selection {

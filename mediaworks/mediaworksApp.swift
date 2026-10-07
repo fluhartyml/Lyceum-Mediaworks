@@ -28,6 +28,11 @@ struct mediaworksApp: App {
         #endif
 
         #if os(macOS)
+        Settings {
+            SettingsView()
+                .environment(library)
+        }
+
         Window("About Lyceum Mediaworks", id: "about") {
             AboutView()
         }

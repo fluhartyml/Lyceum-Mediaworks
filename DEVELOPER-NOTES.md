@@ -19,6 +19,10 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-06 ~21:3x — Settings
+- **Settings** (his: *"it needs a settings drop down menu and you should be able to set the library parent folder"*): Mac = app menu → Settings… (⌘,); iOS = gear button. Shows the library folder + **Change Library Folder…**.
+- ⬜ **Open question to him:** a setting for *other players you use* (Infuse, Jellyfin, Plex, smart TV) so Commander names/arranges files the way those apps expect. Claude's REC: add it with Commander (Phase 2), since nothing uses it before then. Unanswered.
+
 ### 2026-10-06 ~21:2x — sidebar remembers + stays current
 - Seen on his screen: the sidebar came back collapsed, and a moved folder (Media → Library/Media) still showed. Both fixed at his *"yes fix both"*.
 - **Sidebar open/closed state persists** (`expandedFolderPaths`), and the folders above the current one open automatically so you always see where you are.
