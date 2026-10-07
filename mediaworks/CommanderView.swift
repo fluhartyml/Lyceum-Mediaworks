@@ -53,6 +53,37 @@ struct CommanderActions {
     var trash: () -> Void
     var quickLookOpen: Bool
     var toggleQuickLook: () -> Void
+    /// Something can be done right now (no name being typed, nothing running).
+    var canAct: Bool
+    /// ⌘1–⌘9, from the Commander menu or the key bar.
+    var runKey: (Int) -> Void
+}
+
+/// The Midnight Commander key row: ⌘ + a number, the same in the menu and on the bar.
+// REM  HIS LIST AND ORDER (Library Commander 2026-09-28, carried over 2026-10-07): ⌘1 Help · ⌘2 Menu ·
+// REM  ⌘3 View · ⌘4 Edit · ⌘5 Copy · ⌘6 Move · ⌘7 New Folder · ⌘8 Delete · ⌘9 Rename — Midnight
+// REM  Commander's F1–F9 with ⌘ in place of F (a Mac's F-keys are brightness and volume). ⌘2 opens the
+// REM  Commander menu — his ruling for Lyceum, which has that menu ("yes ⌘2 opens the commander menu").
+// REM  ⌘ + the number works with Sticky Keys latched, one-handed.
+struct CommanderKey: Identifiable {
+    let number: Int
+    let title: String
+    let help: String
+    /// True when it acts on the highlighted items, so it is off with nothing highlighted.
+    let needsSelection: Bool
+    var id: Int { number }
+
+    static let all: [CommanderKey] = [
+        CommanderKey(number: 1, title: "Help", help: "What each key does", needsSelection: false),
+        CommanderKey(number: 2, title: "Menu", help: "Open the Commander menu", needsSelection: false),
+        CommanderKey(number: 3, title: "View", help: "Quick Look the highlighted files (also ⌘Y)", needsSelection: true),
+        CommanderKey(number: 4, title: "Edit", help: "Open the highlighted files in their own apps", needsSelection: true),
+        CommanderKey(number: 5, title: "Copy", help: "Copy the highlighted items to the other pane", needsSelection: true),
+        CommanderKey(number: 6, title: "Move", help: "Move the highlighted items to the other pane", needsSelection: true),
+        CommanderKey(number: 7, title: "New Folder", help: "Make a folder in the active pane", needsSelection: false),
+        CommanderKey(number: 8, title: "Delete", help: "Delete the highlighted items (Trash or at once, as set in Settings)", needsSelection: true),
+        CommanderKey(number: 9, title: "Rename", help: "Rename the highlighted item, in its row", needsSelection: true),
+    ]
 }
 
 extension FocusedValues {
@@ -72,6 +103,7 @@ struct CommanderView: View {
     @State private var problem: String?
     /// The file in the floating Quick Look window, or nil while it is closed.
     @State private var quickLookURL: URL?
+    @State private var showingKeys = false
     #if os(macOS)
     @State private var keyMonitor: Any?
     #endif
@@ -86,12 +118,17 @@ struct CommanderView: View {
     private var active: PaneState { activeSide == .left ? left : right }
     private var other: PaneState { activeSide == .left ? right : left }
     private var editingName: Bool { left.renamingURL != nil || right.renamingURL != nil }
+    private var canAct: Bool { busy == nil && !editingName }
 
     var body: some View {
-        HStack(spacing: 0) {
-            pane(left)
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                pane(left)
+                Divider()
+                pane(right)
+            }
             Divider()
-            pane(right)
+            keyBar
         }
         // REM  TWO WAYS TO LOOK, HIS CHOICE, 2026-10-07: "i like an option of viewing it in the pane or a
         // REM  command y for PiP." The pane preview (PanePreview.swift, Show Preview) stays IN the pane;
@@ -104,9 +141,6 @@ struct CommanderView: View {
         // REM  keep showing a file he has moved away from. Tab to the other pane follows that pane.
         .onChange(of: active.selection) { quickLookFollow() }
         .onChange(of: activeSideRaw) { quickLookFollow() }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            MiniPlayerBar(twoPanes: true, openInTheater: play)
-        }
         .overlay(alignment: .bottom) {
             if let busy {
                 Label(busy, systemImage: "hourglass")
@@ -139,7 +173,9 @@ struct CommanderView: View {
             newFolder: { newFolder() },
             trash: { trash(Array(active.selection)) },
             quickLookOpen: quickLookURL != nil,
-            toggleQuickLook: { toggleQuickLook() }))
+            toggleQuickLook: { toggleQuickLook() },
+            canAct: canAct,
+            runKey: { runKey($0) }))
         // Every Commander warning also stays in the status bar after its alert is closed.
         .onChange(of: problem) { _, problem in if let problem { library.report(problem) } }
         .alert("Commander", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
@@ -190,6 +226,88 @@ struct CommanderView: View {
         }
     }
     #endif
+
+    // MARK: The key bar — ⌘1–⌘9
+
+    // REM  ALONG THE BOTTOM OF COMMANDER, under both panes — Library Commander's place for it (build 56,
+    // REM  his "at the bottom of the app"). The number is drawn bold and first so the eye finds it.
+    // REM  The buttons never take the keyboard (.focusable(false)), so a click leaves the list in charge.
+    private var keyBar: some View {
+        HStack(spacing: 0) {
+            ForEach(CommanderKey.all) { key in
+                Button { runKey(key.number) } label: {
+                    HStack(spacing: 6) {
+                        Text("⌘\(key.number)").bold()
+                        Text(key.title)
+                    }
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .focusable(false)
+                .disabled(!keyEnabled(key))
+                .help("⌘\(key.number) — \(key.help)")
+                if key.number != CommanderKey.all.last?.number { Divider() }
+            }
+        }
+        .font(.lyceumBody)
+        .fixedSize(horizontal: false, vertical: true)
+        .background(.bar)
+        .popover(isPresented: $showingKeys, arrowEdge: .top) { KeysHelp() }
+    }
+
+    private func keyEnabled(_ key: CommanderKey) -> Bool {
+        canAct && (!key.needsSelection || !active.selection.isEmpty)
+    }
+
+    private func runKey(_ number: Int) {
+        guard let key = CommanderKey.all.first(where: { $0.number == number }), keyEnabled(key) else { return }
+        switch number {
+        case 1: showingKeys.toggle()
+        case 2: openCommanderMenu()
+        case 3: toggleQuickLook()
+        case 4: editHighlighted()
+        case 5: transfer(move: false)
+        case 6: transfer(move: true)
+        case 7: newFolder()
+        case 8: trash(Array(active.selection))
+        case 9: startRename()
+        default: break
+        }
+    }
+
+    /// ⌘2 — the Commander menu, opened where the pointer is.
+    private func openCommanderMenu() {
+        #if os(macOS)
+        // REM  Opened on the next turn of the run loop: when ⌘2 comes FROM the menu bar, the menu bar is
+        // REM  still closing, and a menu opened inside that moment is closed with it.
+        DispatchQueue.main.async {
+            guard let menu = NSApp.mainMenu?.items.first(where: { $0.title == "Commander" })?.submenu else { return }
+            menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+        }
+        #else
+        library.report("Hold ⌘ to see the Commander keys")
+        #endif
+    }
+
+    /// ⌘4 — opens the highlighted FILES in their own apps (Library Commander's Edit). Folders are skipped.
+    private func editHighlighted() {
+        let files = active.rows.filter { active.selection.contains($0.id) && !$0.entry.isFolder }.map(\.id)
+        guard !files.isEmpty else {
+            library.report("⌘4 opens files in their apps — a folder opens here with a double-click")
+            return
+        }
+        #if os(macOS)
+        let opened = files.filter { NSWorkspace.shared.open($0) }
+        library.report(opened.count == files.count
+                       ? (files.count == 1 ? "Opened “\(files[0].lastPathComponent)” in its app" : "Opened \(files.count) files in their apps")
+                       : "No app for \(files.count - opened.count) of them; opened \(opened.count)")
+        #else
+        library.report("Opening in another app comes later on iPhone and iPad")
+        #endif
+    }
 
     // MARK: Quick Look — ⌘Y
 
@@ -390,6 +508,13 @@ private struct CommanderPane: View {
                     if pane.showPreview && !pane.showingDrives {
                         PanePreview(item: previewItem, source: source, playerShrunk: $pane.playerShrunk)
                             .frame(height: space.size.height * 0.4)
+                    }
+                    // REM  THE PLAYER LIVES IN THE PANE ITS ITEM CAME FROM (NightGard's way), under the
+                    // REM  preview. With Continuous on Other Pane it crosses to the other pane's bottom
+                    // REM  as playback does — the controls are always under the list that is playing.
+                    if mini.currentSource == source {
+                        Divider()
+                        MiniPlayerBar(twoPanes: true, stacked: true, openInTheater: play)
                     }
                 }
             }
@@ -896,28 +1021,31 @@ struct CommanderMenu: View {
     @FocusedValue(\.commanderActions) private var actions
     @AppStorage("instantDelete") private var instantDelete = false
 
+    // REM  THE NUMBERED COMMANDS, in Midnight Commander's order, the same as the key bar. The old
+    // REM  ⌥⌘C / ⌥⌘M / ⌥⌘R / ⇧⌘N / ⌘⌫ shortcuts are replaced by the numbers — his ruling: "the Commander
+    // REM  menu holds the numbered commands in that order with those shortcuts".
     var body: some View {
-        Button("Copy to Other Pane") { actions?.copyToOther() }
-            .keyboardShortcut("c", modifiers: [.command, .option])
-            .disabled(actions?.hasSelection != true)
-        Button("Move to Other Pane") { actions?.moveToOther() }
-            .keyboardShortcut("m", modifiers: [.command, .option])
-            .disabled(actions?.hasSelection != true)
-        Divider()
-        Button("Rename…") { actions?.rename() }
-            .keyboardShortcut("r", modifiers: [.command, .option])
-            .disabled(actions?.hasSelection != true)
-        Button("New Folder") { actions?.newFolder() }
-            .keyboardShortcut("n", modifiers: [.command, .shift])
-            .disabled(actions == nil)
+        ForEach(CommanderKey.all) { key in
+            Button(title(key)) { actions?.runKey(key.number) }
+                .keyboardShortcut(KeyEquivalent(Character(String(key.number))), modifiers: .command)
+                .disabled(actions == nil || actions?.canAct != true
+                          || (key.needsSelection && actions?.hasSelection != true))
+            if key.number == 2 || key.number == 4 || key.number == 7 { Divider() }
+        }
         Divider()
         Button(actions?.quickLookOpen == true ? "Close Quick Look" : "Quick Look") { actions?.toggleQuickLook() }
             .keyboardShortcut("y", modifiers: .command)
             .disabled(actions == nil)
-        Divider()
-        Button(FileOperations.deleteTitle(instant: instantDelete)) { actions?.trash() }
-            .keyboardShortcut(.delete, modifiers: .command)
-            .disabled(actions?.hasSelection != true)
+    }
+
+    private func title(_ key: CommanderKey) -> String {
+        switch key.number {
+        case 5: "Copy to Other Pane"
+        case 6: "Move to Other Pane"
+        case 8: FileOperations.deleteTitle(instant: instantDelete)
+        case 9: "Rename"
+        default: key.title
+        }
     }
 }
 
@@ -1001,5 +1129,36 @@ private struct InlineRename: View {
         guard !done else { return }
         done = true
         if save { commit(text) } else { cancel() }
+    }
+}
+
+// MARK: - ⌘1 Help
+
+/// What each key does — opened by ⌘1 or the Help button.
+private struct KeysHelp: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Commander keys").font(.lyceumHeadline)
+            ForEach(CommanderKey.all) { key in
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text("⌘\(key.number)").bold().frame(width: 44, alignment: .leading)
+                    Text(key.title).frame(width: 120, alignment: .leading)
+                    Text(key.help).foregroundStyle(.secondary)
+                }
+            }
+            Divider()
+            row("Tab", "Switch which pane is the source")
+            row("⌘Y", "Quick Look in its own window; follows the highlight")
+            row("Click, pause, click", "Rename a name in its row")
+        }
+        .font(.lyceumBody)
+        .padding(20)
+    }
+
+    private func row(_ key: String, _ text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(key).bold().frame(width: 176, alignment: .leading)
+            Text(text).foregroundStyle(.secondary)
+        }
     }
 }

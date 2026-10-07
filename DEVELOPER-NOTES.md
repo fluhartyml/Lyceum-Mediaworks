@@ -19,6 +19,12 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-07 ~18:5x — Midnight Commander key bar + player inside the pane — build 40 (not yet run by him)
+- His: *"i still dont see the midnight commander butttond for the command keys with lables as to what they do"* and *"what is at the bottom of the window, its supposed to be nside the pane"*, *"thinking along the lines of"* NightGard / Library Commander.
+- **Key bar** along Commander's bottom (Library Commander's place): ⌘1 Help (key list popover) · ⌘2 Menu (pops the Commander menu at the pointer) · ⌘3 View (Quick Look) · ⌘4 Edit (open in its app; Mac) · ⌘5 Copy · ⌘6 Move · ⌘7 New Folder · ⌘8 Delete · ⌘9 Rename. **The Commander menu = the same nine, numbered**; old ⌥⌘C/⌥⌘M/⌥⌘R/⇧⌘N/⌘⌫ shortcuts REPLACED. ⌘Y Quick Look kept. All off while a name is being typed.
+- **Player** moved off the window bottom into the pane its item came from (NightGard), two lines under the preview; crosses panes with Continuous → Other Pane. Library view keeps its window-wide bar.
+- ⬜ Still step 2: target marker + ⌘-arrow move/copy with one-step undo.
+
 ### 2026-10-07 ~18:4x — rename in the row, tools row never wraps, path box guarded — build 39 (not yet run by him)
 - His correction after build 37's slow click popped the Rename sheet: ***"in finder you rename inlighn and dont open a popup."*** Commander now renames IN THE ROW for every way in (slow click, right-click, ⌥⌘R, New Folder): name highlighted without extension, Return/click-away saves, Esc cancels, unchanged/empty = nothing. **All file commands are disabled while a name is being typed** (⌘⌫ would otherwise trash the FILE). Library view still uses the sheet.
 - His catch on build 38: the tools row wrapped one word per line → `ViewThatFits`: full labels when they fit, icons only (tooltips kept) when not. "Sorted by…" text removed from the row (now in the Columns… tooltip + status bar).

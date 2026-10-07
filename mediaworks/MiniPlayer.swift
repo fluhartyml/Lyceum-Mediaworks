@@ -180,67 +180,110 @@ final class MiniPlayer {
 struct MiniPlayerBar: View {
     /// Commander shows the Other Pane choice; Library has only one pane.
     let twoPanes: Bool
+    /// Two lines — controls and title, then the position and Continuous — for the narrow space at the
+    /// bottom of a Commander pane.
+    // REM  IN THE PANE, NOT ACROSS THE WINDOW — his ruling, 2026-10-07: "what is at the bottom of the
+    // REM  window, its supposed to be nside the pane and not at the bottom", "along the lines of"
+    // REM  NightGard Commander, whose player was "a line or two" at the bottom of its pane. Half a
+    // REM  window cannot hold the one-line bar at 18 pt, so in a pane it is two lines.
+    var stacked = false
     let openInTheater: (URL) -> Void
     @Environment(MiniPlayer.self) private var mini
 
     var body: some View {
-        @Bindable var mini = mini
         if let url = mini.current {
-            HStack(spacing: 14) {
-                Button { mini.playPause() } label: {
-                    Image(systemName: mini.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 22))
-                        .frame(width: 28)
-                }
-                .buttonStyle(.borderless)
-                .help(mini.isPlaying ? "Pause" : "Play")
-
-                Button { mini.next() } label: {
-                    Image(systemName: "forward.fill").font(.system(size: 18))
-                }
-                .buttonStyle(.borderless)
-                .help("Next")
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(url.deletingPathExtension().lastPathComponent)
-                        .font(.lyceumBody)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    if let cued = mini.cued, cued != url {
-                        Text("Cued: \(cued.deletingPathExtension().lastPathComponent)")
-                            .font(.lyceumDetail)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
+            Group {
+                if stacked {
+                    VStack(spacing: 8) {
+                        HStack(spacing: 14) {
+                            playButtons
+                            title(url)
+                            Spacer(minLength: 8)
+                            theaterButton
+                        }
+                        HStack(spacing: 14) {
+                            position
+                            continuousPicker.frame(width: 220)
+                        }
+                    }
+                } else {
+                    HStack(spacing: 14) {
+                        playButtons
+                        title(url).frame(minWidth: 200, maxWidth: 360, alignment: .leading)
+                        position
+                        continuousPicker.frame(width: 260)
+                        theaterButton
                     }
                 }
-                .frame(minWidth: 200, maxWidth: 360, alignment: .leading)
-
-                Slider(value: Binding(get: { mini.elapsed }, set: { mini.seek(to: $0) }),
-                       in: 0...max(mini.duration, 1))
-                Text("\(FolderView.lengthText(mini.elapsed)) / \(FolderView.lengthText(mini.duration))")
-                    .font(.lyceumDetail)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-
-                Picker("Continuous", selection: $mini.continuous) {
-                    ForEach(MiniPlayer.Continuous.allCases.filter { twoPanes || $0 != .otherPane }) { mode in
-                        Text(mode.title).tag(mode)
-                    }
-                }
-                .font(.lyceumBody)
-                .frame(width: 260)
-                .help("Continuous: what plays when this one ends")
-
-                Button { if let url = mini.handOff() { openInTheater(url) } } label: {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 18))
-                }
-                .buttonStyle(.borderless)
-                .help("Open in Theater")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
             .background(.bar)
         }
+    }
+
+    private var playButtons: some View {
+        HStack(spacing: 14) {
+            Button { mini.playPause() } label: {
+                Image(systemName: mini.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 22))
+                    .frame(width: 28)
+            }
+            .buttonStyle(.borderless)
+            .help(mini.isPlaying ? "Pause" : "Play")
+
+            Button { mini.next() } label: {
+                Image(systemName: "forward.fill").font(.system(size: 18))
+            }
+            .buttonStyle(.borderless)
+            .help("Next")
+        }
+    }
+
+    private func title(_ url: URL) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(url.deletingPathExtension().lastPathComponent)
+                .font(.lyceumBody)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            if let cued = mini.cued, cued != url {
+                Text("Cued: \(cued.deletingPathExtension().lastPathComponent)")
+                    .font(.lyceumDetail)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+        }
+    }
+
+    private var position: some View {
+        HStack(spacing: 14) {
+            Slider(value: Binding(get: { mini.elapsed }, set: { mini.seek(to: $0) }),
+                   in: 0...max(mini.duration, 1))
+            Text("\(FolderView.lengthText(mini.elapsed)) / \(FolderView.lengthText(mini.duration))")
+                .font(.lyceumDetail)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .fixedSize()
+        }
+    }
+
+    private var continuousPicker: some View {
+        @Bindable var mini = mini
+        return Picker("Continuous", selection: $mini.continuous) {
+            ForEach(MiniPlayer.Continuous.allCases.filter { twoPanes || $0 != .otherPane }) { mode in
+                Text(mode.title).tag(mode)
+            }
+        }
+        .font(.lyceumBody)
+        .help("Continuous: what plays when this one ends")
+    }
+
+    private var theaterButton: some View {
+        Button { if let url = mini.handOff() { openInTheater(url) } } label: {
+            Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 18))
+        }
+        .buttonStyle(.borderless)
+        .help("Open in Theater")
     }
 }
