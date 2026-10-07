@@ -153,6 +153,6 @@ The server runs on the **Mac mini** (the MacBook during development); the **Terr
 *Claude: Update this section as information becomes available.*
 
 - **Name:** Lyceum Mediaworks (reserved 2026-10-06; "USA" suffix held in reserve, not needed)
-- **Bundle ID:** `com.lyceum.mediaworks` · **Category:** Video
+- **Bundle ID:** `com.lyceum.mediaworks` · **Category:** Entertainment (changed from Video 2026-10-06 — audio and video)
 - **Uploaded:** macOS 1.0 (4), 2026-10-06 19:08 — validation passed, **not submitted for review**
 - **Icon:** temporary (glowing knight); final icon pending
