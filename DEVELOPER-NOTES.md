@@ -102,6 +102,7 @@ month subscription fee."* Free to the user; built to the bar of a premium paid p
 
 - **Platforms, first release: Mac, iPad and iPhone.** The **Mac mini runs the media server**; the
   **iPad runs the controlling app — and so can an iPhone and the Apple silicon MacBook.**
+- **During development the MacBook stands in for the server**; a Mac mini takes over after the App Store release — *"i will most likely use the macbook to be the simulator and use a mini after it gets published in the app store."*
 - **The iPhone app is also a remote control** — *"i am invisioning the ios app being a remote control as well."*
 - **Apple TV:** a Theater app on the box reads from the mini. **Smart TVs:** DLNA.
 - **Deleting:** *"trash by default but can be toggled delete instantly by user"* — 30-day Trash by
