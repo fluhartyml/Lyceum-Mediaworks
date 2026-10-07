@@ -2,8 +2,8 @@
 //  LibraryStore.swift
 //  mediaworks
 //
-//  The library root the user chose, and the folder they are standing in.
-//  Both are remembered across launches — every setting persists.
+//  The library root the user chose, the folder they are standing in, and which sidebar
+//  folders are open. All of it is remembered across launches — every setting persists.
 //
 
 import Foundation
@@ -19,6 +19,7 @@ final class FolderNode: Identifiable, Hashable {
 
     var id: URL { url }
     var name: String { url.lastPathComponent }
+    var path: String { url.standardizedFileURL.path }
 
     /// nil means "no subfolders", which tells the sidebar not to draw a disclosure arrow.
     var children: [FolderNode]? {
@@ -28,8 +29,8 @@ final class FolderNode: Identifiable, Hashable {
         return cachedChildren!.isEmpty ? nil : cachedChildren
     }
 
-    static func == (a: FolderNode, b: FolderNode) -> Bool { a.url == b.url }
-    func hash(into hasher: inout Hasher) { hasher.combine(url) }
+    static func == (a: FolderNode, b: FolderNode) -> Bool { a.path == b.path }
+    func hash(into hasher: inout Hasher) { hasher.combine(path) }
 }
 
 @Observable
@@ -38,18 +39,52 @@ final class LibraryStore {
     var errorMessage: String?
 
     var selection: FolderNode? {
-        didSet { UserDefaults.standard.set(selection?.url.path, forKey: Keys.selectedFolder) }
+        didSet { UserDefaults.standard.set(selection?.path, forKey: Keys.selectedFolder) }
     }
+
+    /// Paths of the sidebar folders that are open.
+    private(set) var expanded: Set<String> = [] {
+        didSet { UserDefaults.standard.set(Array(expanded), forKey: Keys.expandedFolders) }
+    }
+
+    /// What the open part of the tree looked like at the last check — used to tell whether
+    /// anything changed on disk, so the sidebar is only rebuilt when it has to be.
+    @ObservationIgnored private var lastTreeSignature = ""
 
     private enum Keys {
         static let rootBookmark = "libraryRootBookmark"
         static let selectedFolder = "selectedFolderPath"
+        static let expandedFolders = "expandedFolderPaths"
     }
 
-    init() { restore() }
+    init() {
+        expanded = Set(UserDefaults.standard.stringArray(forKey: Keys.expandedFolders) ?? [])
+        restore()
+    }
 
-    /// Called with the folder the user picked. Remembers it with a bookmark so the sandbox
-    /// lets the app back in on the next launch without asking again.
+    // MARK: Sidebar open/closed state
+
+    func isExpanded(_ node: FolderNode) -> Bool { expanded.contains(node.path) }
+
+    func setExpanded(_ node: FolderNode, _ open: Bool) {
+        if open { expanded.insert(node.path) } else { expanded.remove(node.path) }
+    }
+
+    /// Opens every folder above the current one, so the sidebar always shows where you are.
+    private func revealSelection() {
+        guard let root, let selection, selection.path.hasPrefix(root.path) else { return }
+        var url = selection.url.deletingLastPathComponent().standardizedFileURL
+        while url.path.count >= root.path.count {
+            expanded.insert(url.path)
+            if url.path == root.path { break }
+            url = url.deletingLastPathComponent().standardizedFileURL
+        }
+    }
+
+    // MARK: Choosing and restoring the library
+
+    /// Called with the folder the user picked during onboarding. Remembers it with a bookmark
+    /// so the sandbox lets the app back in on the next launch without asking again.
     func choose(_ url: URL) {
         root.map { $0.url.stopAccessingSecurityScopedResource() }
         guard url.startAccessingSecurityScopedResource() else {
@@ -66,6 +101,7 @@ final class LibraryStore {
         let node = FolderNode(url: url)
         root = node
         selection = node
+        expanded = [node.path]
     }
 
     private func restore() {
@@ -86,11 +122,39 @@ final class LibraryStore {
 
         // Put the user back in the folder they were last standing in, if it is still inside the library.
         if let path = UserDefaults.standard.string(forKey: Keys.selectedFolder),
-           path.hasPrefix(url.path),
+           path.hasPrefix(node.path),
            FileManager.default.fileExists(atPath: path) {
             selection = FolderNode(url: URL(fileURLWithPath: path, isDirectory: true))
         } else {
             selection = node
+        }
+        expanded.insert(node.path)
+        revealSelection()
+    }
+
+    // MARK: Noticing changes on disk
+
+    /// Re-reads the open part of the tree and rebuilds the sidebar only if something changed.
+    /// A network share does not tell the Mac when files change on the server, so the app asks.
+    func refreshIfChanged() async {
+        guard let root else { return }
+        let folders = [root.path] + expanded.filter { $0 != root.path && $0.hasPrefix(root.path) }.sorted()
+        let signature = await Task.detached {
+            folders.map { folder in
+                folder + ">" + FolderListing.subfolders(of: URL(fileURLWithPath: folder, isDirectory: true))
+                    .map(\.lastPathComponent).joined(separator: "|")
+            }.joined(separator: "\n")
+        }.value
+
+        if signature != lastTreeSignature {
+            let firstCheck = lastTreeSignature.isEmpty
+            lastTreeSignature = signature
+            if !firstCheck { self.root = FolderNode(url: root.url) }
+        }
+
+        // The folder you were standing in was moved or deleted: step back to the library root.
+        if let selection, !FileManager.default.fileExists(atPath: selection.path) {
+            self.selection = self.root
         }
     }
 

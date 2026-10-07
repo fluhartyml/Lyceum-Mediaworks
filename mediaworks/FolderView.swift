@@ -171,8 +171,24 @@ struct FolderView: View {
         entries = await Task.detached { FolderListing.entries(in: url) }.value
         loading = false
 
-        // Lengths one at a time, so a network share is not hit with hundreds of reads at once.
-        for entry in entries where entry.isMedia {
+        // Stay current while this folder is on screen. A network share does not announce
+        // changes made on the server, so re-read every 10 seconds and only redraw on a difference.
+        while !Task.isCancelled {
+            await fillLengths()
+            try? await Task.sleep(for: .seconds(10))
+            if Task.isCancelled { return }
+            let fresh = await Task.detached { FolderListing.entries(in: url) }.value
+            if fresh != entries {
+                entries = fresh
+                selection = selection.filter { id in fresh.contains { $0.url == id } }
+            }
+        }
+    }
+
+    /// Lengths one at a time, so a network share is not hit with hundreds of reads at once.
+    /// Only files that do not have one yet are read.
+    private func fillLengths() async {
+        for entry in entries where entry.isMedia && lengths[entry.url] == nil {
             if Task.isCancelled { return }
             if let time = try? await AVURLAsset(url: entry.url).load(.duration), time.seconds.isFinite {
                 lengths[entry.url] = time.seconds

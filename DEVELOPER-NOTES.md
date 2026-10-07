@@ -19,6 +19,12 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-06 ~21:2x — sidebar remembers + stays current
+- Seen on his screen: the sidebar came back collapsed, and a moved folder (Media → Library/Media) still showed. Both fixed at his *"yes fix both"*.
+- **Sidebar open/closed state persists** (`expandedFolderPaths`), and the folders above the current one open automatically so you always see where you are.
+- **Changes on disk show up:** a network share does not announce server-side changes, so the open tree and the current folder are re-read every 10 s and on returning to the app; redraw only on a difference. If the current folder vanishes, it steps back to the library root.
+- Not run by him yet. **Columns view is next.**
+
 ### 2026-10-06 ~21:0x — list view + onboarding
 - **List view is the default** (his: *"im not a fan of icon view i usually choose list view or colum view in finder"*); Icons kept as an option. **Columns view is next** (agreed order: List, then Columns).
 - **Persistent settings** (his: *"i want persistant settings"*): view mode, sort column + direction, column widths/order, tile size, library, current folder.
