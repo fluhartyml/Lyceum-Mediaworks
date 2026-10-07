@@ -73,7 +73,8 @@ month subscription fee."* Free to the user; built to the bar of a premium paid p
 - [ ] `LyceumKit` shared package
 - [ ] 18 pt minimum text everywhere; every setting persists across launches
 
-### Phase 1 — Folders as the front door
+### Phase 1 — Folders as the front door · LOCKED · built on the Mac first
+*"create mac first the folder structure and then the commander to populate and coriograph and manipulate media as we go."* Mac first is the build order; the first release is still Mac, iPad and iPhone.
 - [ ] Point it at a library root (Nineveh, a mini, a drive); the folder tree is the main view
 - [ ] Posters and file details *inside* each folder, not a flat wall
 
