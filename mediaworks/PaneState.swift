@@ -219,6 +219,8 @@ final class PaneState {
     // REM  A depth cap, so a folder that links back into itself cannot loop forever.
     private static let deepest = 8
     var drives: [Drive] = []
+    /// The row whose name is being edited in place, if any. Not saved — an edit in progress is not a setting.
+    var renamingURL: URL?
 
     /// A highlight saved at launch, applied once the folder has been read.
     @ObservationIgnored private var pendingSelection: Set<URL> = []

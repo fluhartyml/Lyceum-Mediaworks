@@ -19,6 +19,11 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-07 ~18:4x — rename in the row, tools row never wraps, path box guarded — build 39 (not yet run by him)
+- His correction after build 37's slow click popped the Rename sheet: ***"in finder you rename inlighn and dont open a popup."*** Commander now renames IN THE ROW for every way in (slow click, right-click, ⌥⌘R, New Folder): name highlighted without extension, Return/click-away saves, Esc cancels, unchanged/empty = nothing. **All file commands are disabled while a name is being typed** (⌘⌫ would otherwise trash the FILE). Library view still uses the sheet.
+- His catch on build 38: the tools row wrapped one word per line → `ViewThatFits`: full labels when they fit, icons only (tooltips kept) when not. "Sorted by…" text removed from the row (now in the Columns… tooltip + status bar).
+- His message to Claude landed in the left pane's path box (it held the keyboard at launch) and Return raised a permission panel for a "folder" named after his sentence. Now: the active pane's LIST takes the keyboard at launch, and path-box text not starting with `/` is reported and put back, never asked about.
+
 ### 2026-10-07 ~18:xx — columns: choose, move, and sort left to right — build 38 (not yet run by him)
 - His ask: choose/rearrange columns incl. metadata; per-column sort arrow ▲ / ▼ / off. **His rule:** *"the arrange by goes in order from left most colum to right most colum … if sort by name was sort up then size was no sort toggle so it was skipped then date modified was toggles so it would sort by name and then sort be date modified"* → *"yes build it"*.
 - `Columns.swift`: 11 columns (Name · Size · Date Modified · Type · Date Created · Length · Resolution · Artist · Album · Year · Genre), per pane, saved. **Screen order = sort priority**; no-arrow columns skipped; hidden columns don't sort; **no arrows = Your Order**. Folders first in arrow sorts. Empty values last both ways. Name always shown.

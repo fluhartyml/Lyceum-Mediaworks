@@ -70,8 +70,6 @@ struct CommanderView: View {
     @State private var reloadToken = 0
     @State private var busy: String?
     @State private var problem: String?
-    @State private var renaming: RenameTarget?
-    @State private var newName = ""
     /// The file in the floating Quick Look window, or nil while it is closed.
     @State private var quickLookURL: URL?
     #if os(macOS)
@@ -87,6 +85,7 @@ struct CommanderView: View {
     private var activeSide: PaneSide { PaneSide(rawValue: activeSideRaw) ?? .left }
     private var active: PaneState { activeSide == .left ? left : right }
     private var other: PaneState { activeSide == .left ? right : left }
+    private var editingName: Bool { left.renamingURL != nil || right.renamingURL != nil }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -120,18 +119,20 @@ struct CommanderView: View {
         .toolbar {
             ToolbarItemGroup {
                 Button("Copy to Other Pane", systemImage: "doc.on.doc") { transfer(move: false) }
-                    .disabled(active.selection.isEmpty || busy != nil)
+                    .disabled(active.selection.isEmpty || busy != nil || editingName)
                 Button("Move to Other Pane", systemImage: "arrow.left.arrow.right") { transfer(move: true) }
-                    .disabled(active.selection.isEmpty || busy != nil)
+                    .disabled(active.selection.isEmpty || busy != nil || editingName)
                 Button("New Folder", systemImage: "folder.badge.plus") { newFolder() }
                     .disabled(busy != nil || active.showingDrives)
                 Button(FileOperations.deleteTitle(instant: instantDelete),
                        systemImage: FileOperations.deleteSymbol(instant: instantDelete)) { trash(Array(active.selection)) }
-                    .disabled(active.selection.isEmpty || busy != nil)
+                    .disabled(active.selection.isEmpty || busy != nil || editingName)
             }
         }
         .focusedSceneValue(\.commanderActions, CommanderActions(
-            hasSelection: !active.selection.isEmpty && busy == nil,
+            // REM  ALL FILE COMMANDS ARE OFF WHILE A NAME IS BEING TYPED: ⌘⌫ deletes text in a text box but
+            // REM  is also Delete/Trash here — without this, clearing a name would delete the FILE.
+            hasSelection: !active.selection.isEmpty && busy == nil && !editingName,
             copyToOther: { transfer(move: false) },
             moveToOther: { transfer(move: true) },
             rename: { startRename() },
@@ -146,11 +147,6 @@ struct CommanderView: View {
         } message: {
             Text(problem ?? "")
         }
-        .sheet(item: $renaming) { target in
-            RenameSheet(original: target.url.lastPathComponent, newName: $newName) {
-                rename(target.url, to: newName)
-            }
-        }
         #if os(macOS)
         .onAppear { installTabKey() }
         .onDisappear { if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }; keyMonitor = nil }
@@ -161,7 +157,7 @@ struct CommanderView: View {
         CommanderPane(pane: state, library: root, isActive: activeSide == state.side,
                       reloadToken: reloadToken,
                       activate: { activeSideRaw = state.side.rawValue },
-                      play: play, rename: beginRename,
+                      play: play, rename: beginRename, commitRename: rename,
                       newFolder: { activeSideRaw = state.side.rawValue; newFolder() },
                       trash: { urls in activeSideRaw = state.side.rawValue; trash(urls) })
     }
@@ -302,12 +298,19 @@ struct CommanderView: View {
         beginRename(url)
     }
 
+    // REM  RENAMING HAPPENS IN THE ROW, NOT IN A BOX — his correction, 2026-10-07, after build 37's slow
+    // REM  click popped the Rename sheet: "in finder you rename inlighn and dont open a popup." Every way
+    // REM  in (slow click, right-click Rename…, ⌥⌘R, New Folder) now edits the name where it sits.
     private func beginRename(_ url: URL) {
-        newName = url.lastPathComponent
-        renaming = RenameTarget(url: url)
+        let pane = [left, right].first { $0.rows.contains { $0.id == url } } ?? active
+        pane.renamingURL = url
     }
 
     private func rename(_ url: URL, to name: String) {
+        for state in [left, right] where state.renamingURL == url { state.renamingURL = nil }
+        // REM  Unchanged or emptied → nothing happens, as in Finder (an empty name is put back).
+        let name = name.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty, name != url.lastPathComponent else { return }
         do {
             let renamed = try FileOperations.rename(url, to: name, library: library)
             ManualOrder.renamed(url, to: renamed)
@@ -344,6 +347,7 @@ private struct CommanderPane: View {
     let activate: () -> Void
     let play: (URL) -> Void
     let rename: (URL) -> Void
+    let commitRename: (URL, String) -> Void
     let newFolder: () -> Void
     let trash: ([URL]) -> Void
 
@@ -351,6 +355,8 @@ private struct CommanderPane: View {
     @Environment(LibraryStore.self) private var store
     @State private var pathText = ""
     @FocusState private var pathFocused: Bool
+    /// The file list holds the keyboard — not the path box — when the window opens.
+    @FocusState private var listFocused: Bool
     @State private var refreshes = 0
     @State private var driveSelection = Set<URL>()
     /// When the current one-item highlight began — the slow second click is measured from it.
@@ -397,7 +403,12 @@ private struct CommanderPane: View {
         }
         // REM  A click anywhere in the pane makes it active.
         .simultaneousGesture(TapGesture().onEnded { activate() })
-        .onAppear { syncPath() }
+        // REM  THE LIST TAKES THE KEYBOARD AT LAUNCH (the active pane's), so typing never lands in the
+        // REM  path box unless he clicks it. The Mac otherwise hands the first text box the keyboard.
+        .onAppear {
+            syncPath()
+            if isActive { DispatchQueue.main.async { listFocused = true } }
+        }
         .onChange(of: pane.folder) { syncPath() }
         .onChange(of: pane.showingDrives) { syncPath() }
         // REM  THE PATH-BOX FIX, from Library Commander build 54: he cleared the box by accident and it
@@ -491,6 +502,15 @@ private struct CommanderPane: View {
     private func goTyped() {
         let typed = pathText.trimmingCharacters(in: .whitespaces)
         guard !typed.isEmpty else { syncPath(); return }
+        // REM  ONLY A PATH IS A PATH — 2026-10-07 his whole message to Claude landed in this box (it held
+        // REM  the keyboard at launch) and Return turned it into a permission panel for a "folder" named
+        // REM  after his sentence. Anything not starting with / is reported and put back, never asked about.
+        guard typed.hasPrefix("/") else {
+            store.report("Not a folder path — a path starts with /")
+            syncPath()
+            pathFocused = false
+            return
+        }
         go(URL(fileURLWithPath: typed, isDirectory: true))
     }
 
@@ -530,19 +550,29 @@ private struct CommanderPane: View {
     // REM  FILE TOOLS ONLY on this row, under the header — Library Commander's ruling: the app is a
     // REM  file commander first; media tools get their own row later and never crowd these out.
     // REM  Sort and Show Hidden are saved per pane (everything persists).
+    // REM  THE ROW NEVER WRAPS — his catch, 2026-10-07 (build 38): "it has truncated and one word on multi
+    // REM  lines." At 18 pt the full labels no longer fit half a window, so when they do not fit the row
+    // REM  shows ICONS ONLY (every button keeps its tooltip); full labels come back when there is room.
+    // REM  The "Sorted by…" words left the row — the header arrows show the sort, and Columns… says it.
     private var tools: some View {
+        ViewThatFits(in: .horizontal) {
+            toolRow.labelStyle(.titleAndIcon)
+            toolRow.labelStyle(.iconOnly)
+        }
+        .font(.lyceumBody)
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .popover(isPresented: $showingColumns, arrowEdge: .bottom) { ColumnsPanel(pane: pane) }
+    }
+
+    private var toolRow: some View {
         HStack(spacing: 14) {
             // REM  THE SORT MENU IS GONE — the arrows on the column headers are the sort now (his design,
             // REM  Columns.swift). Columns… is where columns are shown, hidden and moved; the line after it
             // REM  says in words what the arrows add up to, because a two-column sort is easy to miss.
             Button { showingColumns = true } label: { Label("Columns…", systemImage: "tablecells") }
-                .help("Choose which columns show, move them, and set their sort arrows")
-                .popover(isPresented: $showingColumns, arrowEdge: .bottom) { ColumnsPanel(pane: pane) }
-            Text(sortSummary)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .help(sortSummary)
+                .help("Columns: choose which show, move them, set their sort arrows. Now: \(sortSummary)")
 
             if pane.isYourOrder {
                 Button { pane.nudge(up: true) } label: { Label("Move Up", systemImage: "arrow.up") }
@@ -586,10 +616,8 @@ private struct CommanderPane: View {
                                     : "\(pane.entries.count) item\(pane.entries.count == 1 ? "" : "s")")
                 .foregroundStyle(.secondary)
         }
-        .font(.lyceumBody)
-        .buttonStyle(.borderless)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .lineLimit(1)
+        .fixedSize()
     }
 
     // MARK: The files
@@ -631,6 +659,7 @@ private struct CommanderPane: View {
             }
         }
         .font(.lyceumBody)
+        .focused($listFocused)
         .contextMenu(forSelectionType: URL.self) { urls in
             FileContextMenu(urls: urls, entries: pane.rows.map(\.entry),
                             open: { entry in if entry.isFolder { pane.open(entry.url) } else { play(entry.url) } },
@@ -762,6 +791,14 @@ private struct CommanderPane: View {
                         .truncationMode(.middle)
                         .help(entry.name)
                         .simultaneousGesture(TapGesture().onEnded { slowClick(entry.url) })
+                        .opacity(pane.renamingURL == entry.url ? 0 : 1)
+                        .overlay(alignment: .leading) {
+                            if pane.renamingURL == entry.url {
+                                InlineRename(original: entry.name,
+                                             commit: { commitRename(entry.url, $0) },
+                                             cancel: { pane.renamingURL = nil })
+                            }
+                        }
                 }
     }
 
@@ -923,5 +960,46 @@ private struct ColumnsPanel: View {
         }
         .font(.lyceumBody)
         .padding(20)
+    }
+}
+
+// MARK: - Renaming in the row
+
+/// The name, editable where it sits — Finder's way. The name is highlighted without its extension.
+// REM  Return or clicking away SAVES (Finder does both); Esc puts the old name back. A guard stops a
+// REM  save from happening twice (Return, then the focus loss that follows it).
+private struct InlineRename: View {
+    let original: String
+    let commit: (String) -> Void
+    let cancel: () -> Void
+
+    @State private var text = ""
+    @State private var selection: TextSelection?
+    @State private var done = false
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        TextField("Name", text: $text, selection: $selection)
+            .textFieldStyle(.roundedBorder)
+            .font(.lyceumBody)
+            .focused($focused)
+            .onAppear {
+                text = original
+                // REM  Finder highlights the name WITHOUT the extension, so typing replaces the name
+                // REM  and keeps ".mp4". A folder (no extension) is highlighted whole.
+                let ext = (original as NSString).pathExtension
+                let stem = ext.isEmpty ? original : String(original.dropLast(ext.count + 1))
+                selection = TextSelection(range: original.startIndex..<original.index(original.startIndex, offsetBy: stem.count))
+                focused = true
+            }
+            .onSubmit { finish(save: true) }
+            .onKeyPress(.escape) { finish(save: false); return .handled }
+            .onChange(of: focused) { _, now in if !now { finish(save: true) } }
+    }
+
+    private func finish(save: Bool) {
+        guard !done else { return }
+        done = true
+        if save { commit(text) } else { cancel() }
     }
 }
