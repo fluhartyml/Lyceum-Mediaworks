@@ -503,6 +503,44 @@ enum TagWriter {
     }
 }
 
+// MARK: - Getting a picture ready to save
+
+/// Every picture that comes in — chosen, found, dropped — passes through here before it is saved.
+// REM  CAPPED AT 2000 PIXELS ON THE LONG SIDE — his call, 2026-10-08: "yes cap it at 2000 pixels", after asking
+// REM  "does it need to resize the image to make it portable? so it doesnt break the video file?" It never breaks
+// REM  the video (the picture has its own slot; the first real save matched frame for frame), but a huge picture
+// REM  adds its full size to every file it goes into and some players balk at it. 2000 px stays sharp on a 4K TV.
+// REM  Bigger → shrunk and saved as a JPEG at quality 0.9. Smaller PNG/JPEG → kept exactly as is. Anything else
+// REM  (HEIC, WebP…) → JPEG.
+enum PicturePrep {
+    static let longestSide = 2000
+
+    static func prepare(_ data: Data) -> (data: Data, isPNG: Bool, image: CGImage)? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+        let type = CGImageSourceGetType(source) as String?
+        if max(image.width, image.height) > longestSide {
+            guard let small = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceThumbnailMaxPixelSize: longestSide,
+                kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary),
+                  let jpeg = jpeg(small) else { return nil }
+            return (jpeg, false, small)
+        }
+        if type == UTType.png.identifier { return (data, true, image) }
+        if type == UTType.jpeg.identifier { return (data, false, image) }
+        guard let jpeg = jpeg(image) else { return nil }
+        return (jpeg, false, image)
+    }
+
+    private static func jpeg(_ image: CGImage) -> Data? {
+        let out = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(out, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(dest, image, [kCGImageDestinationLossyCompressionQuality: 0.9] as CFDictionary)
+        return CGImageDestinationFinalize(dest) ? out as Data : nil
+    }
+}
+
 // MARK: - The inspector view
 
 struct InspectorPane: View {
@@ -888,24 +926,12 @@ struct InspectorPane: View {
 
     /// A picture's bytes — from a file he chose or from Find Picture….
     private func usePicture(_ data: Data) {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+        guard let prepared = PicturePrep.prepare(data) else {
             problem = "That picture could not be read."
             return
         }
-        let type = CGImageSourceGetType(source) as String?
-        if type == UTType.png.identifier {
-            picture = .replace(data, isPNG: true)
-        } else if type == UTType.jpeg.identifier {
-            picture = .replace(data, isPNG: false)
-        } else {
-            let out = NSMutableData()
-            guard let dest = CGImageDestinationCreateWithData(out, UTType.jpeg.identifier as CFString, 1, nil) else { return }
-            CGImageDestinationAddImage(dest, image, [kCGImageDestinationLossyCompressionQuality: 0.9] as CFDictionary)
-            guard CGImageDestinationFinalize(dest) else { problem = "That picture could not be converted."; return }
-            picture = .replace(out as Data, isPNG: false)
-        }
-        pendingPicture = image
+        picture = .replace(prepared.data, isPNG: prepared.isPNG)
+        pendingPicture = prepared.image
     }
 
     private func save() {
