@@ -23,6 +23,14 @@ enum AppMode: String, CaseIterable, Identifiable {
         case .theater: "play.rectangle"
         }
     }
+    /// The hover text for its button — what each glyph means.
+    var help: String {
+        switch self {
+        case .library: "Library — browse your collection by folder"
+        case .commander: "Commander — two panes to copy, move, rename and delete files"
+        case .theater: "Theater — play a video full size"
+        }
+    }
 }
 
 /// One folder in the sidebar tree. Subfolders are read the first time they are asked for,

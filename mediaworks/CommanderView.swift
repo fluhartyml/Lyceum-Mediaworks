@@ -193,15 +193,20 @@ struct CommanderView: View {
                 .help("Inspector between the panes: Off, Small (a third), Large (the middle half) — ⌥⌘I")
             }
             ToolbarItemGroup {
+                // REM  Hover text on every glyph — his ask, 2026-10-08. Each names its ⌘ key too.
                 Button("Copy to Other Pane", systemImage: "doc.on.doc") { transfer(move: false) }
                     .disabled(active.selection.isEmpty || busy != nil || editingName)
+                    .help("Copy to Other Pane — copy the highlighted items into the other pane's folder (⌘5)")
                 Button("Move to Other Pane", systemImage: "arrow.left.arrow.right") { transfer(move: true) }
                     .disabled(active.selection.isEmpty || busy != nil || editingName)
+                    .help("Move to Other Pane — move the highlighted items into the other pane's folder (⌘6)")
                 Button("New Folder", systemImage: "folder.badge.plus") { newFolder() }
                     .disabled(busy != nil || active.showingDrives)
+                    .help("New Folder — make a folder in the active pane (⌘7)")
                 Button(FileOperations.deleteTitle(instant: instantDelete),
                        systemImage: FileOperations.deleteSymbol(instant: instantDelete)) { trash(Array(active.selection)) }
                     .disabled(active.selection.isEmpty || busy != nil || editingName)
+                    .help(FileOperations.deleteTitle(instant: instantDelete) + " — the highlighted items (⌘8)")
             }
         }
         .focusedSceneValue(\.commanderActions, CommanderActions(

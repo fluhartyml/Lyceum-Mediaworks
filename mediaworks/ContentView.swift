@@ -53,6 +53,21 @@ struct ContentView: View {
     @ToolbarContentBuilder
     private var modeSwitch: some ToolbarContent {
         ToolbarItem(placement: .principal) {
+            // REM  EVERY GLYPH NEEDS ITS OWN HOVER TEXT — his ask, 2026-10-08: "the glyphs need hover over
+            // REM  text to tell me what each one means." A segmented picker carries ONE tooltip for all three
+            // REM  icons, so on the Mac each mode is its own button (still drawn as one segmented group),
+            // REM  each with its own words.
+            #if os(macOS)
+            ControlGroup {
+                ForEach(AppMode.allCases) { mode in
+                    Toggle(isOn: Binding(get: { library.mode == mode }, set: { if $0 { library.mode = mode } })) {
+                        Label(mode.title, systemImage: mode.symbol)
+                    }
+                    .toggleStyle(.button)
+                    .help(mode.help)
+                }
+            }
+            #else
             @Bindable var library = library
             Picker("View", selection: $library.mode) {
                 ForEach(AppMode.allCases) { mode in
@@ -61,6 +76,7 @@ struct ContentView: View {
             }
             .pickerStyle(.segmented)
             .help("Library, Commander or Theater")
+            #endif
         }
         #if os(iOS)
         ToolbarItem {
