@@ -846,6 +846,10 @@ private struct CommanderPane: View {
             Text(pane.showingDrives ? "\(pane.drives.count) drive\(pane.drives.count == 1 ? "" : "s")"
                                     : "\(pane.entries.count) item\(pane.entries.count == 1 ? "" : "s")")
                 .foregroundStyle(.secondary)
+                // REM  His question, 2026-10-08: "why does it say 7 items? … maybe "7items" should also have hover
+                // REM  over text". It counts what is directly in the open folder — not rows shown by a chevron.
+                .help(pane.showingDrives ? "How many drives this Mac can see"
+                      : "How many files and folders are directly in “\(pane.folder.lastPathComponent)” — rows shown inside opened folders are not counted")
         }
         .lineLimit(1)
         .fixedSize()
