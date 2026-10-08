@@ -19,6 +19,9 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-07 ~19:3x — still picture until Play — build 43
+- Build 42 on his screen: a cued, never-played video showed a BLACK preview (AVPlayer has no frame before playing). Now the still (poster art → frame ~3 s in) shows until Play; the live player takes over once it has played.
+
 ### 2026-10-07 ~19:1x — preview starts ON; length read on cue — build 42
 - His: *"i have a video highlighted and all i see is play ff and the video name with a scrubber 0:00/0:00 continuous off shouldnt i see a stopped video screen?"* → preview defaults ON (his saved choice still wins); the cued item's length is read from its header at once.
 

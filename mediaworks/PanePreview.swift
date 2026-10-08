@@ -45,8 +45,11 @@ struct PanePreview: View {
     /// True while a video that came from THIS pane is loaded — then the player is the preview.
     // REM  Only the pane the video came from shows it: one AVPlayer can be drawn in one place at a
     // REM  time, and his Other Pane mode moves playback between panes, so the picture follows it.
+    // REM  THE LIVE PLAYER ONLY ONCE IT HAS PLAYED — build 42 on his screen: a cued, never-played video
+    // REM  showed a BLACK box (AVPlayer has drawn no frame yet). Until Play, the still (poster art, else a
+    // REM  frame a few seconds in) stands in for it — his "stopped video screen".
     private var showsPlayer: Bool {
-        mini.currentSource == source && mini.currentIsVideo && !playerShrunk
+        mini.currentSource == source && mini.currentIsVideo && mini.hasStarted && !playerShrunk
     }
 
     var body: some View {
@@ -65,7 +68,7 @@ struct PanePreview: View {
                     .help("Shrink the video — the preview comes back, and the video keeps playing")
                 } else {
                     PreviewPicture(item: item)
-                    if mini.currentSource == source, mini.currentIsVideo {
+                    if mini.currentSource == source, mini.currentIsVideo, mini.hasStarted {
                         Button { playerShrunk = false } label: {
                             Image(systemName: "arrow.up.left.and.arrow.down.right")
                                 .font(.system(size: 18))

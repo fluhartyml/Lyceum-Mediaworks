@@ -41,6 +41,9 @@ final class MiniPlayer {
     private(set) var isPlaying = false
     private(set) var elapsed: Double = 0
     private(set) var duration: Double = 0
+    /// True once the loaded item has actually played — before that there is no frame to show.
+    var hasStarted: Bool { isPlaying || elapsed > 0 }
+
     /// True when what is loaded is a video — the pane preview then shows it.
     var currentIsVideo: Bool {
         (current.flatMap { UTType(filenameExtension: $0.pathExtension) }?.conforms(to: .movie)) ?? false
