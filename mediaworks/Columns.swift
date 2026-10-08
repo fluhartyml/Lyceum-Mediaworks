@@ -286,7 +286,8 @@ final class MediaInfoCache {
     @ObservationIgnored private var asked: Set<String> = []
 
     static func key(_ entry: FolderEntry) -> String {
-        entry.url.standardizedFileURL.path + "#" + String(entry.modified?.timeIntervalSince1970 ?? 0)
+        // REM  Size too — a network drive can report a stale date for a while after an in-place tag save.
+        entry.url.standardizedFileURL.path + "#" + String(entry.modified?.timeIntervalSince1970 ?? 0) + "#" + String(entry.size ?? 0)
     }
 
     func info(for entry: FolderEntry) -> MediaInfo? { info[Self.key(entry)] }

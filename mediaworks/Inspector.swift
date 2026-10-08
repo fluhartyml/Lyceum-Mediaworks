@@ -416,6 +416,11 @@ enum TagWriter {
                 try? MP4Tags.undo(url, oldIndexAt: oldIndex)
                 throw FileProblem(message: "The tags were NOT saved — the file did not check out afterwards, so it was put back exactly as it was.")
             }
+            // REM  STAMP "MODIFIED" FROM HERE — measured 2026-10-08 on House on Haunted Hill: after an in-place save the
+            // REM  server had the new time (14:21:18) but the Mac's network-drive cache kept reporting Sep 24, so
+            // REM  anything keyed on the date (tag columns, previews) would show the OLD tags. Setting it through the
+            // REM  Mac updates both.
+            try? FileManager.default.setAttributes([.modificationDate: Date.now], ofItemAtPath: url.path)
             library.journal("tags (in place)", from: url, to: url)
             library.report("Saved")
             return
