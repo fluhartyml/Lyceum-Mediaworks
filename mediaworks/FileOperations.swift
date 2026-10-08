@@ -95,7 +95,10 @@ enum FileOperations {
     // REM  matters most. Every delete label in the app (right-click, toolbar, Commander menu) comes
     // REM  from here, so they can never disagree with Settings or with each other again.
     static func deleteTitle(instant: Bool) -> String { instant ? "Delete Immediately" : "Move to Trash" }
-    static func deleteSymbol(instant: Bool) -> String { instant ? "xmark.bin" : "trash" }
+    // REM  NOT A BOX — his catch, 2026-10-08: "the bankers box is used to archive and preserve records" —
+    // REM  xmark.bin reads as KEEPING, the opposite of a delete. His pick: the trash can with a slash,
+    // REM  "skips the Trash".
+    static func deleteSymbol(instant: Bool) -> String { instant ? "trash.slash" : "trash" }
 
     static func showInFinder(_ urls: [URL]) {
         #if os(macOS)
