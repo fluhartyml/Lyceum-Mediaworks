@@ -42,10 +42,12 @@ struct ArtworkResult: Identifiable, Hashable {
 }
 
 enum ArtworkSource: String, CaseIterable, Identifiable {
-    case wikipedia, archive, itunes
+    // REM  DuckDuckGo FIRST — his choice ("yes build it with duck duck go"; "i dont use google or bing").
+    case duckduckgo, wikipedia, archive, itunes
     var id: String { rawValue }
     var title: String {
         switch self {
+        case .duckduckgo: "DuckDuckGo"
         case .wikipedia: "Wikipedia"
         case .archive: "Internet Archive"
         case .itunes: "iTunes"
@@ -87,6 +89,7 @@ enum ArtworkSearch {
 
     static func search(_ text: String, in source: ArtworkSource) async throws -> [ArtworkResult] {
         switch source {
+        case .duckduckgo: []   // shown as DuckDuckGo's own page (DuckDuckGoPicker.swift), not as a list
         case .itunes: try await itunes(text)
         case .wikipedia: try await wikipedia(text)
         case .archive: try await archive(text)
@@ -193,17 +196,10 @@ enum ArtworkSearch {
         throw FileProblem(message: "That picture could not be downloaded.")
     }
 
-    /// Opens Google Images in his browser for the words, filtered to the shape — then he drags a picture onto Lyceum.
+    /// Opens DuckDuckGo Images in his own browser for the words — then he drags a picture onto Lyceum.
+    // REM  Was Google until his "i dont use google or bing", 2026-10-08.
     static func webSearchURL(_ text: String, shape: ArtworkShape) -> URL? {
-        var parts = URLComponents(string: "https://www.google.com/search")!
-        var items = [URLQueryItem(name: "q", value: text), URLQueryItem(name: "udm", value: "2")]
-        switch shape {
-        case .poster: items.append(URLQueryItem(name: "tbs", value: "iar:t"))
-        case .wide: items.append(URLQueryItem(name: "tbs", value: "iar:w"))
-        case .any: break
-        }
-        parts.queryItems = items
-        return parts.url
+        DuckDuckGo.imagesURL(text, shape: shape)
     }
 }
 
@@ -215,7 +211,9 @@ struct ArtworkSearchSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @State private var text = ""
-    @State private var source: ArtworkSource = .wikipedia
+    @State private var source: ArtworkSource = .duckduckgo
+    @State private var duckAddress: URL?
+    @State private var bridge = DuckDuckGoBridge()
     @State private var shape: ArtworkShape = .poster
     @State private var results: [ArtworkResult] = []
     @State private var searching = false
@@ -244,22 +242,35 @@ struct ArtworkSearchSheet: View {
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 460)
                 .onChange(of: source) { run() }
+                .onChange(of: shape) { if source == .duckduckgo { run() } }
                 Picker("Shape", selection: $shape) {
                     ForEach(ArtworkShape.allCases) { Text($0.title).tag($0) }
                 }
                 .labelsHidden()
                 .frame(width: 190)
                 Spacer()
-                Button("Search the Web…") {
+                if source == .duckduckgo {
+                    Button("Use This Picture") { bridge.pickLargest() }
+                        .disabled(downloading != nil)
+                        .lyceumHelp("Use This Picture — takes the picture DuckDuckGo is showing large (click a picture first). Or just double-click a picture.")
+                }
+                Button("Open in Browser…") {
                     if let url = ArtworkSearch.webSearchURL(text, shape: shape) { openURL(url) }
                 }
                 .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
-                .lyceumHelp("Search the Web — opens an image search for these words in your browser, in the shape chosen. Drag the picture you like onto Lyceum's picture area.")
+                .lyceumHelp("Open in Browser — the same DuckDuckGo image search in your own browser. Drag the picture you like onto Lyceum's picture area.")
             }
-            Text("Only these words are sent. From the web, drag a picture onto the picture in the Inspector.")
+            Text(source == .duckduckgo
+                 ? "Double-click a picture to use it — or click one to see it large, then Use This Picture."
+                 : "Only these words are sent. From a browser, drag a picture onto the Inspector.")
                 .font(.lyceumDetail)
                 .foregroundStyle(.secondary)
-            if searching {
+            if source == .duckduckgo {
+                DuckDuckGoView(address: duckAddress, bridge: bridge)
+                    .frame(minHeight: 420)
+                    .overlay { if downloading != nil { ProgressView().controlSize(.large) } }
+                if let message { Text(message).foregroundStyle(.secondary) }
+            } else if searching {
                 ProgressView().frame(maxWidth: .infinity, minHeight: 200)
             } else if let message {
                 Text(message).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 200)
@@ -297,12 +308,36 @@ struct ArtworkSearchSheet: View {
         .font(.lyceumBody)
         .padding(20)
         .frame(minWidth: 820, minHeight: 640)
-        .onAppear { text = initial; if !initial.isEmpty { run() } }
+        .onAppear {
+            text = initial
+            bridge.picked = { useShown($0) }
+            if !initial.isEmpty { run() }
+        }
+    }
+
+    /// A picture picked on the DuckDuckGo page.
+    private func useShown(_ address: URL) {
+        guard downloading == nil else { return }
+        downloading = address.absoluteString
+        message = nil
+        Task {
+            do {
+                pick(try await DuckDuckGo.download(address))
+                dismiss()
+            } catch {
+                message = error.localizedDescription
+            }
+            downloading = nil
+        }
     }
 
     private func run() {
         let words = text.trimmingCharacters(in: .whitespaces)
         guard !words.isEmpty else { return }
+        if source == .duckduckgo {
+            duckAddress = DuckDuckGo.imagesURL(words, shape: shape)
+            return
+        }
         searching = true
         message = nil
         let from = source
