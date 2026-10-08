@@ -268,10 +268,20 @@ final class LibraryStore {
             var destination = trash.appendingPathComponent(day).appendingPathComponent(relative)
             try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
             if FileManager.default.fileExists(atPath: destination.path) {
-                // Trashed twice in one day under the same name: keep both, the later one stamped.
-                let stamp = ISO8601DateFormatter.string(from: .now, timeZone: .current, formatOptions: [.withTime])
-                destination = destination.deletingLastPathComponent()
-                    .appendingPathComponent("\(stamp.replacingOccurrences(of: ":", with: ".")) \(url.lastPathComponent)")
+                // Trashed twice in one day under the same name: keep both, the later one stamped with the time.
+                // REM  FIXED 2026-10-08: the stamp came out BLANK (an ISO formatter given only "time" writes nothing),
+                // REM  so the second copy got a bare leading space and the THIRD had no free name — his second Save
+                // REM  Tags on Flight to Mars failed on exactly that. Each is a different version, so each keeps its own
+                // REM  name: the time, plus a counter if two land in the same second.
+                let clock = DateFormatter()
+                clock.dateFormat = "HH.mm.ss"
+                let stamp = clock.string(from: .now)
+                var counter = 1
+                repeat {
+                    let name = counter == 1 ? "\(stamp) \(url.lastPathComponent)" : "\(stamp)-\(counter) \(url.lastPathComponent)"
+                    destination = destination.deletingLastPathComponent().appendingPathComponent(name)
+                    counter += 1
+                } while FileManager.default.fileExists(atPath: destination.path)
             }
             try FileManager.default.moveItem(at: url, to: destination)
             moved.append((url, destination))

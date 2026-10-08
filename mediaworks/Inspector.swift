@@ -398,6 +398,28 @@ enum TagWriter {
         var changedFields = Array(edits.keys)
         if picture != nil { changedFields.append(.artwork) }
         let cleared = Set(changedFields.flatMap(\.slots))
+
+        // REM  FIRST CHOICE: CHANGE ONLY THE INDEX (MP4Tags.swift) — no copy of the film. Used when the file allows
+        // REM  it AND every tag being changed lives in the iTunes area; a field also stored in a QuickTime or ID3 slot
+        // REM  would be left behind there, so that file takes the whole-file copy below instead.
+        let foreign = existing.contains { item in
+            guard let id = item.identifier, cleared.contains(id) else { return false }
+            return !(id.rawValue.hasPrefix("itsk/") || id.rawValue.hasPrefix("itlk/"))
+        }
+        if !foreign, MP4Tags.canWriteInPlace(url) {
+            let oldIndex = try await Task.detached { try MP4Tags.save(url, edits: edits, picture: picture) }.value
+            // The check: same tracks, same length, and it opens. If not, the old index is put back.
+            let check = AVURLAsset(url: url)
+            let tracks = (try? await check.load(.tracks).count) ?? 0
+            let length = (try? await check.load(.duration).seconds).flatMap { $0.isFinite ? $0 : nil } ?? 0
+            if tracks != before.trackCount || abs(length - before.duration) > 0.5 {
+                try? MP4Tags.undo(url, oldIndexAt: oldIndex)
+                throw FileProblem(message: "The tags were NOT saved — the file did not check out afterwards, so it was put back exactly as it was.")
+            }
+            library.journal("tags (in place)", from: url, to: url)
+            library.report("Saved")
+            return
+        }
         var items: [AVMetadataItem] = existing.filter { !($0.identifier.map(cleared.contains) ?? false) }
         for (field, text) in edits {
             if let item = try item(field, text) { items.append(item) }
@@ -493,7 +515,7 @@ enum TagWriter {
     /// "PG-13" → "mpaa|PG-13|300|", "TV-14" → "us-tv|TV-14|500|" — iTunes' rating format.
     // REM  The scores are iTunes' known values for the US systems, written from memory and not checked
     // REM  against a published table; an unknown rating is written with 0, which players still show.
-    static func ratingTag(_ rating: String) -> String {
+    nonisolated static func ratingTag(_ rating: String) -> String {
         if rating.contains("|") { return rating }
         let movies = ["G": 100, "PG": 200, "PG-13": 300, "R": 400, "NC-17": 500]
         let tv = ["TV-Y": 100, "TV-Y7": 200, "TV-G": 300, "TV-PG": 400, "TV-14": 500, "TV-MA": 600]
