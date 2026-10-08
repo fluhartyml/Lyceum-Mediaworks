@@ -50,6 +50,15 @@ enum InspectorSize: String, CaseIterable, Identifiable {
         case .large: "Large"
         }
     }
+    /// The hover text for its button.
+    var help: String {
+        switch self {
+        case .off: "Inspector Off — just the two panes, half the window each (⌘I steps through)"
+        case .small: "Inspector Small — file information and tags between the panes, a third of the window (⌘I)"
+        case .large: "Inspector Large — file information and tags in the middle half of the window, picture bigger (⌘I)"
+        }
+    }
+
     /// ⌘I steps through them.
     var next: InspectorSize {
         switch self {

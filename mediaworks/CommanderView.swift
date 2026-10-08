@@ -215,11 +215,16 @@ struct CommanderView: View {
         .toolbar {
             ToolbarItem {
                 // REM  Off · Small · Large — the same three as ⌘I in the Commander menu.
-                Picker("Inspector", selection: $inspectorRaw) {
-                    ForEach(InspectorSize.allCases) { Text($0.title).tag($0.rawValue) }
+                // REM  ONE HOVER TEXT PER CHOICE — his list, 2026-10-08, named "off, small, large" separately.
+                // REM  A segmented picker carries one tooltip for all three, so each is its own button.
+                ControlGroup {
+                    ForEach(InspectorSize.allCases) { size in
+                        Toggle(size.title, isOn: Binding(get: { inspectorSize == size },
+                                                         set: { if $0 { inspectorRaw = size.rawValue } }))
+                            .toggleStyle(.button)
+                            .help(size.help)
+                    }
                 }
-                .pickerStyle(.segmented)
-                .help("Inspector between the panes: Off, Small (a third), Large (the middle half) — ⌘I")
             }
             ToolbarItemGroup {
                 // REM  Hover text on every glyph — his ask, 2026-10-08. Each names its ⌘ key too.
@@ -676,7 +681,7 @@ private struct CommanderPane: View {
             }
             .font(.lyceumBody)
             .disabled(pane.showingDrives || upIsDeadEnd)
-            .help(pane.isAtTop(library: library) ? "Show all drives" : "Up one folder")
+            .help(pane.isAtTop(library: library) ? "Up — show all drives" : "Up — go to the folder that holds this one")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
@@ -711,7 +716,7 @@ private struct CommanderPane: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .help("Choose a drive")
+        .help("Drive — choose which drive or folder this pane shows: your library, any drive, or another folder")
     }
 
     private var driveName: String {
@@ -800,46 +805,47 @@ private struct CommanderPane: View {
             // REM  says in words what the arrows add up to, because a two-column sort is easy to miss.
             Toggle(isOn: $pane.noSort) { Label("No Sort", systemImage: "line.3.horizontal") }
                 .toggleStyle(.button)
-                .help(pane.noSort ? "No Sort is on — your own order (DJ/VJ). Click to bring back the column arrows."
-                                  : "Turn on No Sort — your own order. The column arrows are kept for later.")
+                .help(pane.noSort ? "No Sort (on) — rows stay in your own order, for DJ/VJ play. Click to sort by the column arrows again."
+                                  : "No Sort (off) — rows are sorted by the column arrows. Click to use your own order instead; the arrows are kept for later.")
             Button { showingColumns = true } label: { Label("Columns…", systemImage: "tablecells") }
-                .help("Columns: choose which show, move them, set their sort arrows. Now: \(sortSummary)")
+                .help("Columns — choose which columns show, move them left or right, and set their sort arrows. Now: \(sortSummary)")
 
             if pane.isYourOrder {
                 Button { pane.nudge(up: true) } label: { Label("Move Up", systemImage: "arrow.up") }
                     .disabled(pane.selection.isEmpty || pane.showingDrives)
-                    .help("Move the highlighted rows up one place in your order")
+                    .help("Move Up — move the highlighted rows up one place in your own order")
                 Button { pane.nudge(up: false) } label: { Label("Move Down", systemImage: "arrow.down") }
                     .disabled(pane.selection.isEmpty || pane.showingDrives)
-                    .help("Move the highlighted rows down one place in your order")
+                    .help("Move Down — move the highlighted rows down one place in your own order")
             }
 
             Button { newFolder() } label: { Label("New Folder", systemImage: "folder.badge.plus") }
                 .disabled(pane.showingDrives)
-                .help("Make a folder here")
+                .help("New Folder — make a new folder in the folder this pane shows (⌘7)")
             Button {
                 refreshes += 1
                 store.report("Read \(pane.showingDrives ? "the drive list" : pane.folder.lastPathComponent) again")
                 if pane.showingDrives { pane.drives = Drives.mounted() }
             } label: { Label("Refresh", systemImage: "arrow.clockwise") }
-                .help("Read this folder again")
+                .help("Refresh — read this pane's folder from the drive again now, so files added, renamed or removed elsewhere (in Finder, on Nineveh) show up. The pane also does this by itself every 10 seconds.")
             Button { pane.showHidden.toggle() } label: {
                 Label(pane.showHidden ? "Hide Hidden" : "Show Hidden", systemImage: pane.showHidden ? "eye.slash" : "eye")
             }
-            .help("Show or hide hidden files and folders — a name starting with a period, or hidden by macOS. Hidden ones show in red.")
+            .help(pane.showHidden ? "Hide Hidden — stop showing hidden files and folders (the ones shown in red)"
+                                  : "Show Hidden — also show hidden files and folders: names starting with a period, or hidden by macOS. They show in red.")
 
             // REM  The preview switch sits with the view tools, its icon showing the state it is in.
             Button { pane.showPreview.toggle() } label: {
                 Label(pane.showPreview ? "Hide Preview" : "Show Preview",
                       systemImage: pane.showPreview ? "rectangle.bottomhalf.inset.filled" : "rectangle.split.1x2")
             }
-            .help(pane.showPreview ? "Hide the preview area at the bottom of this pane"
-                                   : "Show a preview of the highlighted file or folder at the bottom of this pane — a playing video shows there too")
+            .help(pane.showPreview ? "Hide Preview — remove the preview area at the bottom of this pane"
+                                   : "Show Preview — show a picture of the highlighted file or folder at the bottom of this pane")
 
             #if os(macOS)
             Button { exportPlaylist() } label: { Label("Export Playlist…", systemImage: "music.note.list") }
                 .disabled(pane.showingDrives || !pane.entries.contains(where: \.isMedia))
-                .help("Save the videos and songs in this pane, in the order shown, as a playlist (.m3u8)")
+                .help("Export Playlist — save the videos and songs in this pane, in the order shown, as a playlist file (.m3u8)")
             #endif
 
             Spacer(minLength: 8)
