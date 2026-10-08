@@ -35,10 +35,13 @@ struct ArtworkResult: Identifiable, Hashable {
     let id: String
     let title: String
     let detail: String
-    let thumbnail: URL
-    let large: URL
+    /// Nil only for a Wikipedia page with no picture — its information can still be used.
+    let thumbnail: URL?
+    let large: URL?
     /// Width ÷ height when the source says so — for preferring posters or wide frames.
     let aspect: Double?
+    /// The Wikipedia page this came from — for fetching the film's facts. Nil for other sources.
+    var wikiPage: String? = nil
 }
 
 enum ArtworkSource: String, CaseIterable, Identifiable {
@@ -148,16 +151,17 @@ enum ArtworkSearch {
                             URLQueryItem(name: "pithumbsize", value: "1200")]
         guard let pages = ((try await json(parts.url!) as? [String: Any])?["query"] as? [String: Any])?["pages"] as? [[String: Any]]
         else { return [] }
-        return pages.sorted { ($0["index"] as? Int ?? 0) < ($1["index"] as? Int ?? 0) }.compactMap { page in
-            guard let thumb = page["thumbnail"] as? [String: Any], let source = thumb["source"] as? String,
-                  let pictureURL = URL(string: source) else { return nil }
-            let w = thumb["width"] as? Double, h = thumb["height"] as? Double
+        // REM  Pages WITHOUT a picture are kept too — Find Info & Picture can still use their facts.
+        return pages.sorted { ($0["index"] as? Int ?? 0) < ($1["index"] as? Int ?? 0) }.map { page in
+            let thumb = page["thumbnail"] as? [String: Any]
+            let pictureURL = (thumb?["source"] as? String).flatMap(URL.init(string:))
+            let w = thumb?["width"] as? Double, h = thumb?["height"] as? Double
             let title = page["title"] as? String ?? "Untitled"
-            let size = (w != nil && h != nil) ? "\(Int(w!))×\(Int(h!))" : ""
+            let size = (w != nil && h != nil) ? "\(Int(w!))×\(Int(h!))" : "no picture"
             return ArtworkResult(id: "wiki:" + title, title: title,
                                  detail: [page["description"] as? String ?? "", size].filter { !$0.isEmpty }.joined(separator: " · "),
                                  thumbnail: pictureURL, large: pictureURL,
-                                 aspect: (w != nil && h != nil && h! > 0) ? w! / h! : nil)
+                                 aspect: (w != nil && h != nil && h! > 0) ? w! / h! : nil, wikiPage: title)
         }
     }
 
@@ -187,7 +191,7 @@ enum ArtworkSearch {
 
     /// The large picture, falling back to the small one.
     static func download(_ result: ArtworkResult) async throws -> Data {
-        for url in [result.large, result.thumbnail] {
+        for url in [result.large, result.thumbnail].compactMap({ $0 }) {
             var request = URLRequest(url: url)
             request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
             if let (data, response) = try? await URLSession.shared.data(for: request),
@@ -206,7 +210,10 @@ enum ArtworkSearch {
 /// The Find Picture… window.
 struct ArtworkSearchSheet: View {
     let initial: String
-    let pick: (Data) -> Void
+    /// Which tab it opens on: DuckDuckGo for Find Picture…, Wikipedia for Find Info & Picture….
+    var startOn: ArtworkSource = .duckduckgo
+    /// The picture (if any) and the facts (Wikipedia only) he picked.
+    let pick: (Data?, [TagField: String]) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
@@ -277,6 +284,8 @@ struct ArtworkSearchSheet: View {
             }
             Text(source == .duckduckgo
                  ? "Double-click a picture to use it — or click one to see it large, then Use This Picture."
+                 : source == .wikipedia
+                 ? "Click the film or show: its title, year, genre, director, descriptions and poster go into the Inspector to check, then Save Tags."
                  : "Only these words are sent. From a browser, drag a picture onto the Inspector.")
                 .font(.lyceumDetail)
                 .foregroundStyle(.secondary)
@@ -288,7 +297,7 @@ struct ArtworkSearchSheet: View {
                     .overlay {
                         if let viewing {
                             PictureViewer(address: viewing,
-                                          use: { data in pick(data); finish() },
+                                          use: { data in pick(data, [:]); finish() },
                                           back: { self.viewing = nil })
                                 .padding(10)
                                 .background(.background)
@@ -306,10 +315,16 @@ struct ArtworkSearchSheet: View {
                         ForEach(ordered) { result in
                             Button { use(result) } label: {
                                 VStack(spacing: 6) {
-                                    AsyncImage(url: result.thumbnail) { image in
-                                        image.resizable().scaledToFit()
-                                    } placeholder: {
-                                        ProgressView()
+                                    Group {
+                                        if let thumbnail = result.thumbnail {
+                                            AsyncImage(url: thumbnail) { image in
+                                                image.resizable().scaledToFit()
+                                            } placeholder: {
+                                                ProgressView()
+                                            }
+                                        } else {
+                                            Image(systemName: "doc.text").font(.system(size: 48)).foregroundStyle(.secondary)
+                                        }
                                     }
                                     .frame(width: 160, height: 200)
                                     .overlay { if downloading == result.id { ProgressView() } }
@@ -335,6 +350,7 @@ struct ArtworkSearchSheet: View {
         .padding(20)
         .frame(minWidth: 900, minHeight: 700)
         .onAppear {
+            source = startOn
             viewing = nil
             results = []
             message = nil
@@ -347,7 +363,7 @@ struct ArtworkSearchSheet: View {
         // REM  A NEW FILE CLOSES THE OLD VIEWER — his bug, 2026-10-08 (build 78): Find Picture for "Cosmos War of the
         // REM  Planets" opened on top of the Assignment Outer Space viewer left open from the last file; Use This
         // REM  Picture there would have put the WRONG poster on the new file.
-        .onChange(of: initial) { viewing = nil; text = initial; if !initial.isEmpty { run() } }
+        .onChange(of: initial) { viewing = nil; source = startOn; text = initial; if !initial.isEmpty { run() } }
     }
 
     /// Clears everything and closes — ready for the next file's search.
@@ -372,7 +388,7 @@ struct ArtworkSearchSheet: View {
         message = nil
         Task {
             do {
-                pick(try await DuckDuckGo.download(address))
+                pick(try await DuckDuckGo.download(address), [:])
                 finish()
             } catch {
                 message = error.localizedDescription
@@ -412,8 +428,15 @@ struct ArtworkSearchSheet: View {
         downloading = result.id
         Task {
             do {
-                let data = try await ArtworkSearch.download(result)
-                pick(data)
+                // REM  FROM WIKIPEDIA, THE FACTS COME WITH THE PICTURE — his ruling: "if it finds both on wikimedia it
+                // REM  would both probably be correct." A page with no picture still gives its facts.
+                if let page = result.wikiPage {
+                    async let facts = WikiInfo.fetch(page)
+                    let data = result.thumbnail == nil ? nil : try? await ArtworkSearch.download(result)
+                    pick(data, try await facts)
+                } else {
+                    pick(try await ArtworkSearch.download(result), [:])
+                }
                 finish()
             } catch {
                 message = error.localizedDescription
@@ -472,11 +495,16 @@ final class PicturePick {
     var initial = ""
     /// The picture picked, waiting for the Inspector to take it.
     var result: Data?
+    /// The facts picked with it (Wikipedia), waiting likewise.
+    var info: [TagField: String] = [:]
+    /// The tab the window opens on.
+    var startSource: ArtworkSource = .duckduckgo
     /// Changes on every pick, so the Inspector notices the same picture picked twice.
     var resultToken = UUID()
 
-    func deliver(_ data: Data) {
+    func deliver(_ data: Data?, info: [TagField: String]) {
         result = data
+        self.info = info
         resultToken = UUID()
     }
 }
@@ -484,6 +512,95 @@ final class PicturePick {
 struct FindPictureWindow: View {
     @Environment(PicturePick.self) private var pick
     var body: some View {
-        ArtworkSearchSheet(initial: pick.initial) { pick.deliver($0) }
+        ArtworkSearchSheet(initial: pick.initial, startOn: pick.startSource) { pick.deliver($0, info: $1) }
+    }
+}
+
+// MARK: - A film's facts from Wikipedia + Wikidata
+
+/// Title, year, genre, director, descriptions and kind for one Wikipedia page — free, no key.
+// REM  HIS ASK, 2026-10-08: "how can we fill in the metadata? can it search the internet just like with the movie
+// REM  poster? can it do both at the same time?" → "yes build it that way". Measured on four of his films the same
+// REM  day (Assignment: Outer Space, Kronos, Flight to Mars, House on Haunted Hill): every one had year, genre,
+// REM  director and both descriptions.
+// REM  · TITLE = the Wikipedia page name without its "(film)" tag — Wikidata's own title is the ORIGINAL release
+// REM    title ("Space Men" for Assignment: Outer Space).
+// REM  · YEAR = the earliest release date. · GENRE = the first one listed, readable ("science fiction film" →
+// REM    "Science Fiction"); House on Haunted Hill lists fourteen. · DIRECTOR → 002 Artist (iTunes' use of it for films).
+// REM  · KIND: film → Movie; a television series → TV Show, with 019 TV Show = its title.
+enum WikiInfo {
+    private static let agent = "LyceumMediaworks/1.0 (https://fluharty.me/support/)"
+
+    private static func json(_ url: URL) async throws -> [String: Any] {
+        var request = URLRequest(url: url)
+        request.setValue(agent, forHTTPHeaderField: "User-Agent")
+        let (data, _) = try await URLSession.shared.data(for: request)
+        return (try JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+    }
+
+    static func fetch(_ page: String) async throws -> [TagField: String] {
+        var parts = URLComponents(string: "https://en.wikipedia.org/w/api.php")!
+        parts.queryItems = [URLQueryItem(name: "action", value: "query"), URLQueryItem(name: "format", value: "json"),
+                            URLQueryItem(name: "formatversion", value: "2"), URLQueryItem(name: "redirects", value: "1"),
+                            URLQueryItem(name: "prop", value: "pageprops|extracts|description"),
+                            URLQueryItem(name: "exintro", value: "1"), URLQueryItem(name: "explaintext", value: "1"),
+                            URLQueryItem(name: "titles", value: page)]
+        guard let info = ((try await json(parts.url!))["query"] as? [String: Any])?["pages"] as? [[String: Any]],
+              let first = info.first else { return [:] }
+        var out: [TagField: String] = [:]
+        let pageTitle = (first["title"] as? String) ?? page
+        if let range = pageTitle.range(of: #" \([^)]*\)$"#, options: .regularExpression) {
+            out[.title] = String(pageTitle[..<range.lowerBound])
+        } else {
+            out[.title] = pageTitle
+        }
+        if let short = first["description"] as? String, !short.isEmpty { out[.description] = short }
+        if let long = first["extract"] as? String, !long.isEmpty {
+            out[.longDescription] = String(long.trimmingCharacters(in: .whitespacesAndNewlines).prefix(2000))
+        }
+        guard let item = (first["pageprops"] as? [String: Any])?["wikibase_item"] as? String else { return out }
+
+        let claims = (((try await json(URL(string: "https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=claims&ids=\(item)")!))["entities"]
+                        as? [String: Any])?[item] as? [String: Any])?["claims"] as? [String: Any] ?? [:]
+        func values(_ property: String) -> [Any] {
+            ((claims[property] as? [[String: Any]]) ?? []).compactMap {
+                (($0["mainsnak"] as? [String: Any])?["datavalue"] as? [String: Any])?["value"]
+            }
+        }
+        func ids(_ property: String) -> [String] { values(property).compactMap { ($0 as? [String: Any])?["id"] as? String } }
+
+        // REM  A film's release date (P577); a series has none, so its first-aired date (P580) — Star Blazers, 1979.
+        let years = (values("P577") + values("P580")).compactMap { ($0 as? [String: Any])?["time"] as? String }
+            .compactMap { Int($0.dropFirst().prefix(4)) }
+        if let year = years.min() { out[.year] = String(year) }
+
+        let genres = ids("P136"), directors = ids("P57"), kinds = ids("P31")
+        let names = try await labels(Array((genres.prefix(1) + directors + kinds)))
+        if let genre = genres.first.flatMap({ names[$0] }) {
+            let plain = genre.replacingOccurrences(of: #" (film|television series)$"#, with: "", options: .regularExpression)
+            out[.genre] = plain.split(separator: " ").map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
+        }
+        let directorNames = directors.compactMap { names[$0] }.filter { !$0.isEmpty }
+        if !directorNames.isEmpty { out[.artist] = directorNames.joined(separator: ", ") }
+        let kindNames = kinds.compactMap { names[$0]?.lowercased() }
+        if kindNames.contains(where: { $0.contains("television series") || $0.contains("anime television") }) {
+            out[.mediaKind] = "10"
+            out[.show] = out[.title]
+        } else if kindNames.contains(where: { $0.contains("film") }) {
+            out[.mediaKind] = "9"
+        }
+        return out
+    }
+
+    private static func labels(_ ids: [String]) async throws -> [String: String] {
+        guard !ids.isEmpty else { return [:] }
+        let joined = ids.joined(separator: "|")
+        guard let url = URL(string: "https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=labels&languages=en&ids=\(joined)"),
+              let entities = (try await json(url))["entities"] as? [String: Any] else { return [:] }
+        var out: [String: String] = [:]
+        for (id, entity) in entities {
+            out[id] = (((entity as? [String: Any])?["labels"] as? [String: Any])?["en"] as? [String: Any])?["value"] as? String
+        }
+        return out
     }
 }

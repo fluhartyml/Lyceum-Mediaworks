@@ -565,6 +565,8 @@ struct InspectorPane: View {
     @State private var problem: String?
     @State private var choosingPicture = false
     @State private var findingPicture = false
+    /// Which tab Find… opens on — DuckDuckGo (picture) or Wikipedia (facts + picture).
+    @State private var findOn: ArtworkSource = .duckduckgo
     #if os(macOS)
     @Environment(PicturePick.self) private var pickWindow
     @Environment(\.openWindow) private var openWindow
@@ -618,15 +620,19 @@ struct InspectorPane: View {
         .onChange(of: findingPicture) {
             guard findingPicture else { return }
             findingPicture = false
+            pickWindow.startSource = findOn
             pickWindow.initial = searchWords
             openWindow(id: "findpicture")
         }
         .onChange(of: pickWindow.resultToken) {
-            if let data = pickWindow.result { pickWindow.result = nil; usePicture(data) }
+            let data = pickWindow.result, info = pickWindow.info
+            pickWindow.result = nil
+            pickWindow.info = [:]
+            take(data, info)
         }
         #else
         .sheet(isPresented: $findingPicture) {
-            ArtworkSearchSheet(initial: searchWords) { usePicture($0) }
+            ArtworkSearchSheet(initial: searchWords, startOn: findOn) { take($0, $1) }
         }
         #endif
         // REM  DROP A PICTURE ANYWHERE ON THE INSPECTOR — the web fallback's other half (his "fall back on a general
@@ -682,7 +688,15 @@ struct InspectorPane: View {
     @ViewBuilder
     private func tags(_ item: FolderEntry) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Tags").font(.lyceumHeadline)
+            HStack(spacing: 12) {
+                Text("Tags").font(.lyceumHeadline)
+                Spacer()
+                if canSave {
+                    // REM  FIND INFO & PICTURE — his "can it do both at the same time?" → "yes build it that way".
+                    Button("Find Info & Picture…") { findOn = .wikipedia; findingPicture = true }
+                        .lyceumHelp("Find Info & Picture — search Wikipedia for this film or show; one click fills its title, year, genre, director, descriptions and poster here to check before Save Tags")
+                }
+            }
             if loading {
                 ProgressView()
             } else {
@@ -780,7 +794,7 @@ struct InspectorPane: View {
                 HStack(spacing: 12) {
                     Button("Choose Picture…") { choosingPicture = true }
                         .lyceumHelp("Choose Picture — pick an album cover or movie poster from your files to save into this file")
-                    Button("Find Picture…") { findingPicture = true }
+                    Button("Find Picture…") { findOn = .duckduckgo; findingPicture = true }
                         .lyceumHelp("Find Picture — search Apple's iTunes catalog for a cover or poster, starting from this file's name")
                     Button("Remove Picture") { picture = .remove; pendingPicture = nil }
                         .disabled(shownPicture == nil)
@@ -847,7 +861,7 @@ struct InspectorPane: View {
             HStack(spacing: 12) {
                 Button("Choose Picture…") { choosingPicture = true }
                     .disabled(applying)
-                Button("Find Picture…") { findingPicture = true }
+                Button("Find Picture…") { findOn = .duckduckgo; findingPicture = true }
                     .disabled(applying)
                     .lyceumHelp("Find Picture — search Apple's iTunes catalog for one cover or poster for all of them")
                     .lyceumHelp("Choose Picture — pick one album cover or poster for every highlighted file")
@@ -898,6 +912,21 @@ struct InspectorPane: View {
             pendingPicture = nil
             applying = false
             saved()
+        }
+    }
+
+    /// What came back from Find…: a picture and/or facts. They become waiting changes — nothing is saved yet.
+    // REM  With several files highlighted only the picture applies — each file's facts are its own.
+    private func take(_ data: Data?, _ info: [TagField: String]) {
+        if let data { usePicture(data) }
+        guard many.count <= 1 else { return }
+        var filled = 0
+        for (field, value) in info where field.kind != .picture && field.kind != .chapters && !value.isEmpty {
+            edits[field] = value
+            filled += 1
+        }
+        if filled > 0 {
+            library.report("Filled \(filled) field\(filled == 1 ? "" : "s") from Wikipedia — check them, then Save Tags")
         }
     }
 
