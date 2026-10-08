@@ -769,9 +769,12 @@ struct InspectorPane: View {
         }
     }
 
-    /// A stored value in words — for read-only files.
+    /// A value in words — for read-only files, and WHILE SAVING.
+    // REM  WHILE SAVING, THE VALUES BEING SAVED — his report, 2026-10-08 (build 81): "when i clicked save tags it looks
+    // REM  like it reset and removed them". It had not: a 1.13 GB file was still being copied, and the fields showed
+    // REM  the file's OLD (empty) values in the meantime. Now the waiting values stay on screen until the save ends.
     private func shown(_ field: TagField) -> String {
-        guard let value = file.tags[field] else { return "—" }
+        guard let value = (saving ? edits[field] : nil) ?? file.tags[field] else { return "—" }
         return field.choices.first(where: { $0.0 == value })?.1 ?? value
     }
 
@@ -992,7 +995,8 @@ struct InspectorPane: View {
         let releasedFrom = mini.release(item.url)
         let edits = changed, picture = picture, before = file
         saving = true
-        library.report("Saving…", working: true)
+        // REM  Says how much is being copied — a big film takes minutes over the network, and silence looks like a loss.
+        library.report("Saving… (writing a new \(item.size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? "") copy)", working: true)
         Task {
             do {
                 try await TagWriter.save(item.url, edits: edits, picture: picture, before: before,
