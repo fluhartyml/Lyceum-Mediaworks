@@ -194,8 +194,14 @@ final class PaneState {
     }
     /// The columns on screen, left to right.
     var shownColumns: [ColumnSetting] { columns.filter(\.visible) }
-    /// No arrow on any shown column: his own dragged order.
-    var isYourOrder: Bool { !shownColumns.contains { $0.arrow != nil } }
+    /// NO SORT: the pane shows his own order and the arrows step aside — kept, not erased.
+    // REM  HIS RULING, 2026-10-07: "there probanly should be a no sort button or option?" → "yes build it
+    // REM  no sort is defalt". No Sort is DJ/VJ mode's order (Sep 19: "no we did the no sort on purpose
+    // REM  for 'dj mode'"), so EVERY PANE STARTS IN NO SORT. Turning it off brings back the arrows exactly
+    // REM  as he left them — one click each way, no re-building a two-column sort.
+    var noSort: Bool { didSet { save(noSort, "NoSort"); resort() } }
+    /// No Sort on, or no arrow on any shown column: his own dragged order.
+    var isYourOrder: Bool { noSort || !shownColumns.contains { $0.arrow != nil } }
     var showHidden: Bool { didSet { save(showHidden, "Hidden") } }
     /// The preview area in the lower part of the pane — on or off, per pane, saved.
     // REM  PER PANE, as in NightGard Commander: he may want pictures on the side he is sorting and
@@ -279,6 +285,7 @@ final class PaneState {
         // REM  i see is play ff and the video name … shouldnt i see a stopped video screen?" Off by default
         // REM  hid the very thing he asked for. His own Show/Hide choice, once made, is kept as before.
         showPreview = d.object(forKey: prefix + "Preview") as? Bool ?? true
+        noSort = d.object(forKey: prefix + "NoSort") as? Bool ?? true
         playerShrunk = d.bool(forKey: prefix + "PlayerShrunk")
         previewHeight = d.double(forKey: prefix + "PreviewHeight")
         pendingSelection = Set((d.stringArray(forKey: prefix + "Selection") ?? []).map { URL(fileURLWithPath: $0) })
@@ -329,8 +336,15 @@ final class PaneState {
     // MARK: Columns
 
     /// A click on a column's header: ▲ → ▼ → no arrow.
+    // REM  While No Sort is on, a header click means "sort by this": No Sort turns off, his kept arrows
+    // REM  come back, and the clicked column gets ▲ if it had no arrow (otherwise it keeps its own).
     func cycleArrow(_ id: ColumnID) {
         guard let i = columns.firstIndex(where: { $0.id == id }) else { return }
+        if noSort {
+            if columns[i].arrow == nil { columns[i].arrow = .up }
+            noSort = false
+            return
+        }
         columns[i].cycle()
     }
 

@@ -19,6 +19,11 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-07 ~19:5x — No Sort toggle, the DEFAULT — build 45
+- His: *"this was at one time our DJ or VJ mode"* · *"there probanly should be a no sort button or option? do you think?"* → *"yes build it no sort is defalt"*. Prior ruling (Sep 19, NightGard Commander): ***"no we did the no sort on purpose for 'dj mode'"*** — never make Name the default.
+- **No Sort** toggle on each pane's tools row (+ Columns… panel), saved per pane, **default ON**. On = Your Order; the arrows are KEPT, not used, and not drawn. Off = arrows back as left. A header click while No Sort is on turns it off (clicked column gets ▲ if it had none).
+- ⬜ Carried, NOT built (offered, not re-confirmed): the Sep 27 DJ rule — while PLAYING a move lets the next one play; while PAUSED it waits.
+
 ### 2026-10-07 ~19:4x — Continuous: highlight follows, highlight plays, skip non-media — build 44
 - His rules: *"when the video or audio finishes it needs to move to the next in line and the next in line becomes highlighted, if the continuous is on and the file becomes highlighted it needs to be either a video or audio file and start to play"* · *"if it is not a video or audio it needs to skip to the next video or audio file"*.
 - Built: the highlight follows playback (does NOT change the active pane) · Continuous ON → a media highlight plays at once (OFF keeps highlight = cue) · play order = rows on screen incl. revealed folders, media only (build 43 used top level only — found on his screen).

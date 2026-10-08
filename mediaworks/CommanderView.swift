@@ -700,6 +700,10 @@ private struct CommanderPane: View {
             // REM  THE SORT MENU IS GONE — the arrows on the column headers are the sort now (his design,
             // REM  Columns.swift). Columns… is where columns are shown, hidden and moved; the line after it
             // REM  says in words what the arrows add up to, because a two-column sort is easy to miss.
+            Toggle(isOn: $pane.noSort) { Label("No Sort", systemImage: "line.3.horizontal") }
+                .toggleStyle(.button)
+                .help(pane.noSort ? "No Sort is on — your own order (DJ/VJ). Click to bring back the column arrows."
+                                  : "Turn on No Sort — your own order. The column arrows are kept for later.")
             Button { showingColumns = true } label: { Label("Columns…", systemImage: "tablecells") }
                 .help("Columns: choose which show, move them, set their sort arrows. Now: \(sortSummary)")
 
@@ -762,7 +766,7 @@ private struct CommanderPane: View {
             // REM  table never sorts anything itself and never draws its own single arrow — the pane sorts,
             // REM  by every arrow, left to right.
             TableColumnForEach(pane.shownColumns) { column in
-                TableColumn(column.id.title + (column.arrow.map { "  " + $0.symbol } ?? ""),
+                TableColumn(column.id.title + (pane.noSort ? "" : column.arrow.map { "  " + $0.symbol } ?? ""),
                             sortUsing: KeyPathComparator(\PaneRow.[column: column.id])) { row in
                     cell(row, column.id)
                 }
@@ -996,6 +1000,7 @@ private struct CommanderPane: View {
 
     /// The arrows in words, left to right — or "Your Order".
     private var sortSummary: String {
+        if pane.noSort { return "No Sort — your own order" }
         let keys = pane.shownColumns.compactMap { c in c.arrow.map { "\(c.id.title) \($0.symbol)" } }
         return keys.isEmpty ? "Your Order" : "Sorted by " + keys.joined(separator: ", then ")
     }
@@ -1127,6 +1132,7 @@ private struct ColumnsPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Columns — top to bottom is left to right, and the order they sort in")
                 .font(.lyceumHeadline)
+            Toggle("No Sort — your own order (the arrows below are kept, not used)", isOn: $pane.noSort)
             ForEach(pane.columns) { column in
                 HStack(spacing: 12) {
                     Toggle(column.id.title, isOn: Binding(get: { column.visible },
