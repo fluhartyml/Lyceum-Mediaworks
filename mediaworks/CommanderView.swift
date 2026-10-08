@@ -73,10 +73,18 @@ struct CommanderKey: Identifiable {
     let needsSelection: Bool
     var id: Int { number }
 
+    // REM  THE THIRD KEY IS ⌘Y, NOT ⌘3 — his ruling, 2026-10-08: "rename command 3 to command y". ⌘3 and ⌘Y
+    // REM  both opened Quick Look; ⌘Y is Finder's key for it, so the slot keeps its place and takes ⌘Y.
+    // REM  ⌘3 now does nothing.
+    /// What is printed on the bar and in the menu.
+    var keyLabel: String { number == 3 ? "⌘Y" : "⌘\(number)" }
+    /// The key pressed with ⌘.
+    var shortcut: Character { number == 3 ? "y" : Character(String(number)) }
+
     static let all: [CommanderKey] = [
         CommanderKey(number: 1, title: "Help", help: "What each key does", needsSelection: false),
         CommanderKey(number: 2, title: "Menu", help: "Open the Commander menu", needsSelection: false),
-        CommanderKey(number: 3, title: "View", help: "Quick Look the highlighted files (also ⌘Y)", needsSelection: true),
+        CommanderKey(number: 3, title: "Quick Look", help: "Quick Look the highlighted files in their own window; follows the highlight", needsSelection: true),
         CommanderKey(number: 4, title: "Edit", help: "Open the highlighted files in their own apps", needsSelection: true),
         CommanderKey(number: 5, title: "Copy", help: "Copy the highlighted items to the other pane", needsSelection: true),
         CommanderKey(number: 6, title: "Move", help: "Move the highlighted items to the other pane", needsSelection: true),
@@ -303,15 +311,12 @@ struct CommanderView: View {
     private func keyRow(withExtras: Bool) -> some View {
         HStack(spacing: 0) {
             ForEach(CommanderKey.all) { key in
-                keyButton("⌘\(key.number)", key.title, help: key.help, enabled: keyEnabled(key)) { runKey(key.number) }
+                keyButton(key.keyLabel, key.title, help: key.help, enabled: keyEnabled(key)) { runKey(key.number) }
                 if withExtras || key.number != CommanderKey.all.last?.number { Divider() }
             }
             if withExtras {
                 keyButton("⌘I", "Inspector", help: "Inspector between the panes: Off → Small → Large",
                           enabled: true) { inspectorRaw = inspectorSize.next.rawValue }
-                Divider()
-                keyButton("⌘Y", "Quick Look", help: "Quick Look in its own window; follows the highlight",
-                          enabled: !quickLookList.isEmpty || quickLookURL != nil) { toggleQuickLook() }
             }
         }
     }
@@ -1190,15 +1195,11 @@ struct CommanderMenu: View {
     var body: some View {
         ForEach(CommanderKey.all) { key in
             Button(title(key)) { actions?.runKey(key.number) }
-                .keyboardShortcut(KeyEquivalent(Character(String(key.number))), modifiers: .command)
+                .keyboardShortcut(KeyEquivalent(key.shortcut), modifiers: .command)
                 .disabled(actions == nil || actions?.canAct != true
                           || (key.needsSelection && actions?.hasSelection != true))
             if key.number == 2 || key.number == 4 || key.number == 7 { Divider() }
         }
-        Divider()
-        Button(actions?.quickLookOpen == true ? "Close Quick Look" : "Quick Look") { actions?.toggleQuickLook() }
-            .keyboardShortcut("y", modifiers: .command)
-            .disabled(actions == nil)
         Divider()
         // REM  ⌘I — HIS KEY, 2026-10-08: "i woult think editing in the center pane Command I" (Finder's Get Info key). Steps Off → Small → Large → Off.
         Button("Inspector: \(inspectorSize.next.title)") { inspectorRaw = inspectorSize.next.rawValue }
@@ -1208,6 +1209,7 @@ struct CommanderMenu: View {
 
     private func title(_ key: CommanderKey) -> String {
         switch key.number {
+        case 3: actions?.quickLookOpen == true ? "Close Quick Look" : "Quick Look"
         case 5: "Copy to Other Pane"
         case 6: "Move to Other Pane"
         case 8: FileOperations.deleteTitle(instant: instantDelete)
@@ -1377,14 +1379,13 @@ private struct KeysHelp: View {
             Text("Commander keys").font(.lyceumHeadline)
             ForEach(CommanderKey.all) { key in
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    Text("⌘\(key.number)").bold().frame(width: 44, alignment: .leading)
+                    Text(key.keyLabel).bold().frame(width: 44, alignment: .leading)
                     Text(key.title).frame(width: 120, alignment: .leading)
                     Text(key.help).foregroundStyle(.secondary)
                 }
             }
             Divider()
             row("Tab", "Switch which pane is the source")
-            row("⌘Y", "Quick Look in its own window; follows the highlight")
             row("⌘I", "Inspector between the panes: Off → Small → Large")
             row("Click, pause, click", "Rename a name in its row")
         }
