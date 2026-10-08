@@ -64,7 +64,7 @@ struct ContentView: View {
                         Label(mode.title, systemImage: mode.symbol)
                     }
                     .toggleStyle(.button)
-                    .help(mode.help)
+                    .lyceumHelp(mode.help)
                 }
             }
             #else
@@ -75,7 +75,7 @@ struct ContentView: View {
                 }
             }
             .pickerStyle(.segmented)
-            .help("Library, Commander or Theater")
+            .lyceumHelp("Library, Commander or Theater")
             #endif
         }
         #if os(iOS)
@@ -144,7 +144,7 @@ private struct StatusBar: View {
                 Text(library.status)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                    .help(library.status)
+                    .lyceumHelp(library.status)
                 Spacer(minLength: 20)
                 if library.mode == .library, let checked = library.lastChecked {
                     Text("Checked for changes \(checked.formatted(.dateTime.hour().minute().second()))")

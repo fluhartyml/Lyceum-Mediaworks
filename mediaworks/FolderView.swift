@@ -80,13 +80,13 @@ struct FolderView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .help("List or icons")
+                .lyceumHelp("List or icons")
             }
             if viewMode == .icons {
                 ToolbarItem {
                     Slider(value: $tileSize, in: 140...360) { Text("Tile size") }
                         .frame(width: 160)
-                        .help("Tile size")
+                        .lyceumHelp("Tile size")
                 }
             }
         }
@@ -179,7 +179,7 @@ struct FolderView: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
-                .help(row.name)
+                .lyceumHelp(row.name)
             }
             .width(min: 220, ideal: 420)
             .customizationID("name")
@@ -370,7 +370,7 @@ private struct EntryTile: View {
             }
         }
         .contentShape(Rectangle())
-        .help(entry.name)
+        .lyceumHelp(entry.name)
     }
 
     private var details: String? {

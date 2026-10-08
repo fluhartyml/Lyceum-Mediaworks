@@ -14,6 +14,8 @@ struct SettingsView: View {
     @Environment(LibraryStore.self) private var library
     @State private var choosingFolder = false
     @AppStorage("instantDelete") private var instantDelete = false
+    @AppStorage("paneButtonLabels") private var paneButtonLabels = false
+    @AppStorage("hoverHelpOn") private var hoverHelpOn = true
 
     var body: some View {
         Form {
@@ -25,6 +27,19 @@ struct SettingsView: View {
             } footer: {
                 Text(instantDelete ? "Deleted items are gone at once and cannot be recovered."
                                    : "Deleted items wait 30 days in the library's own Trash, then are removed.")
+                    .foregroundStyle(.secondary)
+            }
+
+            // REM  HIS ASK, 2026-10-08: "can the glyphs with text be a setting?" — labels under the pane buttons
+            // REM  (small; exempt from the 18-point minimum by his word: "the text may be exempt from the 18 point
+            // REM  minimum esp id the hover text is at 18 points and is turned on") — and hover help at 18 points.
+            Section {
+                Toggle("Show labels under the pane buttons", isOn: $paneButtonLabels)
+                Toggle("Show hover help (18 point)", isOn: $hoverHelpOn)
+            } header: {
+                Text("Buttons & Help").font(.lyceumHeadline)
+            } footer: {
+                Text("Labels are small words under each icon in Commander's panes. Hover help tells what a button is and does when the pointer rests on it.")
                     .foregroundStyle(.secondary)
             }
 
@@ -46,7 +61,7 @@ struct SettingsView: View {
         }
         .font(.lyceumBody)
         .formStyle(.grouped)
-        .frame(minWidth: 560, minHeight: 240)
+        .frame(minWidth: 560, minHeight: 420)
         .fileImporter(isPresented: $choosingFolder, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result { library.choose(url) }
         }

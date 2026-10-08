@@ -252,13 +252,13 @@ struct MiniPlayerBar: View {
                     .frame(width: 28)
             }
             .buttonStyle(.borderless)
-            .help(mini.isPlaying ? "Pause — stop playing; Play picks up where it stopped" : "Play — play the cued item (the one highlighted last)")
+            .lyceumHelp(mini.isPlaying ? "Pause — stop playing; Play picks up where it stopped" : "Play — play the cued item (the one highlighted last)")
 
             Button { mini.next() } label: {
                 Image(systemName: "forward.fill").font(.system(size: 18))
             }
             .buttonStyle(.borderless)
-            .help("Next — skip to the next video or song, in the order the pane shows them")
+            .lyceumHelp("Next — skip to the next video or song, in the order the pane shows them")
         }
     }
 
@@ -298,7 +298,7 @@ struct MiniPlayerBar: View {
             }
         }
         .font(.lyceumBody)
-        .help("Continuous — what plays when this one ends: Off (stop), Same Pane (the next one below), Other Pane (the next one across)")
+        .lyceumHelp("Continuous — what plays when this one ends: Off (stop), Same Pane (the next one below), Other Pane (the next one across)")
     }
 
     private var theaterButton: some View {
@@ -306,6 +306,6 @@ struct MiniPlayerBar: View {
             Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 18))
         }
         .buttonStyle(.borderless)
-        .help("Theater — open what is playing full size in the Theater view")
+        .lyceumHelp("Theater — open what is playing full size in the Theater view")
     }
 }

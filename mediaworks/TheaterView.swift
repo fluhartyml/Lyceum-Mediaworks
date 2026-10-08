@@ -54,7 +54,7 @@ struct TheaterView: View {
             ToolbarItem {
                 Button("Open…", systemImage: "folder") { choosingFile = true }
                     .keyboardShortcut("o", modifiers: .command)
-                    .help("Open a video or song (⌘O)")
+                    .lyceumHelp("Open a video or song (⌘O)")
             }
         }
         .fileImporter(isPresented: $choosingFile, allowedContentTypes: [.audiovisualContent]) { result in

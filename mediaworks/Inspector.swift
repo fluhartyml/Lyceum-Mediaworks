@@ -164,14 +164,18 @@ enum TagField: String, CaseIterable, Identifiable {
         }
     }
 
-    /// What a typed value should look like, shown in the empty box.
+    /// What a typed value should look like, shown faintly in an EMPTY box — "e.g." so it never reads as a value.
+    // REM  His screen, build 63: an empty Track and Disc both showed "3/12" and read as real values (the file
+    // REM  had neither). Examples now say "e.g."; fields whose hint only repeated their own name show nothing.
     var hint: String {
         switch self {
-        case .track, .disc: "3/12"
-        case .year: "1959"
-        case .rating: "PG-13 or TV-14"
-        case .episodeID: "S01E05"
-        default: label
+        case .track, .disc: "e.g. 3/12"
+        case .year: "e.g. 1959"
+        case .rating: "e.g. PG-13 or TV-14"
+        case .episodeID: "e.g. S01E05"
+        case .season, .episode: "e.g. 1"
+        case .bpm: "e.g. 120"
+        default: ""
         }
     }
 
@@ -620,9 +624,12 @@ struct InspectorPane: View {
         }
     }
 
+    // REM  THE PICTURE GOES FIRST — his ask, 2026-10-08: "I would like the album art / poster to be number one
+    // REM  at the top instead of being burried down below." It keeps its amber number, 012.
     private func fields(_ list: [TagField]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ForEach(list) { field in
+        let shown = list.contains(.artwork) ? [.artwork] + list.filter { $0 != .artwork } : list
+        return VStack(alignment: .leading, spacing: 12) {
+            ForEach(shown) { field in
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
                         Text(field.number).monospacedDigit().foregroundStyle(.tertiary)
@@ -692,7 +699,7 @@ struct InspectorPane: View {
             if canSave {
                 HStack(spacing: 12) {
                     Button("Choose Picture…") { choosingPicture = true }
-                        .help("Pick an album cover or movie poster to save into this file")
+                        .lyceumHelp("Pick an album cover or movie poster to save into this file")
                     Button("Remove Picture") { picture = .remove; pendingPicture = nil }
                         .disabled(shownPicture == nil)
                 }
@@ -710,13 +717,13 @@ struct InspectorPane: View {
             HStack(spacing: 12) {
                 Button("Revert") { edits = [:]; picture = nil; pendingPicture = nil }
                     .disabled(!hasChanges || saving)
-                    .help("Put back what the file says")
+                    .lyceumHelp("Put back what the file says")
                 Button { save() } label: {
                     if saving { ProgressView().controlSize(.small) } else { Text("Save Tags") }
                 }
                 .keyboardShortcut("s", modifiers: .command)
                 .disabled(!hasChanges || saving)
-                .help("Write these tags into the file")
+                .lyceumHelp("Write these tags into the file")
             }
             // REM  SAY WHAT WILL HAPPEN BEFORE IT HAPPENS — a save rewrites the whole file, which on Nineveh
             // REM  means the whole file crosses the network twice. The label follows Settings, like every

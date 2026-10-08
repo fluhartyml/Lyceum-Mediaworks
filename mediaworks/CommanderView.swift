@@ -222,7 +222,7 @@ struct CommanderView: View {
                         Toggle(size.title, isOn: Binding(get: { inspectorSize == size },
                                                          set: { if $0 { inspectorRaw = size.rawValue } }))
                             .toggleStyle(.button)
-                            .help(size.help)
+                            .lyceumHelp(size.help)
                     }
                 }
             }
@@ -230,17 +230,17 @@ struct CommanderView: View {
                 // REM  Hover text on every glyph — his ask, 2026-10-08. Each names its ⌘ key too.
                 Button("Copy to Other Pane", systemImage: "doc.on.doc") { transfer(move: false) }
                     .disabled(active.selection.isEmpty || busy != nil || editingName)
-                    .help("Copy to Other Pane — copy the highlighted items into the folder highlighted in the other pane, or the folder it has open (⌘5)")
+                    .lyceumHelp("Copy to Other Pane — copy the highlighted items into the folder highlighted in the other pane, or the folder it has open (⌘5)")
                 Button("Move to Other Pane", systemImage: "arrow.left.arrow.right") { transfer(move: true) }
                     .disabled(active.selection.isEmpty || busy != nil || editingName)
-                    .help("Move to Other Pane — move the highlighted items into the folder highlighted in the other pane, or the folder it has open (⌘6)")
+                    .lyceumHelp("Move to Other Pane — move the highlighted items into the folder highlighted in the other pane, or the folder it has open (⌘6)")
                 Button("New Folder", systemImage: "folder.badge.plus") { newFolder() }
                     .disabled(busy != nil || active.showingDrives)
-                    .help("New Folder — make a folder in the active pane (⌘7)")
+                    .lyceumHelp("New Folder — make a folder in the active pane (⌘7)")
                 Button(FileOperations.deleteTitle(instant: instantDelete),
                        systemImage: FileOperations.deleteSymbol(instant: instantDelete)) { trash(Array(active.selection)) }
                     .disabled(active.selection.isEmpty || busy != nil || editingName)
-                    .help(FileOperations.deleteTitle(instant: instantDelete) + " — the highlighted items (⌘8)")
+                    .lyceumHelp(FileOperations.deleteTitle(instant: instantDelete) + " — the highlighted items (⌘8)")
             }
         }
         .focusedSceneValue(\.commanderActions, CommanderActions(
@@ -358,7 +358,7 @@ struct CommanderView: View {
         .buttonStyle(.borderless)
         .focusable(false)
         .disabled(!enabled)
-        .help("\(key) — \(help)")
+        .lyceumHelp("\(key) — \(help)")
     }
 
     private func keyEnabled(_ key: CommanderKey) -> Bool {
@@ -639,6 +639,7 @@ private struct CommanderPane: View {
     /// What the table's header reports when a header is clicked. Read once and emptied at once.
     @State private var headerClick: [KeyPathComparator<PaneRow>] = []
     @State private var showingColumns = false
+    @AppStorage("paneButtonLabels") private var paneButtonLabels = false
 
     private var source: MiniPlayer.Source { pane.side == .left ? .left : .right }
 
@@ -721,7 +722,7 @@ private struct CommanderPane: View {
                 .font(.lyceumBody)
                 .focused($pathFocused)
                 .onSubmit { goTyped() }
-                .help("Type a folder's path and press Return")
+                .lyceumHelp("Type a folder's path and press Return")
             Button { pane.up(library: library) } label: {
                 HStack(spacing: 2) {
                     Image(systemName: "chevron.up")
@@ -730,7 +731,7 @@ private struct CommanderPane: View {
             }
             .font(.lyceumBody)
             .disabled(pane.showingDrives || upIsDeadEnd)
-            .help(pane.isAtTop(library: library) ? "Up — show all drives" : "Up — go to the folder that holds this one")
+            .lyceumHelp(pane.isAtTop(library: library) ? "Up — show all drives" : "Up — go to the folder that holds this one")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
@@ -765,7 +766,7 @@ private struct CommanderPane: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .help("Drive — choose which drive or folder this pane shows: your library, any drive, or another folder")
+        .lyceumHelp("Drive — choose which drive or folder this pane shows: your library, any drive, or another folder")
     }
 
     private var driveName: String {
@@ -841,7 +842,15 @@ private struct CommanderPane: View {
         // REM  COLUMNS' hover text. ViewThatFits builds BOTH candidate rows, and the hidden labelled row's (wider)
         // REM  buttons were the ones answering the hover — wrong text, or none. At 18 pt the labels never fit a
         // REM  pane anyway, so the labelled row is gone and every icon carries its own name-first hover text.
-        toolRow.labelStyle(.iconOnly)
+        // REM  LABELS UNDER THE ICONS are a Settings choice (his, 2026-10-08). Small type, by his exemption from
+        // REM  the 18-point minimum; the row scrolls sideways if a narrow pane cannot hold every label.
+        Group {
+            if paneButtonLabels {
+                ScrollView(.horizontal, showsIndicators: false) { toolRow.labelStyle(SmallCaptionLabelStyle()) }
+            } else {
+                toolRow.labelStyle(.iconOnly)
+            }
+        }
         .font(.lyceumBody)
         .buttonStyle(.borderless)
         .padding(.horizontal, 10)
@@ -856,33 +865,33 @@ private struct CommanderPane: View {
             // REM  says in words what the arrows add up to, because a two-column sort is easy to miss.
             Toggle(isOn: $pane.noSort) { Label("No Sort", systemImage: "line.3.horizontal") }
                 .toggleStyle(.button)
-                .help(pane.noSort ? "No Sort (on) — rows stay in your own order, for DJ/VJ play. Click to sort by the column arrows again."
+                .lyceumHelp(pane.noSort ? "No Sort (on) — rows stay in your own order, for DJ/VJ play. Click to sort by the column arrows again."
                                   : "No Sort (off) — rows are sorted by the column arrows. Click to use your own order instead; the arrows are kept for later.")
             Button { showingColumns = true } label: { Label("Columns…", systemImage: "tablecells") }
-                .help("Columns — choose which columns show, move them left or right, and set their sort arrows. Now: \(sortSummary)")
+                .lyceumHelp("Columns — choose which columns show, move them left or right, and set their sort arrows. Now: \(sortSummary)")
 
             if pane.isYourOrder {
                 Button { pane.nudge(up: true) } label: { Label("Move Up", systemImage: "arrow.up") }
                     .disabled(pane.selection.isEmpty || pane.showingDrives)
-                    .help("Move Up — move the highlighted rows up one place in your own order")
+                    .lyceumHelp("Move Up — move the highlighted rows up one place in your own order")
                 Button { pane.nudge(up: false) } label: { Label("Move Down", systemImage: "arrow.down") }
                     .disabled(pane.selection.isEmpty || pane.showingDrives)
-                    .help("Move Down — move the highlighted rows down one place in your own order")
+                    .lyceumHelp("Move Down — move the highlighted rows down one place in your own order")
             }
 
             Button { newFolder() } label: { Label("New Folder", systemImage: "folder.badge.plus") }
                 .disabled(pane.showingDrives)
-                .help("New Folder — make a new folder in the folder this pane shows (⌘7)")
+                .lyceumHelp("New Folder — make a new folder in the folder this pane shows (⌘7)")
             Button {
                 refreshes += 1
                 store.report("Read \(pane.showingDrives ? "the drive list" : pane.folder.lastPathComponent) again")
                 if pane.showingDrives { pane.drives = Drives.mounted() }
             } label: { Label("Refresh", systemImage: "arrow.clockwise") }
-                .help("Refresh — read this pane's folder from the drive again now, so files added, renamed or removed elsewhere (in Finder, on Nineveh) show up. The pane also does this by itself every 10 seconds.")
+                .lyceumHelp("Refresh — read this pane's folder from the drive again now, so files added, renamed or removed elsewhere (in Finder, on Nineveh) show up. The pane also does this by itself every 10 seconds.")
             Button { pane.showHidden.toggle() } label: {
                 Label(pane.showHidden ? "Hide Hidden" : "Show Hidden", systemImage: pane.showHidden ? "eye.slash" : "eye")
             }
-            .help(pane.showHidden ? "Hide Hidden — stop showing hidden files and folders (the ones shown in red)"
+            .lyceumHelp(pane.showHidden ? "Hide Hidden — stop showing hidden files and folders (the ones shown in red)"
                                   : "Show Hidden — also show hidden files and folders: names starting with a period, or hidden by macOS. They show in red.")
 
             // REM  The preview switch sits with the view tools, its icon showing the state it is in.
@@ -890,13 +899,13 @@ private struct CommanderPane: View {
                 Label(pane.showPreview ? "Hide Preview" : "Show Preview",
                       systemImage: pane.showPreview ? "rectangle.bottomhalf.inset.filled" : "rectangle.split.1x2")
             }
-            .help(pane.showPreview ? "Hide Preview — remove the preview area at the bottom of this pane"
+            .lyceumHelp(pane.showPreview ? "Hide Preview — remove the preview area at the bottom of this pane"
                                    : "Show Preview — show a picture of the highlighted file or folder at the bottom of this pane")
 
             #if os(macOS)
             Button { exportPlaylist() } label: { Label("Export Playlist…", systemImage: "music.note.list") }
                 .disabled(pane.showingDrives || !pane.entries.contains(where: \.isMedia))
-                .help("Export Playlist — save the videos and songs in this pane, in the order shown, as a playlist file (.m3u8)")
+                .lyceumHelp("Export Playlist — save the videos and songs in this pane, in the order shown, as a playlist file (.m3u8)")
             #endif
 
             Spacer(minLength: 8)
@@ -905,7 +914,7 @@ private struct CommanderPane: View {
                 .foregroundStyle(.secondary)
                 // REM  His question, 2026-10-08: "why does it say 7 items? … maybe "7items" should also have hover
                 // REM  over text". It counts what is directly in the open folder — not rows shown by a chevron.
-                .help(pane.showingDrives ? "How many drives this Mac can see"
+                .lyceumHelp(pane.showingDrives ? "How many drives this Mac can see"
                       : "How many files and folders are directly in “\(pane.folder.lastPathComponent)” — rows shown inside opened folders are not counted")
         }
         .lineLimit(1)
@@ -1083,7 +1092,7 @@ private struct CommanderPane: View {
             .foregroundStyle(.secondary)
             .lineLimit(1)
             .truncationMode(.tail)
-            .help(text ?? "")
+            .lyceumHelp(text ?? "")
     }
 
     private func nameCell(_ row: PaneRow) -> some View {
@@ -1101,7 +1110,7 @@ private struct CommanderPane: View {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .help(pane.isRevealed(entry.url) ? "Hide what is inside" : "Show what is inside, without opening it")
+                        .lyceumHelp(pane.isRevealed(entry.url) ? "Hide what is inside" : "Show what is inside, without opening it")
                     } else {
                         Spacer().frame(width: 18)
                     }
@@ -1109,7 +1118,7 @@ private struct CommanderPane: View {
                         .foregroundStyle(entry.isHidden ? Color.red : Color.primary)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                        .help(entry.name)
+                        .lyceumHelp(entry.name)
                         .simultaneousGesture(TapGesture().onEnded { slowClick(entry.url) })
                         .opacity(pane.renamingURL == entry.url ? 0 : 1)
                         .overlay(alignment: .leading) {
@@ -1167,7 +1176,7 @@ private struct CommanderPane: View {
                 dragOffset = 0
             })
         .onTapGesture(count: 2) { pane.previewHeight = 0 }
-        .help("Drag to make the preview taller or shorter. Double-click for the automatic height.")
+        .lyceumHelp("Drag to make the preview taller or shorter. Double-click for the automatic height.")
     }
 
     private var needsTags: Bool { pane.shownColumns.contains { $0.id.readsTags } }
@@ -1259,6 +1268,16 @@ private struct CommanderPane: View {
     }
 }
 
+/// Icon over a small word — the pane buttons' labels when Settings turns them on.
+private struct SmallCaptionLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(spacing: 2) {
+            configuration.icon
+            configuration.title.font(.system(size: 12))
+        }
+    }
+}
+
 // MARK: - The Commander menu
 
 struct CommanderMenu: View {
@@ -1315,23 +1334,23 @@ private struct ColumnsPanel: View {
                                                           set: { pane.setShown(column.id, $0) }))
                         .disabled(column.id == .name)
                         .frame(width: 280, alignment: .leading)
-                        .help(column.id == .name ? "Name always shows" : "Show or hide this column")
+                        .lyceumHelp(column.id == .name ? "Name always shows" : "Show or hide this column")
                     Button { pane.cycleArrow(column.id) } label: {
                         Text(column.arrow?.symbol ?? "–").frame(width: 28)
                     }
-                    .help("Sort arrow: ▲ up, ▼ down, – none (skipped)")
+                    .lyceumHelp("Sort arrow: ▲ up, ▼ down, – none (skipped)")
                     Button { pane.shift(column.id, by: -1) } label: { Image(systemName: "arrow.up") }
                         .disabled(!column.visible)
-                        .help("Move left — sorts earlier")
+                        .lyceumHelp("Move left — sorts earlier")
                     Button { pane.shift(column.id, by: 1) } label: { Image(systemName: "arrow.down") }
                         .disabled(!column.visible)
-                        .help("Move right — sorts later")
+                        .lyceumHelp("Move right — sorts later")
                 }
                 .foregroundStyle(column.visible ? Color.primary : Color.secondary)
             }
             Divider()
             Button("Reset Columns") { pane.resetColumns() }
-                .help("Back to Name ▲ · Size · Date Modified")
+                .lyceumHelp("Back to Name ▲ · Size · Date Modified")
         }
         .font(.lyceumBody)
         .padding(20)

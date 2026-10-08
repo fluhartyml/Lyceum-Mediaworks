@@ -80,7 +80,7 @@ struct PanePreview: View {
                     }
                     .buttonStyle(.borderless)
                     .padding(8)
-                    .help("Show the playing video in its floating window")
+                    .lyceumHelp("Show the playing video in its floating window")
                 }
                 #else
                 if showsPlayer {
@@ -93,7 +93,7 @@ struct PanePreview: View {
                     }
                     .buttonStyle(.borderless)
                     .padding(8)
-                    .help("Shrink the video — the preview comes back, and the video keeps playing")
+                    .lyceumHelp("Shrink the video — the preview comes back, and the video keeps playing")
                 } else {
                     PreviewPicture(item: item)
                     if mini.currentSource == source, mini.currentIsVideo, mini.hasStarted {
@@ -105,7 +105,7 @@ struct PanePreview: View {
                         }
                         .buttonStyle(.borderless)
                         .padding(8)
-                        .help("Show the playing video here")
+                        .lyceumHelp("Show the playing video here")
                     }
                 }
                 #endif
