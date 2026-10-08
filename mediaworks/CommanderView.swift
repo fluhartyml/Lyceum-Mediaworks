@@ -1052,7 +1052,7 @@ private struct CommanderPane: View {
                         .opacity(pane.renamingURL == entry.url ? 0 : 1)
                         .overlay(alignment: .leading) {
                             if pane.renamingURL == entry.url {
-                                InlineRename(original: entry.name,
+                                InlineRename(original: entry.name, lockExtension: !entry.isFolder,
                                              commit: { commitRename(entry.url, $0) },
                                              cancel: { pane.renamingURL = nil })
                             }
@@ -1287,12 +1287,14 @@ private struct ColumnsPanel: View {
 // REM  Mac's own NSTextField (the field Finder's rename is) owns its caret, arrows and long text.
 private struct InlineRename: View {
     let original: String
+    /// A file's extension is locked; a folder has none to lock (a dot in a folder name is just a dot).
+    let lockExtension: Bool
     let commit: (String) -> Void
     let cancel: () -> Void
 
     var body: some View {
         #if os(macOS)
-        RenameField(original: original, commit: commit, cancel: cancel)
+        RenameField(original: original, lockExtension: lockExtension, commit: commit, cancel: cancel)
         #else
         PhoneRenameField(original: original, commit: commit, cancel: cancel)
         #endif
@@ -1306,15 +1308,73 @@ private struct InlineRename: View {
 }
 
 #if os(macOS)
+// REM  THE EXTENSION IS LOCKED UNTIL HE STEPS INTO IT — his ask, 2026-10-08: "can you preserve the
+// REM  extention and make it uneditable in the inline edit unless you press the right arrow to get into the
+// REM  extention specifically? i think finder does it similaly too." Finder only PRE-SELECTS the name and
+// REM  asks afterwards if the extension changed; his rule is stricter, and it is his:
+// REM  · While locked, the caret and the highlight cannot go past the end of the name (a click, ⌘A, End
+// REM    all stop there), and nothing typed or deleted can touch the dot or the extension.
+// REM  · Right arrow with the caret AT the end of the name (nothing highlighted) unlocks it — the one
+// REM    deliberate way in. From the first highlight that is two presses: one to drop the highlight at the
+// REM    end of the name, one to step over the dot.
+// REM  · A folder has no extension to lock.
+// REM  HOW: the field gets its OWN field editor (the text view the Mac types into while a field is being
+// REM  edited). Only the editor can refuse a change or a caret move before it happens — a text-field
+// REM  subclass cannot (tried; AppKit does not expose those hooks on the field).
+private final class ExtensionLockingEditor: NSTextView {
+    /// The extension's length INCLUDING its dot — 0 when there is nothing to lock.
+    var extensionLength = 0
+    var locked = true
+
+    /// Where the name ends right now (it moves as he types).
+    var nameEnd: Int { (string as NSString).length - extensionLength }
+    private var guarding: Bool { locked && extensionLength > 0 }
+
+    override func shouldChangeText(in range: NSRange, replacementString: String?) -> Bool {
+        if guarding, NSMaxRange(range) > nameEnd || range.location > nameEnd {
+            NSSound.beep()
+            return false
+        }
+        return super.shouldChangeText(in: range, replacementString: replacementString)
+    }
+
+    override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool) {
+        guard guarding else { return super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting) }
+        let end = nameEnd
+        let clamped = ranges.map { value -> NSValue in
+            let r = value.rangeValue
+            let start = min(r.location, end)
+            return NSValue(range: NSRange(location: start, length: min(NSMaxRange(r), end) - start))
+        }
+        super.setSelectedRanges(clamped, affinity: affinity, stillSelecting: stillSelecting)
+    }
+}
+
+private final class ExtensionLockingCell: NSTextFieldCell {
+    let editor: ExtensionLockingEditor = {
+        let editor = ExtensionLockingEditor()
+        editor.isFieldEditor = true
+        return editor
+    }()
+    override func fieldEditor(for controlView: NSView) -> NSTextView? { editor }
+}
+
 private struct RenameField: NSViewRepresentable {
     let original: String
+    let lockExtension: Bool
     let commit: (String) -> Void
     let cancel: () -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeNSView(context: Context) -> NSTextField {
-        let field = NSTextField(string: original)
+        let field = NSTextField()
+        let cell = ExtensionLockingCell(textCell: original)
+        cell.isEditable = true
+        cell.isSelectable = true
+        field.cell = cell
+        let stem = InlineRename.stem(original) as NSString
+        cell.editor.extensionLength = lockExtension ? (original as NSString).length - stem.length : 0
         field.font = .systemFont(ofSize: 18)
         field.isBezeled = true
         field.bezelStyle = .roundedBezel
@@ -1340,6 +1400,15 @@ private struct RenameField: NSViewRepresentable {
         init(_ parent: RenameField) { self.parent = parent }
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+            // REM  → at the very end of the name, nothing highlighted: the one way into the extension.
+            if selector == #selector(NSResponder.moveRight(_:)), let editor = textView as? ExtensionLockingEditor,
+               editor.locked, editor.extensionLength > 0 {
+                let caret = editor.selectedRange()
+                if caret.length == 0, caret.location == editor.nameEnd {
+                    editor.locked = false
+                }
+                return false
+            }
             if selector == #selector(NSResponder.cancelOperation(_:)) {
                 guard !done else { return true }
                 done = true
