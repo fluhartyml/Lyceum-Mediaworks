@@ -230,6 +230,19 @@ final class PaneState {
     /// highlight he made. Set only when the restore really changes the highlight — otherwise it
     /// would swallow his next click.
     @ObservationIgnored var restoringHighlight = false
+    /// True for the one change that moves the highlight to follow playback, so it does not make this
+    /// pane the active one (the active pane is the copy/move SOURCE — playback must not change that).
+    @ObservationIgnored var followingPlayback = false
+
+    /// Continuous moved on to `url`: highlight it, as the one item highlighted.
+    // REM  HIS RULE, 2026-10-07: "when the video or audio finishes it needs to move to the next in line and
+    // REM  the next in line becomes highlighted." A row that is not on screen (inside a closed folder) is
+    // REM  left alone rather than revealing folders he closed.
+    func follow(_ url: URL) {
+        guard selection != [url], rows.contains(where: { $0.id == url }) else { return }
+        followingPlayback = true
+        selection = [url]
+    }
 
     private func key(_ name: String) -> String { "commander\(side == .left ? "Left" : "Right")\(name)" }
     private func save(_ value: Any, _ name: String) { UserDefaults.standard.set(value, forKey: key(name)) }

@@ -19,6 +19,11 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-07 ~19:4x — Continuous: highlight follows, highlight plays, skip non-media — build 44
+- His rules: *"when the video or audio finishes it needs to move to the next in line and the next in line becomes highlighted, if the continuous is on and the file becomes highlighted it needs to be either a video or audio file and start to play"* · *"if it is not a video or audio it needs to skip to the next video or audio file"*.
+- Built: the highlight follows playback (does NOT change the active pane) · Continuous ON → a media highlight plays at once (OFF keeps highlight = cue) · play order = rows on screen incl. revealed folders, media only (build 43 used top level only — found on his screen).
+- ⬜ Not built: scrolling the list to the newly highlighted row.
+
 ### 2026-10-07 ~19:3x — still picture until Play — build 43
 - Build 42 on his screen: a cued, never-played video showed a BLACK preview (AVPlayer has no frame before playing). Now the still (poster art → frame ~3 s in) shows until Play; the live player takes over once it has played.
 

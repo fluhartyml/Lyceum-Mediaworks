@@ -805,6 +805,7 @@ private struct CommanderPane: View {
             highlightedSince = .now
             pendingRename?.cancel()
             if pane.restoringHighlight { pane.restoringHighlight = false }
+            else if pane.followingPlayback { pane.followingPlayback = false }
             else if !pane.selection.isEmpty { activate() }
             // A highlight cues the mini player; Play starts it.
             if pane.selection.count == 1, let url = pane.selection.first,
@@ -812,7 +813,15 @@ private struct CommanderPane: View {
                 mini.cue(url, from: source)
             }
         }
-        .onChange(of: pane.entries) { mini.setList(pane.entries.filter(\.isMedia).map(\.url), for: source) }
+        // REM  WHAT PLAYS NEXT = THE ROWS ON SCREEN, in the order shown, VIDEOS AND SONGS ONLY — revealed
+        // REM  folders included. His rule, 2026-10-07: "if it is not a video or audio it needs to skip to the
+        // REM  next video or audio file." Build 43 used only the top level, so with his movies inside an
+        // REM  opened folder Continuous had nothing to play next.
+        .onChange(of: pane.rows) { mini.setList(pane.rows.map(\.entry).filter(\.isMedia).map(\.url), for: source) }
+        // The highlight follows playback — Continuous moving on, or Next.
+        .onChange(of: mini.current) {
+            if mini.currentSource == source, let url = mini.current { pane.follow(url) }
+        }
         // A header click: cycle that column's arrow, then empty the report (see the Table above).
         .onChange(of: headerClick) {
             guard let clicked = headerClick.first?.keyPath else { return }

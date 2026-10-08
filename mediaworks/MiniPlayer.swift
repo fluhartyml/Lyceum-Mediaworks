@@ -86,12 +86,24 @@ final class MiniPlayer {
     /// The media in a pane, in the order it is shown — what "next" means.
     func setList(_ urls: [URL], for source: Source) { lists[source] = urls }
 
-    /// A highlight. Cues the item; loads it now only if nothing is playing.
+    /// A highlight. With Continuous OFF it only cues (loaded now if nothing is playing).
+    /// With Continuous ON it plays at once.
+    // REM  HIS RULE, 2026-10-07: "if the continuous is on and the file becomes highlighted it needs to be
+    // REM  either a video or audio file and start to play." Continuous on = he is LISTENING through the
+    // REM  list, so a highlight is a choice of what to hear next, now. Continuous off keeps the 10-06 rule:
+    // REM  highlight cues, Play starts. Only media reaches here — a folder or document highlight never
+    // REM  calls cue, so it never stops what is playing.
     func cue(_ url: URL, from source: Source) {
         highlighted[source] = url
         cued = url
         cuedSource = source
-        if !isPlaying { load(url, from: source) }
+        if continuous != .off {
+            load(url, from: source)
+            player.play()
+            isPlaying = true
+        } else if !isPlaying {
+            load(url, from: source)
+        }
     }
 
     // MARK: Controls
