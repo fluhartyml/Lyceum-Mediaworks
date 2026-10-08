@@ -76,7 +76,7 @@ enum InspectorSize: String, CaseIterable, Identifiable {
 // REM  (QuickTime) slot, and saving only the iTunes slot left the file with TWO titles ("Old Title;New
 // REM  Title" on the test file). A save clears every slot for that field and writes the iTunes one.
 // REM  MP3's ID3 slots are listed for READING only.
-enum TagField: String, CaseIterable, Identifiable {
+nonisolated enum TagField: String, CaseIterable, Identifiable {
     case title, artist, album, albumArtist, genre, year, track, disc, composer, comment, lyrics
     case artwork, bpm, sortTitle, sortArtist, encodedBy, chapters
     case description, longDescription, show, season, episode, episodeID, network, mediaKind, hdVideo, rating

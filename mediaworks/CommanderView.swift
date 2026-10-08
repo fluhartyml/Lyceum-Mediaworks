@@ -29,7 +29,7 @@ import AppKit
 #endif
 
 /// The text a row drag carries: which rows, never the files themselves.
-enum RowToken {
+nonisolated enum RowToken {
     private static let prefix = "lyceum-rows:"
     // REM  Dragging a highlighted row drags ALL the highlighted rows, as in Finder; dragging an
     // REM  unhighlighted row drags just that one.
@@ -863,8 +863,23 @@ private struct CommanderPane: View {
         .popover(isPresented: $showingColumns, arrowEdge: .bottom) { ColumnsPanel(pane: pane) }
     }
 
+    // REM  SPLIT INTO FOUR SMALL GROUPS — 2026-10-08: his Xcode build failed with "the compiler is unable to
+    // REM  type-check this expression in reasonable time" in this file (with knock-on "no member lyceumHelp"
+    // REM  errors). The check is TIME-based, so one large row of buttons passed on a quiet Mac and failed on a
+    // REM  busy one. Small pieces type-check fast every time. Nothing on screen changes.
     private var toolRow: some View {
         HStack(spacing: 14) {
+            sortTools
+            fileTools
+            viewTools
+            Spacer(minLength: 8)
+            itemCount
+        }
+        .lineLimit(1)
+        .fixedSize()
+    }
+
+    @ViewBuilder private var sortTools: some View {
             // REM  THE SORT MENU IS GONE — the arrows on the column headers are the sort now (his design,
             // REM  Columns.swift). Columns… is where columns are shown, hidden and moved; the line after it
             // REM  says in words what the arrows add up to, because a two-column sort is easy to miss.
@@ -884,6 +899,9 @@ private struct CommanderPane: View {
                     .lyceumHelp("Move Down — move the highlighted rows down one place in your own order")
             }
 
+    }
+
+    @ViewBuilder private var fileTools: some View {
             Button { newFolder() } label: { Label("New Folder", systemImage: "folder.badge.plus") }
                 .disabled(pane.showingDrives)
                 .lyceumHelp("New Folder — make a new folder in the folder this pane shows (⌘7)")
@@ -899,6 +917,9 @@ private struct CommanderPane: View {
             .lyceumHelp(pane.showHidden ? "Hide Hidden — stop showing hidden files and folders (the ones shown in red)"
                                   : "Show Hidden — also show hidden files and folders: names starting with a period, or hidden by macOS. They show in red.")
 
+    }
+
+    @ViewBuilder private var viewTools: some View {
             // REM  The preview switch sits with the view tools, its icon showing the state it is in.
             Button { pane.showPreview.toggle() } label: {
                 Label(pane.showPreview ? "Hide Preview" : "Show Preview",
@@ -913,7 +934,9 @@ private struct CommanderPane: View {
                 .lyceumHelp("Export Playlist — save the videos and songs in this pane, in the order shown, as a playlist file (.m3u8)")
             #endif
 
-            Spacer(minLength: 8)
+    }
+
+    private var itemCount: some View {
             Text(pane.showingDrives ? "\(pane.drives.count) drive\(pane.drives.count == 1 ? "" : "s")"
                                     : "\(pane.entries.count) item\(pane.entries.count == 1 ? "" : "s")")
                 .foregroundStyle(.secondary)
@@ -921,9 +944,6 @@ private struct CommanderPane: View {
                 // REM  over text". It counts what is directly in the open folder — not rows shown by a chevron.
                 .lyceumHelp(pane.showingDrives ? "How many drives this Mac can see"
                       : "How many files and folders are directly in “\(pane.folder.lastPathComponent)” — rows shown inside opened folders are not counted")
-        }
-        .lineLimit(1)
-        .fixedSize()
     }
 
     // MARK: The files

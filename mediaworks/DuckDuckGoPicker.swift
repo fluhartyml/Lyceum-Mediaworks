@@ -149,7 +149,8 @@ final class DuckDuckGoBridge: NSObject, WKScriptMessageHandler, WKUIDelegate, WK
     }
 
     nonisolated func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-        let text = message.body as? String
+        // WebKit calls this on the main thread; the message's body may only be read there.
+        let text = MainActor.assumeIsolated { message.body as? String }
         Task { @MainActor in
             guard text == "__open__" else { return }
             try? await Task.sleep(for: .seconds(1.5))   // let DuckDuckGo open it large
