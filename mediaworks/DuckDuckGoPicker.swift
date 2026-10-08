@@ -132,6 +132,12 @@ final class DuckDuckGoBridge: NSObject, WKScriptMessageHandler {
         }
     }
 
+    /// Zoom the page in or out — to inspect a poster up close.
+    func zoom(by step: Double) {
+        guard let webView else { return }
+        webView.pageZoom = min(max(webView.pageZoom + step, 0.5), 4)
+    }
+
     func pickLargest() {
         webView?.evaluateJavaScript(DuckDuckGo.largestShownImage) { [weak self] result, _ in
             Task { @MainActor in
@@ -168,6 +174,9 @@ extension DuckDuckGoView {
         configuration.userContentController.addUserScript(
             WKUserScript(source: DuckDuckGo.clickScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         let view = WKWebView(frame: .zero, configuration: configuration)
+        #if os(macOS)
+        view.allowsMagnification = true   // pinch to zoom on the trackpad
+        #endif
         bridge.webView = view
         if let address { view.load(URLRequest(url: address)) }
         return view

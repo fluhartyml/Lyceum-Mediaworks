@@ -565,6 +565,10 @@ struct InspectorPane: View {
     @State private var problem: String?
     @State private var choosingPicture = false
     @State private var findingPicture = false
+    #if os(macOS)
+    @Environment(PicturePick.self) private var pickWindow
+    @Environment(\.openWindow) private var openWindow
+    #endif
 
     private var canSave: Bool { file.writeType != nil && !saving }
     private var changed: [TagField: String] {
@@ -608,9 +612,23 @@ struct InspectorPane: View {
         .fileImporter(isPresented: $choosingPicture, allowedContentTypes: [.image]) { result in
             if case .success(let url) = result { usePicture(url) }
         }
+        #if os(macOS)
+        // REM  Mac: Find Picture… is its own window (PicturePick in ArtworkSearch.swift); the picked picture comes
+        // REM  back through PicturePick and lands here as the waiting picture.
+        .onChange(of: findingPicture) {
+            guard findingPicture else { return }
+            findingPicture = false
+            pickWindow.initial = searchWords
+            openWindow(id: "findpicture")
+        }
+        .onChange(of: pickWindow.resultToken) {
+            if let data = pickWindow.result { pickWindow.result = nil; usePicture(data) }
+        }
+        #else
         .sheet(isPresented: $findingPicture) {
             ArtworkSearchSheet(initial: searchWords) { usePicture($0) }
         }
+        #endif
         // REM  DROP A PICTURE ANYWHERE ON THE INSPECTOR — the web fallback's other half (his "fall back on a general
         // REM  image search on the web"): drag the picture from the browser, Finder or Photos onto it. It becomes
         // REM  the waiting picture, exactly like Choose Picture…; nothing is written until Save / Apply.

@@ -12,6 +12,7 @@ struct mediaworksApp: App {
     @State private var library = LibraryStore()
     @State private var mini = MiniPlayer()
     @State private var pip = PiPState()
+    @State private var picturePick = PicturePick()
     #if os(macOS)
     @Environment(\.openWindow) private var openWindow
     #endif
@@ -22,6 +23,7 @@ struct mediaworksApp: App {
                 .environment(library)
                 .environment(mini)
                 .environment(pip)
+                .environment(picturePick)
                 // BUILD NUMBER IN THE TITLE BAR, DEVELOPMENT BUILDS ONLY — his ask, 2026-10-07,
                 // the same as Image Producer: every build Xcode puts on his devices shows it;
                 // the App Store build does not. About always has the full stamp.
@@ -53,6 +55,17 @@ struct mediaworksApp: App {
         }
         .windowLevel(.floating)
         .defaultSize(width: 640, height: 360)
+        .windowResizability(.contentMinSize)
+        .restorationBehavior(.disabled)
+
+        // REM  Find Picture… — a real window, resizable; double-click the title bar to zoom it to the screen.
+        Window("Find Picture", id: "findpicture") {
+            FindPictureWindow()
+                .environment(picturePick)
+                .environment(library)
+                .environment(mini)
+        }
+        .defaultSize(width: 1400, height: 1000)
         .windowResizability(.contentMinSize)
         .restorationBehavior(.disabled)
 

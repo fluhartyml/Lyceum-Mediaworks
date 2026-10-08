@@ -250,13 +250,21 @@ struct ArtworkSearchSheet: View {
                 .frame(width: 190)
                 Spacer()
                 if source == .duckduckgo {
+                    // REM  ZOOM — his ask, 2026-10-08: "what if i want to inspect the picture and soom in so i can see
+                    // REM  it?" Pinch works too (magnification is on); these are for one hand on the mouse.
+                    Button { bridge.zoom(by: -0.25) } label: { Image(systemName: "minus.magnifyingglass") }
+                        .lyceumHelp("Zoom Out — make the page and pictures smaller")
+                    Button { bridge.zoom(by: 0.25) } label: { Image(systemName: "plus.magnifyingglass") }
+                        .lyceumHelp("Zoom In — make the page and pictures bigger, to inspect a poster")
                     Button("Use This Picture") { bridge.pickLargest() }
+                        .fixedSize()
                         .disabled(downloading != nil)
                         .lyceumHelp("Use This Picture — takes the picture DuckDuckGo is showing large (click a picture first). Or just double-click a picture.")
                 }
                 Button("Open in Browser…") {
                     if let url = ArtworkSearch.webSearchURL(text, shape: shape) { openURL(url) }
                 }
+                .fixedSize()
                 .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
                 .lyceumHelp("Open in Browser — the same DuckDuckGo image search in your own browser. Drag the picture you like onto Lyceum's picture area.")
             }
@@ -267,7 +275,8 @@ struct ArtworkSearchSheet: View {
                 .foregroundStyle(.secondary)
             if source == .duckduckgo {
                 DuckDuckGoView(address: duckAddress, bridge: bridge)
-                    .frame(minHeight: 420)
+                    .frame(maxWidth: .infinity, minHeight: 420, maxHeight: .infinity)
+                    .layoutPriority(1)
                     .overlay { if downloading != nil { ProgressView().controlSize(.large) } }
                 if let message { Text(message).foregroundStyle(.secondary) }
             } else if searching {
@@ -307,12 +316,14 @@ struct ArtworkSearchSheet: View {
         }
         .font(.lyceumBody)
         .padding(20)
-        .frame(minWidth: 820, minHeight: 640)
+        .frame(minWidth: 900, minHeight: 700)
         .onAppear {
             text = initial
             bridge.picked = { useShown($0) }
             if !initial.isEmpty { run() }
         }
+        // REM  The window stays open between uses (Mac); a new Find Picture… brings a new file's words.
+        .onChange(of: initial) { text = initial; if !initial.isEmpty { run() } }
     }
 
     /// A picture picked on the DuckDuckGo page.
@@ -404,5 +415,35 @@ enum PictureDrop {
             return true
         }
         return false
+    }
+}
+
+// MARK: - Find Picture as its own window (Mac)
+
+/// Carries Find Picture… between the Inspector and its window: the words to search, and the picture picked.
+// REM  ITS OWN WINDOW, NOT A SHEET — his ask, 2026-10-08: "can it make the popup find picture sheet larger? like
+// REM  double tap the tidle bar to make the window take up the full screen without entering full screen mode?"
+// REM  On his screen the sheet was cramped: buttons cut to "Us…" / "O…", DuckDuckGo's large view squeezed under
+// REM  two sets of scroll bars. A sheet cannot be resized or zoomed; a window can — double-clicking its title bar
+// REM  zooms it to fill the screen (macOS's own Zoom), without entering full-screen mode.
+@Observable
+final class PicturePick {
+    /// The words the window searches; set by the Inspector each time Find Picture… is pressed.
+    var initial = ""
+    /// The picture picked, waiting for the Inspector to take it.
+    var result: Data?
+    /// Changes on every pick, so the Inspector notices the same picture picked twice.
+    var resultToken = UUID()
+
+    func deliver(_ data: Data) {
+        result = data
+        resultToken = UUID()
+    }
+}
+
+struct FindPictureWindow: View {
+    @Environment(PicturePick.self) private var pick
+    var body: some View {
+        ArtworkSearchSheet(initial: pick.initial) { pick.deliver($0) }
     }
 }
