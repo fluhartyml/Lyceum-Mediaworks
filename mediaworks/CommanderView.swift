@@ -185,12 +185,12 @@ struct CommanderView: View {
         }
         .toolbar {
             ToolbarItem {
-                // REM  Off · Small · Large — the same three as ⌥⌘I in the Commander menu.
+                // REM  Off · Small · Large — the same three as ⌘I in the Commander menu.
                 Picker("Inspector", selection: $inspectorRaw) {
                     ForEach(InspectorSize.allCases) { Text($0.title).tag($0.rawValue) }
                 }
                 .pickerStyle(.segmented)
-                .help("Inspector between the panes: Off, Small (a third), Large (the middle half) — ⌥⌘I")
+                .help("Inspector between the panes: Off, Small (a third), Large (the middle half) — ⌘I")
             }
             ToolbarItemGroup {
                 // REM  Hover text on every glyph — his ask, 2026-10-08. Each names its ⌘ key too.
@@ -1177,9 +1177,9 @@ struct CommanderMenu: View {
             .keyboardShortcut("y", modifiers: .command)
             .disabled(actions == nil)
         Divider()
-        // REM  ⌥⌘I — Finder's Inspector key. Steps Off → Small → Large → Off.
+        // REM  ⌘I — HIS KEY, 2026-10-08: "i woult think editing in the center pane Command I" (Finder's Get Info key). Steps Off → Small → Large → Off.
         Button("Inspector: \(inspectorSize.next.title)") { inspectorRaw = inspectorSize.next.rawValue }
-            .keyboardShortcut("i", modifiers: [.command, .option])
+            .keyboardShortcut("i", modifiers: .command)
             .disabled(actions == nil)
     }
 

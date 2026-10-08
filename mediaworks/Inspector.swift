@@ -50,7 +50,7 @@ enum InspectorSize: String, CaseIterable, Identifiable {
         case .large: "Large"
         }
     }
-    /// ⌥⌘I steps through them.
+    /// ⌘I steps through them.
     var next: InspectorSize {
         switch self {
         case .off: .small
