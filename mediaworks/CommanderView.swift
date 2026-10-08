@@ -106,8 +106,8 @@ struct CommanderKey: Identifiable {
         CommanderKey(number: 2, title: "Menu", help: "Open the Commander menu", needsSelection: false),
         CommanderKey(number: 3, title: "Quick Look", help: "Quick Look the highlighted files in their own window; follows the highlight", needsSelection: true),
         CommanderKey(number: 4, title: "Inspector", help: "Inspector between the panes: Off → Small → Large", needsSelection: false),
-        CommanderKey(number: 5, title: "Copy", help: "Copy the highlighted items to the other pane", needsSelection: true),
-        CommanderKey(number: 6, title: "Move", help: "Move the highlighted items to the other pane", needsSelection: true),
+        CommanderKey(number: 5, title: "Copy", help: "Copy the highlighted items into the folder highlighted in the other pane (or the folder it has open)", needsSelection: true),
+        CommanderKey(number: 6, title: "Move", help: "Move the highlighted items into the folder highlighted in the other pane (or the folder it has open)", needsSelection: true),
         CommanderKey(number: 7, title: "New Folder", help: "Make a folder in the active pane", needsSelection: false),
         CommanderKey(number: 8, title: "Delete", help: "Delete the highlighted items (Trash or at once, as set in Settings)", needsSelection: true),
         CommanderKey(number: 9, title: "Rename", help: "Rename the highlighted item, in its row", needsSelection: true),
@@ -230,10 +230,10 @@ struct CommanderView: View {
                 // REM  Hover text on every glyph — his ask, 2026-10-08. Each names its ⌘ key too.
                 Button("Copy to Other Pane", systemImage: "doc.on.doc") { transfer(move: false) }
                     .disabled(active.selection.isEmpty || busy != nil || editingName)
-                    .help("Copy to Other Pane — copy the highlighted items into the other pane's folder (⌘5)")
+                    .help("Copy to Other Pane — copy the highlighted items into the folder highlighted in the other pane, or the folder it has open (⌘5)")
                 Button("Move to Other Pane", systemImage: "arrow.left.arrow.right") { transfer(move: true) }
                     .disabled(active.selection.isEmpty || busy != nil || editingName)
-                    .help("Move to Other Pane — move the highlighted items into the other pane's folder (⌘6)")
+                    .help("Move to Other Pane — move the highlighted items into the folder highlighted in the other pane, or the folder it has open (⌘6)")
                 Button("New Folder", systemImage: "folder.badge.plus") { newFolder() }
                     .disabled(busy != nil || active.showingDrives)
                     .help("New Folder — make a folder in the active pane (⌘7)")
@@ -451,9 +451,24 @@ struct CommanderView: View {
             problem = "Open a folder in both panes first — a drive list is not a place a file can go."
             return
         }
-        let destination = other.folder
-        if destination.standardizedFileURL == active.folder.standardizedFileURL {
-            problem = "Both panes show the same folder. Open a different folder in the other pane first."
+        // REM  THE DESTINATION IS THE FOLDER HIGHLIGHTED IN THE OTHER PANE — his rule, 2026-10-08: "i want to
+        // REM  move the seleccted files from the source pane to the highlighted folder in the destination pane."
+        // REM  (Build 61 on his screen: five files from a revealed Classic Cinema, "Shows" highlighted in the
+        // REM  other pane — refused as "both panes show the same folder", because the check compared the
+        // REM  panes' OPEN folders and the destination ignored the highlight.)
+        // REM  One folder highlighted there → into it. Nothing highlighted, a file, or several → the folder
+        // REM  that pane has open, as before.
+        let destination = otherDestination
+        // REM  "Already there" is judged per FILE, by the folder it really sits in — a revealed row lives in
+        // REM  its own subfolder, not in the pane's open folder.
+        let alreadyThere = sources.filter { $0.deletingLastPathComponent().standardizedFileURL == destination.standardizedFileURL }
+        if alreadyThere.count == sources.count {
+            problem = "Already in “\(destination.lastPathComponent)”. Highlight a different folder in the other pane, or open one there."
+            return
+        }
+        if !alreadyThere.isEmpty {
+            problem = "Already in “\(destination.lastPathComponent)”: " + alreadyThere.map(\.lastPathComponent).joined(separator: ", ")
+                + ". Highlight only the items that should go there. Nothing was \(move ? "moved" : "copied")."
             return
         }
         if let inside = sources.first(where: { destination.standardizedFileURL.path.hasPrefix($0.standardizedFileURL.path + "/")
@@ -491,6 +506,15 @@ struct CommanderView: View {
             if move { active.selection = [] }
             finished()
         }
+    }
+
+    /// Where Copy and Move go: the one folder highlighted in the other pane, else the folder it has open.
+    private var otherDestination: URL {
+        if other.selection.count == 1, let url = other.selection.first,
+           other.rows.first(where: { $0.id == url })?.entry.isFolder == true {
+            return url
+        }
+        return other.folder
     }
 
     private func play(_ url: URL) {
