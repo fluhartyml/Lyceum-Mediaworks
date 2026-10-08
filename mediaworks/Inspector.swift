@@ -582,11 +582,11 @@ struct InspectorPane: View {
                 .font(.lyceumHeadline)
                 .textSelection(.enabled)
             if item.isMedia {
-                HStack(spacing: 8) {
-                    Text(TagField.artwork.number).monospacedDigit().foregroundStyle(.tertiary)
-                    Text(TagField.artwork.label).foregroundStyle(.secondary)
-                }
-                pictureRow
+                // REM  TO LOOK AT, NOT TO EDIT — his refinement, 2026-10-08: "the album art /poster can list up at
+                // REM  the top but the tag that is editable remanes below, staying in the Tags section where it has
+                // REM  choose picture remove picture but the one up at the top doesnt have the buttons". No number,
+                // REM  no buttons here; 012 with its buttons is in Tags, in its numbered place.
+                pictureRow(withButtons: false)
                 fact("Length", file.length.map { FolderView.lengthText($0) })
                 if item.isVideo { fact("Resolution", file.resolution) }
             }
@@ -633,9 +633,9 @@ struct InspectorPane: View {
         }
     }
 
-    // REM  The picture (012) is not in this list — it sits at the top, under the name (facts above).
+    // REM  012 stays here in its numbered place, WITH Choose / Remove Picture; the top only shows the picture.
     private func fields(_ list: [TagField]) -> some View {
-        let shown = list.filter { $0 != .artwork }
+        let shown = list
         return VStack(alignment: .leading, spacing: 12) {
             ForEach(shown) { field in
                 VStack(alignment: .leading, spacing: 4) {
@@ -652,7 +652,7 @@ struct InspectorPane: View {
     @ViewBuilder
     private func editor(_ field: TagField) -> some View {
         switch field.kind {
-        case .picture: pictureRow
+        case .picture: pictureRow(withButtons: true)
         case .chapters:
             VStack(alignment: .leading, spacing: 2) {
                 if file.chapterLines.isEmpty { Text("None").foregroundStyle(.secondary) }
@@ -693,7 +693,7 @@ struct InspectorPane: View {
     // REM  012 — THE PICTURE, in both sizes; bigger in the large inspector (his "the larger … should also
     // REM  show the album art or movie poster"). Choose Picture… is how a poster goes onto a classic movie
     // REM  or show today; it is written into the file with the other tags on Save.
-    private var pictureRow: some View {
+    private func pictureRow(withButtons: Bool) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             let shownPicture: CGImage? = picture == .remove ? nil : (pendingPicture ?? file.artwork)
             if let shownPicture {
@@ -701,10 +701,11 @@ struct InspectorPane: View {
                     .resizable()
                     .scaledToFit()
                     .frame(maxWidth: .infinity, maxHeight: size == .large ? 420 : 220, alignment: .leading)
-            } else {
+            } else if withButtons {
+                // At the top, a file with no picture shows nothing; in Tags it says so, next to Choose Picture….
                 Text("No picture").foregroundStyle(.secondary)
             }
-            if canSave {
+            if canSave, withButtons {
                 HStack(spacing: 12) {
                     Button("Choose Picture…") { choosingPicture = true }
                         .lyceumHelp("Pick an album cover or movie poster to save into this file")
