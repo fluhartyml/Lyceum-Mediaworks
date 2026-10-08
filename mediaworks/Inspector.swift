@@ -573,6 +573,13 @@ struct InspectorPane: View {
         .sheet(isPresented: $findingPicture) {
             ArtworkSearchSheet(initial: searchWords) { usePicture($0) }
         }
+        // REM  DROP A PICTURE ANYWHERE ON THE INSPECTOR — the web fallback's other half (his "fall back on a general
+        // REM  image search on the web"): drag the picture from the browser, Finder or Photos onto it. It becomes
+        // REM  the waiting picture, exactly like Choose Picture…; nothing is written until Save / Apply.
+        .onDrop(of: [.image, .url, .fileURL], isTargeted: nil) { providers in
+            guard (many.count > 1 && !applying) || canSave else { return false }
+            return PictureDrop.load(providers, into: { usePicture($0) }, failed: { problem = $0 })
+        }
         .alert("Inspector", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
             Button("OK") { problem = nil }
         } message: { Text(problem ?? "") }
