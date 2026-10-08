@@ -163,6 +163,14 @@ final class DuckDuckGoBridge: NSObject, WKScriptMessageHandler, WKUIDelegate, WK
         webView.pageZoom = min(max(webView.pageZoom + step, 0.5), 4)
     }
 
+    /// Back to normal size (his "maybe reset zoom?").
+    func resetZoom() {
+        webView?.pageZoom = 1
+        #if os(macOS)
+        webView?.magnification = 1
+        #endif
+    }
+
     func pickLargest() {
         webView?.evaluateJavaScript(DuckDuckGo.largestShownImage) { [weak self] result, _ in
             Task { @MainActor in

@@ -258,6 +258,9 @@ struct ArtworkSearchSheet: View {
                         .lyceumHelp("Zoom Out — make the page and pictures smaller")
                     Button { bridge.zoom(by: 0.25) } label: { Image(systemName: "plus.magnifyingglass") }
                         .lyceumHelp("Zoom In — make the page and pictures bigger, to inspect a poster")
+                    Button("Reset Zoom") { bridge.resetZoom() }
+                        .fixedSize()
+                        .lyceumHelp("Reset Zoom — back to normal size (undoes zoom buttons and pinch)")
                     Button("Use This Picture") { bridge.pickLargest() }
                         .fixedSize()
                         .disabled(downloading != nil)
