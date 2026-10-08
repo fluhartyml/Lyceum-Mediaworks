@@ -51,7 +51,6 @@ struct PanePreview: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Divider()
             ZStack(alignment: .topTrailing) {
                 if showsPlayer {
                     VideoPlayer(player: mini.player)

@@ -19,6 +19,10 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-07 ~19:0x — preview height is his to drag; rename field rebuilt — build 41 (not yet run by him)
+- His design: *"the video pane should be as close to full width as we can without going to high, maybe full width where the height is adjustable after the fact and the video scales to fit a smaller area when you move the top down"* → *"yes build it"*. Preview = full pane width; starts at 16:9-for-the-width + name lines, capped at half the pane; **drag bar** above it (resize cursor), saved per pane (`PreviewHeight`), double-click = automatic. List keeps ≥160 pt, preview ≥120 pt.
+- His report: *"editing the file names is not going easy if the file neme is long i get beach balls and arrows dont move the cursor"*. Mac rename field is now an **AppKit NSTextField** (owns caret/arrows/long text; stem selected; Return/click-away save, Esc cancels). **The 10-second re-read pauses while a name is open.** Cause of the beach balls NOT confirmed — a 3 s sample at 18:5x found the app idle.
+
 ### 2026-10-07 ~18:5x — Midnight Commander key bar + player inside the pane — build 40 (not yet run by him)
 - His: *"i still dont see the midnight commander butttond for the command keys with lables as to what they do"* and *"what is at the bottom of the window, its supposed to be nside the pane"*, *"thinking along the lines of"* NightGard / Library Commander.
 - **Key bar** along Commander's bottom (Library Commander's place): ⌘1 Help (key list popover) · ⌘2 Menu (pops the Commander menu at the pointer) · ⌘3 View (Quick Look) · ⌘4 Edit (open in its app; Mac) · ⌘5 Copy · ⌘6 Move · ⌘7 New Folder · ⌘8 Delete · ⌘9 Rename. **The Commander menu = the same nine, numbered**; old ⌥⌘C/⌥⌘M/⌥⌘R/⇧⌘N/⌘⌫ shortcuts REPLACED. ⌘Y Quick Look kept. All off while a name is being typed.

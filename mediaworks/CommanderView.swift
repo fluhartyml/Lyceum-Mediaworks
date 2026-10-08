@@ -479,6 +479,9 @@ private struct CommanderPane: View {
     @State private var driveSelection = Set<URL>()
     /// When the current one-item highlight began — the slow second click is measured from it.
     @State private var highlightedSince = Date.distantPast
+    /// While the preview's bar is being dragged: the height it started at, and how far it has moved.
+    @State private var dragStartHeight: CGFloat?
+    @State private var dragOffset: CGFloat = 0
     /// A slow-click rename waiting to see whether the click was really half of a double-click.
     @State private var pendingRename: Task<Void, Never>?
     /// What the table's header reports when a header is clicked. Read once and emptied at once.
@@ -506,8 +509,9 @@ private struct CommanderPane: View {
                 VStack(spacing: 0) {
                     if pane.showingDrives { driveList } else { fileList }
                     if pane.showPreview && !pane.showingDrives {
+                        previewHandle(total: space.size.height, width: space.size.width)
                         PanePreview(item: previewItem, source: source, playerShrunk: $pane.playerShrunk)
-                            .frame(height: space.size.height * 0.4)
+                            .frame(height: previewHeight(total: space.size.height, width: space.size.width))
                     }
                     // REM  THE PLAYER LIVES IN THE PANE ITS ITEM CAME FROM (NightGard's way), under the
                     // REM  preview. With Continuous on Other Pane it crosses to the other pane's bottom
@@ -847,7 +851,11 @@ private struct CommanderPane: View {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(10))
                 if Task.isCancelled { return }
+                // REM  NO RE-READ WHILE A NAME IS BEING TYPED — a fresh listing redraws the rows, and the row
+                // REM  being edited with them (his beach balls, 2026-10-07). It catches up on the next pass.
+                if pane.renamingURL != nil { continue }
                 let fresh = await read()
+                if pane.renamingURL != nil { continue }
                 pane.listed(fresh.0, inside: fresh.1)
             }
         }
@@ -925,6 +933,54 @@ private struct CommanderPane: View {
                             }
                         }
                 }
+    }
+
+    // MARK: The preview's height — his to drag
+
+    // REM  HIS DESIGN, 2026-10-07: "the video pane should be as close to full width as we can without going
+    // REM  to high, maybe full width where the height is adjustable after the fact and the video scales to
+    // REM  fit a smaller area when you move the top down" → "yes build it".
+    // REM  · FULL PANE WIDTH, always.
+    // REM  · STARTS at the height a 16:9 video needs at that width (plus the name lines under it), but never
+    // REM    more than half the pane — "without going to high".
+    // REM  · DRAG THE BAR above it to change the height; the picture or video scales to fit, never crops.
+    // REM    The height is saved per pane (everything persists). Double-click the bar = back to automatic.
+    // REM  · The list always keeps at least 160 pt, and the preview at least 120 pt.
+    private func automaticPreviewHeight(total: CGFloat, width: CGFloat) -> CGFloat {
+        min(width * 9 / 16 + 90, total * 0.5)
+    }
+
+    private func previewHeight(total: CGFloat, width: CGFloat) -> CGFloat {
+        let wanted: CGFloat
+        if let start = dragStartHeight { wanted = start - dragOffset }
+        else if pane.previewHeight > 0 { wanted = CGFloat(pane.previewHeight) }
+        else { wanted = automaticPreviewHeight(total: total, width: width) }
+        return max(120, min(wanted, total - 160))
+    }
+
+    private func previewHandle(total: CGFloat, width: CGFloat) -> some View {
+        ZStack {
+            Rectangle().fill(.bar)
+            Capsule().fill(.secondary).frame(width: 44, height: 5)
+        }
+        .frame(height: 12)
+        .overlay(alignment: .top) { Divider() }
+        .contentShape(Rectangle())
+        #if os(macOS)
+        .onHover { inside in if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() } }
+        #endif
+        .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
+            .onChanged { drag in
+                if dragStartHeight == nil { dragStartHeight = previewHeight(total: total, width: width) }
+                dragOffset = drag.translation.height
+            }
+            .onEnded { _ in
+                pane.previewHeight = Double(previewHeight(total: total, width: width))
+                dragStartHeight = nil
+                dragOffset = 0
+            })
+        .onTapGesture(count: 2) { pane.previewHeight = 0 }
+        .help("Drag to make the preview taller or shorter. Double-click for the automatic height.")
     }
 
     private var needsTags: Bool { pane.shownColumns.contains { $0.id.readsTags } }
@@ -1096,32 +1152,98 @@ private struct ColumnsPanel: View {
 /// The name, editable where it sits — Finder's way. The name is highlighted without its extension.
 // REM  Return or clicking away SAVES (Finder does both); Esc puts the old name back. A guard stops a
 // REM  save from happening twice (Return, then the focus loss that follows it).
+// REM  ON THE MAC IT IS AN APPKIT TEXT FIELD — his report on build 39-40: "editing the file names is not
+// REM  going easy if the file neme is long i get beach balls and arrows dont move the cursor." The
+// REM  SwiftUI field with a selection binding re-rendered on every caret move inside the table. The
+// REM  Mac's own NSTextField (the field Finder's rename is) owns its caret, arrows and long text.
 private struct InlineRename: View {
     let original: String
     let commit: (String) -> Void
     let cancel: () -> Void
 
+    var body: some View {
+        #if os(macOS)
+        RenameField(original: original, commit: commit, cancel: cancel)
+        #else
+        PhoneRenameField(original: original, commit: commit, cancel: cancel)
+        #endif
+    }
+
+    /// The part of a name before its extension — what gets highlighted.
+    static func stem(_ name: String) -> String {
+        let ext = (name as NSString).pathExtension
+        return ext.isEmpty ? name : String(name.dropLast(ext.count + 1))
+    }
+}
+
+#if os(macOS)
+private struct RenameField: NSViewRepresentable {
+    let original: String
+    let commit: (String) -> Void
+    let cancel: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeNSView(context: Context) -> NSTextField {
+        let field = NSTextField(string: original)
+        field.font = .systemFont(ofSize: 18)
+        field.isBezeled = true
+        field.bezelStyle = .roundedBezel
+        field.lineBreakMode = .byClipping
+        field.cell?.isScrollable = true
+        field.cell?.wraps = false
+        field.delegate = context.coordinator
+        // REM  Focus and the highlight are set on the next turn, once the field is in the window.
+        DispatchQueue.main.async {
+            guard let window = field.window else { return }
+            window.makeFirstResponder(field)
+            field.currentEditor()?.selectedRange = NSRange(location: 0,
+                                                           length: (InlineRename.stem(original) as NSString).length)
+        }
+        return field
+    }
+
+    func updateNSView(_ field: NSTextField, context: Context) {}
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        let parent: RenameField
+        private var done = false
+        init(_ parent: RenameField) { self.parent = parent }
+
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+            if selector == #selector(NSResponder.cancelOperation(_:)) {
+                guard !done else { return true }
+                done = true
+                parent.cancel()
+                return true
+            }
+            return false
+        }
+
+        func controlTextDidEndEditing(_ note: Notification) {
+            guard !done, let field = note.object as? NSTextField else { return }
+            done = true
+            parent.commit(field.stringValue)
+        }
+    }
+}
+#else
+private struct PhoneRenameField: View {
+    let original: String
+    let commit: (String) -> Void
+    let cancel: () -> Void
+
     @State private var text = ""
-    @State private var selection: TextSelection?
     @State private var done = false
     @FocusState private var focused: Bool
 
     var body: some View {
-        TextField("Name", text: $text, selection: $selection)
+        TextField("Name", text: $text)
             .textFieldStyle(.roundedBorder)
             .font(.lyceumBody)
             .focused($focused)
-            .onAppear {
-                text = original
-                // REM  Finder highlights the name WITHOUT the extension, so typing replaces the name
-                // REM  and keeps ".mp4". A folder (no extension) is highlighted whole.
-                let ext = (original as NSString).pathExtension
-                let stem = ext.isEmpty ? original : String(original.dropLast(ext.count + 1))
-                selection = TextSelection(range: original.startIndex..<original.index(original.startIndex, offsetBy: stem.count))
-                focused = true
-            }
+            .onAppear { text = original; focused = true }
             .onSubmit { finish(save: true) }
-            .onKeyPress(.escape) { finish(save: false); return .handled }
             .onChange(of: focused) { _, now in if !now { finish(save: true) } }
     }
 
@@ -1131,6 +1253,7 @@ private struct InlineRename: View {
         if save { commit(text) } else { cancel() }
     }
 }
+#endif
 
 // MARK: - ⌘1 Help
 

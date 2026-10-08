@@ -203,6 +203,8 @@ final class PaneState {
     var showPreview: Bool { didSet { save(showPreview, "Preview") } }
     /// True when he shrank a playing video so the still preview shows again. Saved, like everything.
     var playerShrunk: Bool { didSet { save(playerShrunk, "PlayerShrunk") } }
+    /// The preview's height, as he dragged it. 0 = automatic (16:9 at the pane's width, at most half).
+    var previewHeight: Double { didSet { save(previewHeight, "PreviewHeight") } }
 
     /// What is in the folder, as last read. Written by the pane view.
     var entries: [FolderEntry] = []
@@ -262,6 +264,7 @@ final class PaneState {
         showHidden = d.bool(forKey: prefix + "Hidden")
         showPreview = d.bool(forKey: prefix + "Preview")
         playerShrunk = d.bool(forKey: prefix + "PlayerShrunk")
+        previewHeight = d.double(forKey: prefix + "PreviewHeight")
         pendingSelection = Set((d.stringArray(forKey: prefix + "Selection") ?? []).map { URL(fileURLWithPath: $0) })
         revealed = Set(d.stringArray(forKey: prefix + "Revealed") ?? [])
         drives = Drives.mounted()
