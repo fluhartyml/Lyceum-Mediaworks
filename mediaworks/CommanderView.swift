@@ -286,30 +286,53 @@ struct CommanderView: View {
     // REM  ALONG THE BOTTOM OF COMMANDER, under both panes — Library Commander's place for it (build 56,
     // REM  his "at the bottom of the app"). The number is drawn bold and first so the eye finds it.
     // REM  The buttons never take the keyboard (.focusable(false)), so a click leaves the list in charge.
+    // REM  ⌘I AND ⌘Y JOIN THE BAR WHEN THEY FIT — his ask, 2026-10-08: "command I and command Y should be
+    // REM  listed in the button row at the bottom of the widow if they fit." When the window is too narrow
+    // REM  for all eleven, the bar drops back to the nine number keys rather than squeeze every label.
     private var keyBar: some View {
-        HStack(spacing: 0) {
-            ForEach(CommanderKey.all) { key in
-                Button { runKey(key.number) } label: {
-                    HStack(spacing: 6) {
-                        Text("⌘\(key.number)").bold()
-                        Text(key.title)
-                    }
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.borderless)
-                .focusable(false)
-                .disabled(!keyEnabled(key))
-                .help("⌘\(key.number) — \(key.help)")
-                if key.number != CommanderKey.all.last?.number { Divider() }
-            }
+        ViewThatFits(in: .horizontal) {
+            keyRow(withExtras: true)
+            keyRow(withExtras: false)
         }
         .font(.lyceumBody)
         .fixedSize(horizontal: false, vertical: true)
         .background(.bar)
         .popover(isPresented: $showingKeys, arrowEdge: .top) { KeysHelp() }
+    }
+
+    private func keyRow(withExtras: Bool) -> some View {
+        HStack(spacing: 0) {
+            ForEach(CommanderKey.all) { key in
+                keyButton("⌘\(key.number)", key.title, help: key.help, enabled: keyEnabled(key)) { runKey(key.number) }
+                if withExtras || key.number != CommanderKey.all.last?.number { Divider() }
+            }
+            if withExtras {
+                keyButton("⌘I", "Inspector", help: "Inspector between the panes: Off → Small → Large",
+                          enabled: true) { inspectorRaw = inspectorSize.next.rawValue }
+                Divider()
+                keyButton("⌘Y", "Quick Look", help: "Quick Look in its own window; follows the highlight",
+                          enabled: !quickLookList.isEmpty || quickLookURL != nil) { toggleQuickLook() }
+            }
+        }
+    }
+
+    private func keyButton(_ key: String, _ title: String, help: String, enabled: Bool,
+                           action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Text(key).bold()
+                Text(title)
+            }
+            .lineLimit(1)
+            .fixedSize()
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .focusable(false)
+        .disabled(!enabled)
+        .help("\(key) — \(help)")
     }
 
     private func keyEnabled(_ key: CommanderKey) -> Bool {
@@ -1362,6 +1385,7 @@ private struct KeysHelp: View {
             Divider()
             row("Tab", "Switch which pane is the source")
             row("⌘Y", "Quick Look in its own window; follows the highlight")
+            row("⌘I", "Inspector between the panes: Off → Small → Large")
             row("Click, pause, click", "Rename a name in its row")
         }
         .font(.lyceumBody)
