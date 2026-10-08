@@ -157,6 +157,11 @@ struct CommanderView: View {
 
     private var inspectorSize: InspectorSize { InspectorSize(rawValue: inspectorRaw) ?? .off }
 
+    /// The active pane's highlighted FILES (not folders), in the order shown — for applying one picture to many.
+    private var inspectedMany: [FolderEntry] {
+        active.rows.filter { active.selection.contains($0.id) && !$0.entry.isFolder }.map(\.entry)
+    }
+
     /// The active pane's one highlighted item — what the inspector describes.
     private var inspected: FolderEntry? {
         guard active.selection.count == 1, let url = active.selection.first else { return nil }
@@ -176,7 +181,7 @@ struct CommanderView: View {
                     pane(left).frame(width: unit)
                     Divider()
                     if inspectorSize != .off {
-                        InspectorPane(item: inspected, size: inspectorSize, saved: { finished() })
+                        InspectorPane(item: inspected, many: inspectedMany, size: inspectorSize, saved: { finished() })
                             .frame(width: inspectorSize == .large ? unit * 2 : unit)
                         Divider()
                     }

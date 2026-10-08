@@ -508,6 +508,8 @@ enum TagWriter {
 struct InspectorPane: View {
     /// The active pane's one highlighted item, or nil.
     let item: FolderEntry?
+    /// Every highlighted file in the active pane — two or more shows the "apply to all" view.
+    var many: [FolderEntry] = []
     let size: InspectorSize
     /// Called after a save, so both panes read their folders again.
     let saved: () -> Void
@@ -539,7 +541,9 @@ struct InspectorPane: View {
                 .padding(.vertical, 10)
                 .background(.bar)
             Divider()
-            if let item {
+            if many.count > 1 {
+                ScrollView { manyView.padding(16) }
+            } else if let item {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
                         facts(item)
@@ -741,6 +745,88 @@ struct InspectorPane: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: One picture for many files
+
+    // REM  HIS ASK, 2026-10-08: "yes build the apply picture to all highlighted files" — for a season, a whole
+    // REM  show, a movie series, an album. Each file gets the SAME checked save as a single one (new copy,
+    // REM  verified, old copy quietly to the Trash), one after another. A file that cannot take a picture
+    // REM  (MP3, MKV…) or is PLAYING is skipped and named at the end; nothing stops the rest.
+    @State private var applying = false
+
+    private var manyView: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("\(many.count) files highlighted").font(.lyceumHeadline)
+            let writable = many.filter { TagReader.writeType(for: $0.url) != nil }.count
+            if writable < many.count {
+                Text("\(many.count - writable) of them cannot take a picture (MP3 and some other kinds) and will be skipped.")
+                    .foregroundStyle(.secondary)
+            }
+            HStack(spacing: 8) {
+                Text(TagField.artwork.number).monospacedDigit().foregroundStyle(.tertiary)
+                Text(TagField.artwork.label).foregroundStyle(.secondary)
+            }
+            if let pendingPicture {
+                Image(decorative: pendingPicture, scale: 1)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity, maxHeight: size == .large ? 420 : 260, alignment: .leading)
+            } else {
+                Text("Choose a picture to put on all of them").foregroundStyle(.secondary)
+            }
+            HStack(spacing: 12) {
+                Button("Choose Picture…") { choosingPicture = true }
+                    .disabled(applying)
+                    .lyceumHelp("Choose Picture — pick one album cover or poster for every highlighted file")
+                Button { applyToMany() } label: {
+                    if applying { ProgressView().controlSize(.small) } else { Text("Apply to \(writable) File\(writable == 1 ? "" : "s")") }
+                }
+                .disabled(pendingPicture == nil || applying || writable == 0)
+                .lyceumHelp("Apply — save this picture into every highlighted file that can take one")
+            }
+            Text(many.map(\.name).joined(separator: "\n"))
+                .font(.lyceumDetail)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+        }
+    }
+
+    private func applyToMany() {
+        guard case .replace = picture else { return }
+        let files = many, edit = picture
+        applying = true
+        Task {
+            var done = 0
+            var skipped: [String] = []
+            var failed: [String] = []
+            for (index, entry) in files.enumerated() {
+                library.report("Saving \(index + 1) of \(files.count)…", working: true)
+                if mini.current?.standardizedFileURL == entry.url.standardizedFileURL, mini.isPlaying {
+                    skipped.append("\(entry.name) — playing"); continue
+                }
+                let before = await TagReader.read(entry)
+                guard before.writeType != nil else { skipped.append(entry.name); continue }
+                let releasedFrom = mini.release(entry.url)
+                do {
+                    try await TagWriter.save(entry.url, edits: [:], picture: edit, before: before,
+                                             instantDelete: instantDelete, library: library)
+                    done += 1
+                } catch {
+                    failed.append("\(entry.name): \(error.localizedDescription)")
+                }
+                if let releasedFrom { mini.recue(entry.url, from: releasedFrom) }
+            }
+            library.report("Saved \(done) of \(files.count)")
+            var notes: [String] = []
+            if !skipped.isEmpty { notes.append("Skipped:\n" + skipped.joined(separator: "\n")) }
+            if !failed.isEmpty { notes.append("Not saved:\n" + failed.joined(separator: "\n")) }
+            if !notes.isEmpty { problem = "Saved the picture into \(done) of \(files.count) files.\n\n" + notes.joined(separator: "\n\n") }
+            picture = nil
+            pendingPicture = nil
+            applying = false
+            saved()
+        }
     }
 
     // MARK: Reading and saving
