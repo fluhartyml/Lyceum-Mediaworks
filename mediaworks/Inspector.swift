@@ -11,16 +11,32 @@
 // REM  Right. Its job, in his words: "a new file info inspector so the user can edit the audio or videos
 // REM  meta data". It shows the ACTIVE pane's one highlighted item.
 // REM
+// REM  THE FIELDS ARE THE AMBER PAGE'S, BY NUMBER — his ruling, 2026-10-08, on
+// REM  Workshop/Media-Metadata-Compare-DRAFT-2026-10-08.html: "001 through 026 i want displayed and
+// REM  editable inline … 1 through 16 on the small information inspector panel and 001 through 026 on
+// REM  the larger" — and the larger "should also show the album art or movie poster where the smaller
+// REM  panel can show the album art or both can". Then, corrected: "the smaller showes all the fields,
+// REM  you just have to scroll to see them off the panel." So: SMALL = all 26 in one scrolling column,
+// REM  LARGE = 001–016 | 017–026 side by side; the picture (012) in both, bigger in the large one. Each
+// REM  field carries its amber-page number.
+// REM  And: "i want to be able to eventually add movie posters to the classic movies videos or
+// REM  television shows" — 012's Choose Picture… is that, by hand, today.
+// REM
 // REM  WHAT CAN BE SAVED — measured 2026-10-08 on generated test files, never his:
-// REM  · MP4 / M4V / MOV / M4A: yes. Apple's passthrough export writes the tags into a new copy; video
-// REM    and sound are copied untouched, not re-encoded.
-// REM  · MP3: NO. Apple's frameworks read ID3 tags but cannot write an MP3. Shown read-only, and the
-// REM    inspector says why, rather than offering a Save that would fail.
+// REM  · MP4 / M4V / MOV / M4A: every field 001–026 except 016. Apple's passthrough export writes the
+// REM    tags into a new copy; video and sound are copied untouched, not re-encoded. Track/disc (raw
+// REM    8 bytes), BPM (int16), media kind + HD (int8), season/episode (int32), picture (PNG/JPEG) and
+// REM    the rating (long-form "itlk" tag) all read back correctly with ffprobe.
+// REM  · 016 CHAPTERS: read-only. The passthrough export cannot rebuild Apple's chapter track (it DROPS
+// REM    it) — so they are listed, and a save that would lose them is refused (TagWriter, step 2).
+// REM  · MP3: read-only. Apple's frameworks read ID3 tags but cannot write an MP3.
 // REM  · Anything else (MKV, AVI…): Apple's frameworks cannot open it at all — file facts only.
 //
 
 import SwiftUI
 import AVFoundation
+import CoreMedia
+import ImageIO
 import UniformTypeIdentifiers
 
 /// How much of the window the inspector takes.
@@ -44,18 +60,68 @@ enum InspectorSize: String, CaseIterable, Identifiable {
     }
 }
 
-// MARK: - The tags
+// MARK: - The fields, 001–026
 
-/// One tag the inspector shows and can edit.
-// REM  EVERY PLACE A FIELD CAN LIVE IS LISTED — a .mov carried its title in a second (QuickTime) slot,
-// REM  and saving only the iTunes slot left the file with TWO titles ("Old Title;New Title" on the
-// REM  test file). A save clears every slot below for that field and writes the iTunes one.
+/// One field of the amber page — shown, and (most of them) editable.
+// REM  EVERY PLACE A FIELD CAN LIVE IS LISTED in `slots` — a .mov carried its title in a second
+// REM  (QuickTime) slot, and saving only the iTunes slot left the file with TWO titles ("Old Title;New
+// REM  Title" on the test file). A save clears every slot for that field and writes the iTunes one.
 // REM  MP3's ID3 slots are listed for READING only.
 enum TagField: String, CaseIterable, Identifiable {
-    case title, artist, album, albumArtist, genre, year, composer, comment, description
-    case show, season, episode, episodeID
+    case title, artist, album, albumArtist, genre, year, track, disc, composer, comment, lyrics
+    case artwork, bpm, sortTitle, sortArtist, encodedBy, chapters
+    case description, longDescription, show, season, episode, episodeID, network, mediaKind, hdVideo, rating
 
     var id: String { rawValue }
+
+    /// How the value is stored, and so how it is edited.
+    enum Kind { case text, longText, pair, int8, int16, int32, rating, picture, chapters }
+
+    var kind: Kind {
+        switch self {
+        case .comment, .lyrics, .description, .longDescription: .longText
+        case .track, .disc: .pair
+        case .mediaKind, .hdVideo: .int8
+        case .bpm: .int16
+        case .season, .episode: .int32
+        case .rating: .rating
+        case .artwork: .picture
+        case .chapters: .chapters
+        default: .text
+        }
+    }
+
+    /// The amber page's line number. 014 is two fields (title and artist sort names).
+    var number: String {
+        switch self {
+        case .title: "001"
+        case .artist: "002"
+        case .album: "003"
+        case .albumArtist: "004"
+        case .genre: "005"
+        case .year: "006"
+        case .track: "007"
+        case .disc: "008"
+        case .composer: "009"
+        case .comment: "010"
+        case .lyrics: "011"
+        case .artwork: "012"
+        case .bpm: "013"
+        case .sortTitle, .sortArtist: "014"
+        case .encodedBy: "015"
+        case .chapters: "016"
+        case .description: "017"
+        case .longDescription: "018"
+        case .show: "019"
+        case .season: "020"
+        case .episode: "021"
+        case .episodeID: "022"
+        case .network: "023"
+        case .mediaKind: "024"
+        case .hdVideo: "025"
+        case .rating: "026"
+        }
+    }
 
     var label: String {
         switch self {
@@ -64,38 +130,77 @@ enum TagField: String, CaseIterable, Identifiable {
         case .album: "Album"
         case .albumArtist: "Album Artist"
         case .genre: "Genre"
-        case .year: "Year"
+        case .year: "Year / Release Date"
+        case .track: "Track Number"
+        case .disc: "Disc Number"
         case .composer: "Composer"
         case .comment: "Comment"
-        case .description: "Description"
+        case .lyrics: "Lyrics"
+        case .artwork: "Album Art / Poster"
+        case .bpm: "Beats per Minute"
+        case .sortTitle: "Sort Title As"
+        case .sortArtist: "Sort Artist As"
+        case .encodedBy: "Encoded By (software)"
+        case .chapters: "Chapters"
+        case .description: "Short Description"
+        case .longDescription: "Long Description (plot)"
         case .show: "TV Show"
         case .season: "Season"
         case .episode: "Episode"
         case .episodeID: "Episode ID"
+        case .network: "TV Network"
+        case .mediaKind: "Media Kind"
+        case .hdVideo: "HD"
+        case .rating: "Content Rating"
         }
     }
 
-    /// Fields only a video can carry (the MP3 has nowhere to put them).
-    var videoOnly: Bool { [.description, .show, .season, .episode, .episodeID].contains(self) }
-    /// Saved as a whole number, not text.
-    var isNumber: Bool { self == .season || self == .episode }
-
-    /// The iTunes tag the save writes.
-    var writeKey: String {
+    /// What a typed value should look like, shown in the empty box.
+    var hint: String {
         switch self {
-        case .title: "©nam"
-        case .artist: "©ART"
-        case .album: "©alb"
-        case .albumArtist: "aART"
-        case .genre: "©gen"
-        case .year: "©day"
-        case .composer: "©wrt"
-        case .comment: "©cmt"
-        case .description: "desc"
-        case .show: "tvsh"
-        case .season: "tvsn"
-        case .episode: "tves"
-        case .episodeID: "tven"
+        case .track, .disc: "3/12"
+        case .year: "1959"
+        case .rating: "PG-13 or TV-14"
+        case .episodeID: "S01E05"
+        default: label
+        }
+    }
+
+    /// 001–016 — the left column of the large inspector (the amber page's first table).
+    var inSmall: Bool { number <= "016" }
+
+    /// The iTunes tag a save writes, and its key space.
+    var writeKey: (key: String, space: AVMetadataKeySpace)? {
+        switch self {
+        case .title: ("©nam", .iTunes)
+        case .artist: ("©ART", .iTunes)
+        case .album: ("©alb", .iTunes)
+        case .albumArtist: ("aART", .iTunes)
+        case .genre: ("©gen", .iTunes)
+        case .year: ("©day", .iTunes)
+        case .track: ("trkn", .iTunes)
+        case .disc: ("disk", .iTunes)
+        case .composer: ("©wrt", .iTunes)
+        case .comment: ("©cmt", .iTunes)
+        case .lyrics: ("©lyr", .iTunes)
+        case .artwork: ("covr", .iTunes)
+        case .bpm: ("tmpo", .iTunes)
+        case .sortTitle: ("sonm", .iTunes)
+        case .sortArtist: ("soar", .iTunes)
+        case .encodedBy: ("©too", .iTunes)
+        case .chapters: nil
+        case .description: ("desc", .iTunes)
+        case .longDescription: ("ldes", .iTunes)
+        case .show: ("tvsh", .iTunes)
+        case .season: ("tvsn", .iTunes)
+        case .episode: ("tves", .iTunes)
+        case .episodeID: ("tven", .iTunes)
+        case .network: ("tvnn", .iTunes)
+        case .mediaKind: ("stik", .iTunes)
+        case .hdVideo: ("hdvd", .iTunes)
+        // REM  The rating is a "long-form" iTunes tag. The SDK names no key space for it; its code,
+        // REM  "itlk", is what Apple's own reader reports for these tags (seen on the test files).
+        case .rating: ("com.apple.iTunes.iTunEXTC", AVMetadataKeySpace(rawValue: "itlk"))
         }
     }
 
@@ -104,29 +209,49 @@ enum TagField: String, CaseIterable, Identifiable {
         func id(_ key: String, _ space: AVMetadataKeySpace) -> AVMetadataIdentifier? {
             AVMetadataItem.identifier(forKey: key, keySpace: space)
         }
-        let itunes = [id(writeKey, .iTunes)]
+        let main = writeKey.map { [id($0.key, $0.space)] } ?? []
         let extra: [AVMetadataIdentifier?]
         switch self {
-        case .title: extra = [id("©nam", .quickTimeUserData), id("com.apple.quicktime.title", .quickTimeMetadata),
-                              id("TIT2", .id3)]
-        case .artist: extra = [id("©ART", .quickTimeUserData), id("com.apple.quicktime.artist", .quickTimeMetadata),
-                               id("TPE1", .id3)]
-        case .album: extra = [id("©alb", .quickTimeUserData), id("com.apple.quicktime.album", .quickTimeMetadata),
-                              id("TALB", .id3)]
+        case .title: extra = [id("©nam", .quickTimeUserData), id("com.apple.quicktime.title", .quickTimeMetadata), id("TIT2", .id3)]
+        case .artist: extra = [id("©ART", .quickTimeUserData), id("com.apple.quicktime.artist", .quickTimeMetadata), id("TPE1", .id3)]
+        case .album: extra = [id("©alb", .quickTimeUserData), id("com.apple.quicktime.album", .quickTimeMetadata), id("TALB", .id3)]
         case .albumArtist: extra = [id("TPE2", .id3)]
         case .genre: extra = [id("gnre", .iTunes), id("com.apple.quicktime.genre", .quickTimeMetadata), id("TCON", .id3)]
         case .year: extra = [id("©day", .quickTimeUserData), id("com.apple.quicktime.year", .quickTimeMetadata),
                              id("TDRC", .id3), id("TYER", .id3)]
-        case .composer: extra = [id("©wrt", .quickTimeUserData), id("com.apple.quicktime.composer", .quickTimeMetadata),
-                                 id("TCOM", .id3)]
-        case .comment: extra = [id("©cmt", .quickTimeUserData), id("com.apple.quicktime.comment", .quickTimeMetadata),
-                                id("COMM", .id3)]
-        case .description: extra = [id("©des", .quickTimeUserData), id("com.apple.quicktime.description", .quickTimeMetadata),
-                                    id("ldes", .iTunes)]
-        case .show, .season, .episode, .episodeID: extra = []
+        case .track: extra = [id("TRCK", .id3)]
+        case .disc: extra = [id("TPOS", .id3)]
+        case .composer: extra = [id("©wrt", .quickTimeUserData), id("com.apple.quicktime.composer", .quickTimeMetadata), id("TCOM", .id3)]
+        case .comment: extra = [id("©cmt", .quickTimeUserData), id("com.apple.quicktime.comment", .quickTimeMetadata), id("COMM", .id3)]
+        case .lyrics: extra = [id("USLT", .id3)]
+        case .artwork: extra = [id("com.apple.quicktime.artwork", .quickTimeMetadata), id("APIC", .id3)]
+        case .bpm: extra = [id("TBPM", .id3)]
+        case .sortTitle: extra = [id("TSOT", .id3)]
+        case .sortArtist: extra = [id("TSOP", .id3)]
+        case .encodedBy: extra = [id("©swr", .quickTimeUserData), id("com.apple.quicktime.software", .quickTimeMetadata), id("TSSE", .id3)]
+        case .description: extra = [id("©des", .quickTimeUserData), id("com.apple.quicktime.description", .quickTimeMetadata)]
+        default: extra = []
         }
-        return (itunes + extra).compactMap { $0 }
+        return (main + extra).compactMap { $0 }
     }
+
+    /// The choices for a pick-one field, as (stored number, words).
+    // REM  Media kind and HD values are Apple's iTunes codes, written from what is known of them — the
+    // REM  test file's 9 read back as "Movie" in nothing but our own label; ffprobe only shows the number.
+    var choices: [(String, String)] {
+        switch self {
+        case .mediaKind: [("1", "Music"), ("2", "Audiobook"), ("6", "Music Video"), ("9", "Movie"),
+                          ("10", "TV Show"), ("11", "Booklet"), ("14", "Ringtone"), ("21", "Podcast")]
+        case .hdVideo: [("0", "No (SD)"), ("1", "720p"), ("2", "1080p")]
+        default: []
+        }
+    }
+}
+
+/// A change to the picture (012) waiting to be saved.
+enum PictureEdit: Equatable {
+    case replace(Data, isPNG: Bool)
+    case remove
 }
 
 /// What the inspector knows about one file.
@@ -135,6 +260,8 @@ struct InspectedFile: Equatable {
     var length: Double?
     var resolution: String?
     var artwork: CGImage?
+    /// "0:00  Opening", one per chapter — 016, read-only.
+    var chapterLines: [String] = []
     /// The kind of file this is, for saving: nil when tags cannot be written into it.
     var writeType: AVFileType?
     /// Why tags cannot be saved, in words, when they cannot.
@@ -145,8 +272,11 @@ struct InspectedFile: Equatable {
 
     static func == (a: InspectedFile, b: InspectedFile) -> Bool {
         a.tags == b.tags && a.length == b.length && a.resolution == b.resolution && a.writeType == b.writeType
+            && a.chapterLines == b.chapterLines && (a.artwork == nil) == (b.artwork == nil)
     }
 }
+
+// MARK: - Reading
 
 enum TagReader {
     /// The file types a save can write, by extension.
@@ -176,18 +306,14 @@ enum TagReader {
         file.trackCount = (try? await asset.load(.tracks).count) ?? 0
         file.chapterCount = (try? await asset.load(.availableChapterLocales).count) ?? 0
         file.artwork = await PreviewPicture.artwork(of: asset)
+        file.chapterLines = await chapters(of: asset)
         let items = ((try? await asset.load(.metadata)) ?? []) + ((try? await asset.load(.commonMetadata)) ?? [])
-        for field in TagField.allCases {
+        for field in TagField.allCases where field.kind != .picture && field.kind != .chapters {
             for slot in field.slots {
-                guard let item = AVMetadataItem.metadataItems(from: items, filteredByIdentifier: slot).first else { continue }
-                let text: String?
-                if let words = try? await item.load(.stringValue) { text = words }
-                else if let number = try? await item.load(.numberValue) { text = number.stringValue }
-                else { text = nil }
-                if let text, !text.trimmingCharacters(in: .whitespaces).isEmpty {
-                    file.tags[field] = text.trimmingCharacters(in: .whitespaces)
-                    break
-                }
+                guard let item = AVMetadataItem.metadataItems(from: items, filteredByIdentifier: slot).first,
+                      let text = await text(of: item, as: field) else { continue }
+                file.tags[field] = text
+                break
             }
         }
         file.writeType = writeType(for: entry.url)
@@ -197,6 +323,44 @@ enum TagReader {
                 : "Tags in a .\(entry.url.pathExtension) file can be read but not saved here."
         }
         return file
+    }
+
+    /// One tag's value as the text the inspector shows.
+    private static func text(of item: AVMetadataItem, as field: TagField) async -> String? {
+        var text: String?
+        switch field.kind {
+        case .pair:
+            // REM  iTunes keeps track and disc as 8 raw bytes: 0 0 | number (2) | total (2) | 0 0.
+            // REM  An MP3 keeps them as text, "3/12".
+            if let data = try? await item.load(.dataValue), data.count >= 6 {
+                let b = [UInt8](data)
+                let number = Int(b[2]) << 8 | Int(b[3]), total = Int(b[4]) << 8 | Int(b[5])
+                text = number == 0 ? nil : (total == 0 ? "\(number)" : "\(number)/\(total)")
+            } else {
+                text = try? await item.load(.stringValue)
+            }
+        case .rating:
+            // REM  Stored as "mpaa|PG-13|300|" — the middle part is the rating itself.
+            let raw = try? await item.load(.stringValue)
+            text = raw.map { $0.split(separator: "|", omittingEmptySubsequences: false) }.flatMap { $0.count > 1 ? String($0[1]) : raw }
+        default:
+            if let words = try? await item.load(.stringValue) { text = words }
+            else if let number = try? await item.load(.numberValue) { text = number.stringValue }
+        }
+        guard let text = text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
+        return text
+    }
+
+    private static func chapters(of asset: AVURLAsset) async -> [String] {
+        let languages = Locale.preferredLanguages
+        guard let groups = try? await asset.loadChapterMetadataGroups(bestMatchingPreferredLanguages: languages) else { return [] }
+        var lines: [String] = []
+        for group in groups {
+            let title = AVMetadataItem.metadataItems(from: group.items, filteredByIdentifier: .commonIdentifierTitle).first
+            let name = (try? await title?.load(.stringValue)) ?? nil
+            lines.append(FolderView.lengthText(group.timeRange.start.seconds) + "  " + (name ?? "Chapter \(lines.count + 1)"))
+        }
+        return lines
     }
 }
 
@@ -213,24 +377,23 @@ enum TagWriter {
     // REM     chapters would quietly lose them. That save is refused and the copy is removed.
     // REM  3. The original goes to the Lyceum Trash (or is deleted, if Settings says so); the copy takes
     // REM     its name. If step 3 fails halfway, the original is in the Trash, never lost.
-    static func save(_ url: URL, edits: [TagField: String], before: InspectedFile,
+    static func save(_ url: URL, edits: [TagField: String], picture: PictureEdit?, before: InspectedFile,
                      instantDelete: Bool, library: LibraryStore) async throws {
         guard let type = before.writeType else { throw FileProblem(message: before.readOnlyReason ?? "These tags cannot be saved.") }
         let asset = AVURLAsset(url: url)
         let existing = (try? await asset.load(.metadata)) ?? []
-        let cleared = Set(edits.keys.flatMap(\.slots))
+        var changedFields = Array(edits.keys)
+        if picture != nil { changedFields.append(.artwork) }
+        let cleared = Set(changedFields.flatMap(\.slots))
         var items: [AVMetadataItem] = existing.filter { !($0.identifier.map(cleared.contains) ?? false) }
         for (field, text) in edits {
-            let text = text.trimmingCharacters(in: .whitespaces)
-            guard !text.isEmpty else { continue }   // REM  An emptied field is removed from the file.
+            if let item = try item(field, text) { items.append(item) }
+        }
+        if case .replace(let data, let isPNG) = picture {
             let item = AVMutableMetadataItem()
-            item.identifier = AVMetadataItem.identifier(forKey: field.writeKey, keySpace: .iTunes)
-            if field.isNumber {
-                guard let number = Int32(text) else { throw FileProblem(message: "\(field.label) must be a whole number.") }
-                item.value = NSNumber(value: number)
-            } else {
-                item.value = text as NSString
-            }
+            item.identifier = AVMetadataItem.identifier(forKey: "covr", keySpace: .iTunes)
+            item.value = data as NSData
+            item.dataType = (isPNG ? kCMMetadataBaseDataType_PNG : kCMMetadataBaseDataType_JPEG) as String
             items.append(item)
         }
 
@@ -276,6 +439,55 @@ enum TagWriter {
         library.journal("tags", from: url, to: url)
         library.report("Saved the tags of “\(url.lastPathComponent)”" + (instantDelete ? "" : " — the old copy is in the Trash"))
     }
+
+    /// The tag to write for one edited field — nil when the field was emptied (it is then removed).
+    private static func item(_ field: TagField, _ text: String) throws -> AVMetadataItem? {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, let key = field.writeKey else { return nil }
+        let item = AVMutableMetadataItem()
+        item.identifier = AVMetadataItem.identifier(forKey: key.key, keySpace: key.space)
+        func whole<T: FixedWidthInteger>(_: T.Type) throws -> T {
+            guard let value = T(text) else { throw FileProblem(message: "\(field.number) \(field.label) must be a whole number.") }
+            return value
+        }
+        switch field.kind {
+        case .int8:
+            item.value = NSNumber(value: try whole(Int8.self))
+            item.dataType = kCMMetadataBaseDataType_SInt8 as String
+        case .int16:
+            item.value = NSNumber(value: try whole(Int16.self))
+            item.dataType = kCMMetadataBaseDataType_SInt16 as String
+        case .int32:
+            item.value = NSNumber(value: try whole(Int32.self))
+            item.dataType = kCMMetadataBaseDataType_SInt32 as String
+        case .pair:
+            // REM  "3/12", "3 of 12" or just "3" — the first number, then the total if there is one.
+            let numbers = text.split(whereSeparator: { !$0.isNumber }).compactMap { UInt16($0) }
+            guard let number = numbers.first else {
+                throw FileProblem(message: "\(field.number) \(field.label) must look like 3/12 or 3.")
+            }
+            let total = numbers.count > 1 ? numbers[1] : 0
+            item.value = Data([0, 0, UInt8(number >> 8), UInt8(number & 255), UInt8(total >> 8), UInt8(total & 255), 0, 0]) as NSData
+            item.dataType = kCMMetadataBaseDataType_RawData as String
+        case .rating:
+            item.value = ratingTag(text) as NSString
+        default:
+            item.value = text as NSString
+        }
+        return item
+    }
+
+    /// "PG-13" → "mpaa|PG-13|300|", "TV-14" → "us-tv|TV-14|500|" — iTunes' rating format.
+    // REM  The scores are iTunes' known values for the US systems, written from memory and not checked
+    // REM  against a published table; an unknown rating is written with 0, which players still show.
+    static func ratingTag(_ rating: String) -> String {
+        if rating.contains("|") { return rating }
+        let movies = ["G": 100, "PG": 200, "PG-13": 300, "R": 400, "NC-17": 500]
+        let tv = ["TV-Y": 100, "TV-Y7": 200, "TV-G": 300, "TV-PG": 400, "TV-14": 500, "TV-MA": 600]
+        let upper = rating.uppercased()
+        if upper.hasPrefix("TV-") { return "us-tv|\(upper)|\(tv[upper] ?? 0)|" }
+        return "mpaa|\(upper)|\(movies[upper] ?? 0)|"
+    }
 }
 
 // MARK: - The inspector view
@@ -293,14 +505,18 @@ struct InspectorPane: View {
 
     @State private var file = InspectedFile()
     @State private var edits: [TagField: String] = [:]
+    @State private var picture: PictureEdit?
+    @State private var pendingPicture: CGImage?
     @State private var loading = false
     @State private var saving = false
     @State private var problem: String?
+    @State private var choosingPicture = false
 
     private var canSave: Bool { file.writeType != nil && !saving }
     private var changed: [TagField: String] {
-        edits.filter { field, text in text.trimmingCharacters(in: .whitespaces) != (file.tags[field] ?? "") }
+        edits.filter { field, text in text.trimmingCharacters(in: .whitespacesAndNewlines) != (file.tags[field] ?? "") }
     }
+    private var hasChanges: Bool { !changed.isEmpty || picture != nil }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -312,19 +528,15 @@ struct InspectorPane: View {
             Divider()
             if let item {
                 ScrollView {
-                    if size == .large {
-                        HStack(alignment: .top, spacing: 24) {
-                            facts(item).frame(maxWidth: .infinity, alignment: .topLeading)
-                            tags(item).frame(maxWidth: .infinity, alignment: .topLeading)
-                        }
-                        .padding(16)
-                    } else {
-                        VStack(alignment: .leading, spacing: 20) {
-                            facts(item)
-                            tags(item)
-                        }
-                        .padding(16)
+                    VStack(alignment: .leading, spacing: 20) {
+                        facts(item)
+                        if item.isMedia { tags(item) }
                     }
+                    .padding(16)
+                }
+                if item.isMedia, file.writeType != nil {
+                    Divider()
+                    saveRow
                 }
             } else {
                 Spacer()
@@ -337,6 +549,9 @@ struct InspectorPane: View {
         }
         .font(.lyceumBody)
         .task(id: item.map { MediaInfoCache.key($0) }) { await load() }
+        .fileImporter(isPresented: $choosingPicture, allowedContentTypes: [.image]) { result in
+            if case .success(let url) = result { usePicture(url) }
+        }
         .alert("Inspector", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
             Button("OK") { problem = nil }
         } message: { Text(problem ?? "") }
@@ -346,12 +561,6 @@ struct InspectorPane: View {
 
     private func facts(_ item: FolderEntry) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            if let art = file.artwork {
-                Image(decorative: art, scale: 1)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: .infinity, maxHeight: 220)
-            }
             Text(item.name)
                 .font(.lyceumHeadline)
                 .textSelection(.enabled)
@@ -360,7 +569,6 @@ struct InspectorPane: View {
                 fact("Size", item.size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) })
             }
             fact("Modified", item.modified.map { $0.formatted(date: .abbreviated, time: .shortened) })
-            fact("Created", item.created.map { $0.formatted(date: .abbreviated, time: .shortened) })
             if item.isMedia {
                 fact("Length", file.length.map { FolderView.lengthText($0) })
                 if item.isVideo { fact("Resolution", file.resolution) }
@@ -376,49 +584,129 @@ struct InspectorPane: View {
         }
     }
 
-    // MARK: The tags
+    // MARK: 001–026
 
     @ViewBuilder
     private func tags(_ item: FolderEntry) -> some View {
-        if item.isMedia {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Tags").font(.lyceumHeadline)
-                if loading {
-                    ProgressView()
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Tags").font(.lyceumHeadline)
+            if loading {
+                ProgressView()
+            } else {
+                if let reason = file.readOnlyReason {
+                    Text(reason).foregroundStyle(.secondary)
+                }
+                if size == .large {
+                    // REM  LARGE: 001–016 on the left, 017–026 on the right — the amber page's two tables.
+                    HStack(alignment: .top, spacing: 24) {
+                        fields(TagField.allCases.filter(\.inSmall)).frame(maxWidth: .infinity, alignment: .topLeading)
+                        fields(TagField.allCases.filter { !$0.inSmall }).frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
                 } else {
-                    if let reason = file.readOnlyReason {
-                        Text(reason).foregroundStyle(.secondary)
-                    }
-                    ForEach(TagField.allCases.filter { item.isVideo || !$0.videoOnly }) { field in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(field.label).foregroundStyle(.secondary)
-                            if canSave {
-                                TextField(field.label, text: binding(field), axis: field == .description || field == .comment ? .vertical : .horizontal)
-                                    .textFieldStyle(.roundedBorder)
-                            } else {
-                                Text(file.tags[field] ?? "—").textSelection(.enabled)
-                            }
-                        }
-                    }
-                    if file.writeType != nil {
-                        saveRow(item)
-                    }
+                    // REM  SMALL: ALL 26 TOO, in one column — his correction, 2026-10-08: "the smaller showes
+                    // REM  all the fields, you just have to scroll to see them off the panel."
+                    fields(TagField.allCases)
                 }
             }
         }
     }
 
-    private func saveRow(_ item: FolderEntry) -> some View {
+    private func fields(_ list: [TagField]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(list) { field in
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text(field.number).monospacedDigit().foregroundStyle(.tertiary)
+                        Text(field.label).foregroundStyle(.secondary)
+                    }
+                    editor(field)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func editor(_ field: TagField) -> some View {
+        switch field.kind {
+        case .picture: pictureRow
+        case .chapters:
+            VStack(alignment: .leading, spacing: 2) {
+                if file.chapterLines.isEmpty { Text("None").foregroundStyle(.secondary) }
+                ForEach(file.chapterLines, id: \.self) { Text($0) }
+                if !file.chapterLines.isEmpty {
+                    Text("Read only — a tag save keeps them only if the new copy does; Lyceum checks and refuses otherwise.")
+                        .font(.lyceumDetail)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        case .int8 where canSave:
+            Picker(field.label, selection: binding(field)) {
+                Text("—").tag("")
+                ForEach(field.choices, id: \.0) { Text($0.1).tag($0.0) }
+                // An unknown code already in the file still shows, as its number.
+                let current = edits[field] ?? file.tags[field] ?? ""
+                if !current.isEmpty, !field.choices.contains(where: { $0.0 == current }) { Text(current).tag(current) }
+            }
+            .labelsHidden()
+        default:
+            if canSave {
+                TextField(field.hint, text: binding(field),
+                          axis: field.kind == .longText ? .vertical : .horizontal)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(field.kind == .longText ? 1...6 : 1...1)
+            } else {
+                Text(shown(field)).textSelection(.enabled)
+            }
+        }
+    }
+
+    /// A stored value in words — for read-only files.
+    private func shown(_ field: TagField) -> String {
+        guard let value = file.tags[field] else { return "—" }
+        return field.choices.first(where: { $0.0 == value })?.1 ?? value
+    }
+
+    // REM  012 — THE PICTURE, in both sizes; bigger in the large inspector (his "the larger … should also
+    // REM  show the album art or movie poster"). Choose Picture… is how a poster goes onto a classic movie
+    // REM  or show today; it is written into the file with the other tags on Save.
+    private var pictureRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            let shownPicture: CGImage? = picture == .remove ? nil : (pendingPicture ?? file.artwork)
+            if let shownPicture {
+                Image(decorative: shownPicture, scale: 1)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity, maxHeight: size == .large ? 420 : 220, alignment: .leading)
+            } else {
+                Text("No picture").foregroundStyle(.secondary)
+            }
+            if canSave {
+                HStack(spacing: 12) {
+                    Button("Choose Picture…") { choosingPicture = true }
+                        .help("Pick an album cover or movie poster to save into this file")
+                    Button("Remove Picture") { picture = .remove; pendingPicture = nil }
+                        .disabled(shownPicture == nil)
+                }
+            }
+        }
+    }
+
+    private func binding(_ field: TagField) -> Binding<String> {
+        Binding(get: { edits[field] ?? file.tags[field] ?? "" },
+                set: { edits[field] = $0 })
+    }
+
+    private var saveRow: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
-                Button("Revert") { edits = [:] }
-                    .disabled(changed.isEmpty || saving)
+                Button("Revert") { edits = [:]; picture = nil; pendingPicture = nil }
+                    .disabled(!hasChanges || saving)
                     .help("Put back what the file says")
-                Button { save(item) } label: {
+                Button { save() } label: {
                     if saving { ProgressView().controlSize(.small) } else { Text("Save Tags") }
                 }
                 .keyboardShortcut("s", modifiers: .command)
-                .disabled(changed.isEmpty || saving)
+                .disabled(!hasChanges || saving)
                 .help("Write these tags into the file")
             }
             // REM  SAY WHAT WILL HAPPEN BEFORE IT HAPPENS — a save rewrites the whole file, which on Nineveh
@@ -429,12 +717,8 @@ struct InspectorPane: View {
                 .font(.lyceumDetail)
                 .foregroundStyle(.secondary)
         }
-        .padding(.top, 6)
-    }
-
-    private func binding(_ field: TagField) -> Binding<String> {
-        Binding(get: { edits[field] ?? file.tags[field] ?? "" },
-                set: { edits[field] = $0 })
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: Reading and saving
@@ -442,10 +726,12 @@ struct InspectorPane: View {
     private func load() async {
         // REM  Edits not saved when the highlight moves on are dropped — and the status bar says so,
         // REM  so it is never a silent loss.
-        if !changed.isEmpty, file.writeType != nil {
+        if hasChanges, file.writeType != nil {
             library.report("Tag changes were not saved")
         }
         edits = [:]
+        picture = nil
+        pendingPicture = nil
         file = InspectedFile()
         guard let item, item.isMedia else { return }
         loading = true
@@ -455,19 +741,47 @@ struct InspectorPane: View {
         loading = false
     }
 
-    private func save(_ item: FolderEntry) {
+    /// A picture he chose: PNG and JPEG go in as they are; anything else is turned into a JPEG.
+    private func usePicture(_ url: URL) {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url),
+              let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+            problem = "That picture could not be read."
+            return
+        }
+        let type = CGImageSourceGetType(source) as String?
+        if type == UTType.png.identifier {
+            picture = .replace(data, isPNG: true)
+        } else if type == UTType.jpeg.identifier {
+            picture = .replace(data, isPNG: false)
+        } else {
+            let out = NSMutableData()
+            guard let dest = CGImageDestinationCreateWithData(out, UTType.jpeg.identifier as CFString, 1, nil) else { return }
+            CGImageDestinationAddImage(dest, image, [kCGImageDestinationLossyCompressionQuality: 0.9] as CFDictionary)
+            guard CGImageDestinationFinalize(dest) else { problem = "That picture could not be converted."; return }
+            picture = .replace(out as Data, isPNG: false)
+        }
+        pendingPicture = image
+    }
+
+    private func save() {
+        guard let item else { return }
         // REM  NOT WHILE IT IS LOADED IN THE PLAYER — the old file is about to be put away underneath it.
         if mini.current?.standardizedFileURL == item.url.standardizedFileURL {
             problem = "“\(item.name)” is loaded in the player. Play something else first, then save its tags."
             return
         }
-        let edits = changed, before = file
+        let edits = changed, picture = picture, before = file
         saving = true
         library.report("Saving the tags of “\(item.name)” — writing a new copy…", working: true)
         Task {
             do {
-                try await TagWriter.save(item.url, edits: edits, before: before, instantDelete: instantDelete, library: library)
+                try await TagWriter.save(item.url, edits: edits, picture: picture, before: before,
+                                         instantDelete: instantDelete, library: library)
                 self.edits = [:]
+                self.picture = nil
                 saved()
             } catch {
                 problem = error.localizedDescription
