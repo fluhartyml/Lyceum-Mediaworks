@@ -572,20 +572,29 @@ struct InspectorPane: View {
 
     // MARK: What the file is
 
+    // REM  HIS ORDER, 2026-10-08: the picture (012) goes "to the top of the info inspector under "the sleeping
+    // REM  Giant.mp4 and above kind" — then "length is more important resolution is next where is last in that
+    // REM  section because it acts like a floor that "separates" or divides from below".
+    // REM  So: name · picture · Length · Resolution · Kind · Size · Modified · Where (the floor) · then Tags.
     private func facts(_ item: FolderEntry) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(item.name)
                 .font(.lyceumHeadline)
                 .textSelection(.enabled)
+            if item.isMedia {
+                HStack(spacing: 8) {
+                    Text(TagField.artwork.number).monospacedDigit().foregroundStyle(.tertiary)
+                    Text(TagField.artwork.label).foregroundStyle(.secondary)
+                }
+                pictureRow
+                fact("Length", file.length.map { FolderView.lengthText($0) })
+                if item.isVideo { fact("Resolution", file.resolution) }
+            }
             fact("Kind", item.kind)
             if !item.isFolder {
                 fact("Size", item.size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) })
             }
             fact("Modified", item.modified.map { $0.formatted(date: .abbreviated, time: .shortened) })
-            if item.isMedia {
-                fact("Length", file.length.map { FolderView.lengthText($0) })
-                if item.isVideo { fact("Resolution", file.resolution) }
-            }
             fact("Where", item.url.deletingLastPathComponent().path)
         }
     }
@@ -624,10 +633,9 @@ struct InspectorPane: View {
         }
     }
 
-    // REM  THE PICTURE GOES FIRST — his ask, 2026-10-08: "I would like the album art / poster to be number one
-    // REM  at the top instead of being burried down below." It keeps its amber number, 012.
+    // REM  The picture (012) is not in this list — it sits at the top, under the name (facts above).
     private func fields(_ list: [TagField]) -> some View {
-        let shown = list.contains(.artwork) ? [.artwork] + list.filter { $0 != .artwork } : list
+        let shown = list.filter { $0 != .artwork }
         return VStack(alignment: .leading, spacing: 12) {
             ForEach(shown) { field in
                 VStack(alignment: .leading, spacing: 4) {
