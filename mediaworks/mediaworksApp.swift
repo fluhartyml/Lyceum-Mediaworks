@@ -46,7 +46,7 @@ struct mediaworksApp: App {
 
         // REM  THE PiP WINDOW — floats above every window; he moves it and sizes it (PiPWindow.swift).
         // REM  Not restored at launch: it opens when a video plays, or from a pane's Show Video.
-        Window("Picture in Picture", id: "pip") {
+        Window("PiP", id: "pip") {
             PiPView()
                 .environment(mini)
                 .environment(pip)
