@@ -214,6 +214,8 @@ struct ArtworkSearchSheet: View {
     @State private var source: ArtworkSource = .duckduckgo
     @State private var duckAddress: URL?
     @State private var bridge = DuckDuckGoBridge()
+    /// The picture View File opened, shown full size over the results.
+    @State private var viewing: URL?
     @State private var shape: ArtworkShape = .poster
     @State private var results: [ArtworkResult] = []
     @State private var searching = false
@@ -277,6 +279,16 @@ struct ArtworkSearchSheet: View {
                 DuckDuckGoView(address: duckAddress, bridge: bridge)
                     .frame(maxWidth: .infinity, minHeight: 420, maxHeight: .infinity)
                     .layoutPriority(1)
+                    // The results stay loaded underneath, so Back to Results is instant.
+                    .overlay {
+                        if let viewing {
+                            PictureViewer(address: viewing,
+                                          use: { data in pick(data); dismiss() },
+                                          back: { self.viewing = nil })
+                                .padding(10)
+                                .background(.background)
+                        }
+                    }
                     .overlay { if downloading != nil { ProgressView().controlSize(.large) } }
                 if let message { Text(message).foregroundStyle(.secondary) }
             } else if searching {
@@ -320,6 +332,7 @@ struct ArtworkSearchSheet: View {
         .onAppear {
             text = initial
             bridge.picked = { useShown($0) }
+            bridge.opened = { viewing = $0 }
             if !initial.isEmpty { run() }
         }
         // REM  The window stays open between uses (Mac); a new Find Picture… brings a new file's words.

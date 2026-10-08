@@ -23,6 +23,7 @@
 
 import SwiftUI
 import WebKit
+import ImageIO
 
 enum DuckDuckGo {
     /// DuckDuckGo Images for the words, in the chosen shape, large pictures first where DuckDuckGo allows.
@@ -119,9 +120,33 @@ enum DuckDuckGo {
 
 /// Talks to the page: carries a double-clicked picture's address out, and runs "Use This Picture".
 @MainActor
-final class DuckDuckGoBridge: NSObject, WKScriptMessageHandler {
+final class DuckDuckGoBridge: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationDelegate {
     weak var webView: WKWebView?
     var picked: (URL) -> Void = { _ in }
+    /// "View File" — a picture's own file, to be shown full size in Lyceum's viewer.
+    var opened: (URL) -> Void = { _ in }
+
+    // REM  VIEW FILE OPENS LYCEUM'S VIEWER — his ask, 2026-10-08: "can view file do something like open a new tab
+    // REM  to view the picture? and then if you like it is there a choose image button?" DuckDuckGo's View File asks
+    // REM  for a NEW TAB; this window has none, so the request is caught here and the address goes to the viewer
+    // REM  (full size, zoomable, Use This Picture / Back to Results). Any other trip off DuckDuckGo is caught too,
+    // REM  so the results page is never lost with no Back button.
+    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+                 for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        if let url = action.request.url { opened(url) }
+        return nil
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
+                 decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
+        if action.targetFrame?.isMainFrame == true, let url = action.request.url,
+           let host = url.host, !host.hasSuffix("duckduckgo.com"), url.scheme?.hasPrefix("http") == true {
+            opened(url)
+            decisionHandler(.cancel)
+            return
+        }
+        decisionHandler(.allow)
+    }
 
     nonisolated func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         let text = message.body as? String
@@ -174,6 +199,8 @@ extension DuckDuckGoView {
         configuration.userContentController.addUserScript(
             WKUserScript(source: DuckDuckGo.clickScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         let view = WKWebView(frame: .zero, configuration: configuration)
+        view.uiDelegate = bridge
+        view.navigationDelegate = bridge
         #if os(macOS)
         view.allowsMagnification = true   // pinch to zoom on the trackpad
         #endif
@@ -197,5 +224,87 @@ extension DuckDuckGo {
             return ["q", "iaf"].map { name in items.first { $0.name == name }?.value ?? "" }.joined(separator: "|")
         }
         return key(a) == key(b)
+    }
+}
+
+// MARK: - The full-size viewer ("View File")
+
+/// One picture at its true size: zoom it, then use it or go back to the results.
+struct PictureViewer: View {
+    let address: URL
+    let use: (Data) -> Void
+    let back: () -> Void
+
+    @State private var data: Data?
+    @State private var image: CGImage?
+    @State private var failed: String?
+    @State private var zoom: CGFloat = 1
+    @State private var fit = true
+    /// The zoom when a pinch began — each pinch scales from there, so it never compounds.
+    @State private var pinchBase: CGFloat?
+
+    var body: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 12) {
+                Button { back() } label: { Label("Back to Results", systemImage: "chevron.left") }
+                    .lyceumHelp("Back to Results — return to DuckDuckGo's pictures")
+                if let image { Text("\(image.width) × \(image.height)").foregroundStyle(.secondary).monospacedDigit() }
+                Spacer()
+                Button { fit = false; zoom = max(zoom / 1.25, 0.1) } label: { Image(systemName: "minus.magnifyingglass") }
+                    .lyceumHelp("Zoom Out")
+                Button { fit = false; zoom = min(zoom * 1.25, 8) } label: { Image(systemName: "plus.magnifyingglass") }
+                    .lyceumHelp("Zoom In — see the picture up close")
+                Button("Fit") { fit = true; zoom = 1 }
+                    .lyceumHelp("Fit — the whole picture in the window")
+                Button("Actual Size") { fit = false; zoom = 1 }
+                    .lyceumHelp("Actual Size — one picture pixel per screen pixel")
+                Button("Use This Picture") { if let data { use(data) } }
+                    .disabled(data == nil)
+                    .keyboardShortcut(.defaultAction)
+                    .lyceumHelp("Use This Picture — put this picture in 012, ready for Save Tags")
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            GeometryReader { space in
+                if let image {
+                    let w = CGFloat(image.width), h = CGFloat(image.height)
+                    let fitScale = min(space.size.width / w, space.size.height / h, 1)
+                    let scale = fit ? fitScale : zoom
+                    ScrollView([.horizontal, .vertical]) {
+                        Image(decorative: image, scale: 1)
+                            .resizable()
+                            .frame(width: w * scale, height: h * scale)
+                            .frame(minWidth: space.size.width, minHeight: space.size.height)
+                    }
+                    #if os(macOS)
+                    .gesture(MagnifyGesture()
+                        .onChanged { value in
+                            if pinchBase == nil { pinchBase = fit ? fitScale : zoom }
+                            fit = false
+                            zoom = min(max((pinchBase ?? 1) * value.magnification, 0.1), 8)
+                        }
+                        .onEnded { _ in pinchBase = nil })
+                    #endif
+                } else if let failed {
+                    Text(failed).foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .background(Color.black.opacity(0.85))
+        }
+        .task(id: address) {
+            do {
+                let bytes = try await DuckDuckGo.download(address)
+                guard let source = CGImageSourceCreateWithData(bytes as CFData, nil),
+                      let picture = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+                    failed = "That file is not a picture Lyceum can show."
+                    return
+                }
+                data = bytes
+                image = picture
+            } catch {
+                failed = error.localizedDescription
+            }
+        }
     }
 }
