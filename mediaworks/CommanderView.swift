@@ -836,10 +836,12 @@ private struct CommanderPane: View {
     // REM  shows ICONS ONLY (every button keeps its tooltip); full labels come back when there is room.
     // REM  The "Sorted by…" words left the row — the header arrows show the sort, and Columns… says it.
     private var tools: some View {
-        ViewThatFits(in: .horizontal) {
-            toolRow.labelStyle(.titleAndIcon)
-            toolRow.labelStyle(.iconOnly)
-        }
+        // REM  ICONS ONLY, ONE ROW — NO ViewThatFits. His report, 2026-10-08: "the glyphs on the window have
+        // REM  hover text but the glyphs in the panes do not." Measured on build 63: hovering the eye showed
+        // REM  COLUMNS' hover text. ViewThatFits builds BOTH candidate rows, and the hidden labelled row's (wider)
+        // REM  buttons were the ones answering the hover — wrong text, or none. At 18 pt the labels never fit a
+        // REM  pane anyway, so the labelled row is gone and every icon carries its own name-first hover text.
+        toolRow.labelStyle(.iconOnly)
         .font(.lyceumBody)
         .buttonStyle(.borderless)
         .padding(.horizontal, 10)
