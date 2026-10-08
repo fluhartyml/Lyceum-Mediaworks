@@ -288,7 +288,7 @@ struct ArtworkSearchSheet: View {
                     .overlay {
                         if let viewing {
                             PictureViewer(address: viewing,
-                                          use: { data in pick(data); dismiss() },
+                                          use: { data in pick(data); finish() },
                                           back: { self.viewing = nil })
                                 .padding(10)
                                 .background(.background)
@@ -328,13 +328,16 @@ struct ArtworkSearchSheet: View {
             }
             HStack {
                 Spacer()
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Cancel") { finish() }.keyboardShortcut(.cancelAction)
             }
         }
         .font(.lyceumBody)
         .padding(20)
         .frame(minWidth: 900, minHeight: 700)
         .onAppear {
+            viewing = nil
+            results = []
+            message = nil
             text = initial
             bridge.picked = { useShown($0) }
             bridge.opened = { viewing = $0 }
@@ -347,6 +350,21 @@ struct ArtworkSearchSheet: View {
         .onChange(of: initial) { viewing = nil; text = initial; if !initial.isEmpty { run() } }
     }
 
+    /// Clears everything and closes — ready for the next file's search.
+    // REM  HIS RULE, 2026-10-08: "after selecting use this picture it should reset the search and close the widdow
+    // REM  making it ready for a new image search." The window (Mac) is reused, and it had kept the last viewer,
+    // REM  results and zoom. Now every pick — and Cancel — leaves it empty; the next open starts fresh.
+    private func finish() {
+        viewing = nil
+        results = []
+        message = nil
+        duckAddress = nil
+        downloading = nil
+        bridge.resetZoom()
+        text = ""
+        dismiss()
+    }
+
     /// A picture picked on the DuckDuckGo page.
     private func useShown(_ address: URL) {
         guard downloading == nil else { return }
@@ -355,7 +373,7 @@ struct ArtworkSearchSheet: View {
         Task {
             do {
                 pick(try await DuckDuckGo.download(address))
-                dismiss()
+                finish()
             } catch {
                 message = error.localizedDescription
             }
@@ -396,7 +414,7 @@ struct ArtworkSearchSheet: View {
             do {
                 let data = try await ArtworkSearch.download(result)
                 pick(data)
-                dismiss()
+                finish()
             } catch {
                 message = error.localizedDescription
             }
