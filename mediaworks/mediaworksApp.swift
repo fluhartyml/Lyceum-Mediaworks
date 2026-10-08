@@ -11,6 +11,7 @@ import SwiftUI
 struct mediaworksApp: App {
     @State private var library = LibraryStore()
     @State private var mini = MiniPlayer()
+    @State private var pip = PiPState()
     #if os(macOS)
     @Environment(\.openWindow) private var openWindow
     #endif
@@ -20,6 +21,7 @@ struct mediaworksApp: App {
             ContentView()
                 .environment(library)
                 .environment(mini)
+                .environment(pip)
                 // BUILD NUMBER IN THE TITLE BAR, DEVELOPMENT BUILDS ONLY — his ask, 2026-10-07,
                 // the same as Image Producer: every build Xcode puts on his devices shows it;
                 // the App Store build does not. About always has the full stamp.
@@ -41,6 +43,18 @@ struct mediaworksApp: App {
             SettingsView()
                 .environment(library)
         }
+
+        // REM  THE PiP WINDOW — floats above every window; he moves it and sizes it (PiPWindow.swift).
+        // REM  Not restored at launch: it opens when a video plays, or from a pane's Show Video.
+        Window("Picture in Picture", id: "pip") {
+            PiPView()
+                .environment(mini)
+                .environment(pip)
+        }
+        .windowLevel(.floating)
+        .defaultSize(width: 640, height: 360)
+        .windowResizability(.contentMinSize)
+        .restorationBehavior(.disabled)
 
         Window("About Lyceum Mediaworks", id: "about") {
             AboutView()

@@ -95,6 +95,12 @@ struct CommanderView: View {
     @Environment(LibraryStore.self) private var library
     @AppStorage("instantDelete") private var instantDelete = false
     @AppStorage("commanderActiveSide") private var activeSideRaw = PaneSide.left.rawValue
+    @AppStorage("inspectorSize") private var inspectorRaw = InspectorSize.off.rawValue
+    @Environment(MiniPlayer.self) private var mini
+    @Environment(PiPState.self) private var pip
+    #if os(macOS)
+    @Environment(\.openWindow) private var openWindow
+    #endif
 
     @State private var left: PaneState
     @State private var right: PaneState
@@ -120,16 +126,43 @@ struct CommanderView: View {
     private var editingName: Bool { left.renamingURL != nil || right.renamingURL != nil }
     private var canAct: Bool { busy == nil && !editingName }
 
+    private var inspectorSize: InspectorSize { InspectorSize(rawValue: inspectorRaw) ?? .off }
+
+    /// The active pane's one highlighted item — what the inspector describes.
+    private var inspected: FolderEntry? {
+        guard active.selection.count == 1, let url = active.selection.first else { return nil }
+        return active.rows.first(where: { $0.id == url })?.entry
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                pane(left)
-                Divider()
-                pane(right)
+            // REM  THE WORK PANE — his design, 2026-10-08: the window is divided into THREE parts when the
+            // REM  inspector is small (Left | Inspector | Right, a third each) or FOUR when it is large
+            // REM  (Left | Inspector Inspector | Right — a quarter, the middle half, a quarter). The
+            // REM  Commander panes always stay on the outside. Off = the two panes, half each, as before.
+            GeometryReader { space in
+                let parts: CGFloat = switch inspectorSize { case .off: 2; case .small: 3; case .large: 4 }
+                let unit = (space.size.width - (inspectorSize == .off ? 1 : 2)) / parts
+                HStack(spacing: 0) {
+                    pane(left).frame(width: unit)
+                    Divider()
+                    if inspectorSize != .off {
+                        InspectorPane(item: inspected, size: inspectorSize, saved: { finished() })
+                            .frame(width: inspectorSize == .large ? unit * 2 : unit)
+                        Divider()
+                    }
+                    pane(right).frame(width: unit)
+                }
             }
             Divider()
             keyBar
         }
+        // REM  THE PiP WINDOW FOLLOWS (Mac): a video from a pane that starts playing opens it — once; it
+        // REM  is not re-opened (or re-focused) while it is already up. A highlighted document is what it
+        // REM  shows when no video is in it.
+        .onChange(of: mini.isPlaying) { openPiPForVideo() }
+        .onChange(of: mini.current) { openPiPForVideo() }
+        .onChange(of: inspected) { pip.document = inspected.flatMap { $0.isFolder || $0.isMedia ? nil : $0.url } }
         // REM  TWO WAYS TO LOOK, HIS CHOICE, 2026-10-07: "i like an option of viewing it in the pane or a
         // REM  command y for PiP." The pane preview (PanePreview.swift, Show Preview) stays IN the pane;
         // REM  ⌘Y floats Finder's own Quick Look window over everything — Library Commander's way
@@ -151,6 +184,14 @@ struct CommanderView: View {
             }
         }
         .toolbar {
+            ToolbarItem {
+                // REM  Off · Small · Large — the same three as ⌥⌘I in the Commander menu.
+                Picker("Inspector", selection: $inspectorRaw) {
+                    ForEach(InspectorSize.allCases) { Text($0.title).tag($0.rawValue) }
+                }
+                .pickerStyle(.segmented)
+                .help("Inspector between the panes: Off, Small (a third), Large (the middle half) — ⌥⌘I")
+            }
             ToolbarItemGroup {
                 Button("Copy to Other Pane", systemImage: "doc.on.doc") { transfer(move: false) }
                     .disabled(active.selection.isEmpty || busy != nil || editingName)
@@ -196,6 +237,14 @@ struct CommanderView: View {
                       play: play, rename: beginRename, commitRename: rename,
                       newFolder: { activeSideRaw = state.side.rawValue; newFolder() },
                       trash: { urls in activeSideRaw = state.side.rawValue; trash(urls) })
+    }
+
+    private func openPiPForVideo() {
+        #if os(macOS)
+        guard mini.isPlaying, mini.currentIsVideo, mini.currentSource == .left || mini.currentSource == .right,
+              !pip.isOpen else { return }
+        PiPOpener.open(openWindow)
+        #endif
     }
 
     // MARK: Tab swaps source and destination
@@ -1090,6 +1139,8 @@ private struct CommanderPane: View {
 struct CommanderMenu: View {
     @FocusedValue(\.commanderActions) private var actions
     @AppStorage("instantDelete") private var instantDelete = false
+    @AppStorage("inspectorSize") private var inspectorRaw = InspectorSize.off.rawValue
+    private var inspectorSize: InspectorSize { InspectorSize(rawValue: inspectorRaw) ?? .off }
 
     // REM  THE NUMBERED COMMANDS, in Midnight Commander's order, the same as the key bar. The old
     // REM  ⌥⌘C / ⌥⌘M / ⌥⌘R / ⇧⌘N / ⌘⌫ shortcuts are replaced by the numbers — his ruling: "the Commander
@@ -1105,6 +1156,11 @@ struct CommanderMenu: View {
         Divider()
         Button(actions?.quickLookOpen == true ? "Close Quick Look" : "Quick Look") { actions?.toggleQuickLook() }
             .keyboardShortcut("y", modifiers: .command)
+            .disabled(actions == nil)
+        Divider()
+        // REM  ⌥⌘I — Finder's Inspector key. Steps Off → Small → Large → Off.
+        Button("Inspector: \(inspectorSize.next.title)") { inspectorRaw = inspectorSize.next.rawValue }
+            .keyboardShortcut("i", modifiers: [.command, .option])
             .disabled(actions == nil)
     }
 

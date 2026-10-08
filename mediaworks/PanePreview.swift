@@ -48,13 +48,41 @@ struct PanePreview: View {
     // REM  THE LIVE PLAYER ONLY ONCE IT HAS PLAYED — build 42 on his screen: a cued, never-played video
     // REM  showed a BLACK box (AVPlayer has drawn no frame yet). Until Play, the still (poster art, else a
     // REM  frame a few seconds in) stands in for it — his "stopped video screen".
+    // REM  ON THE MAC THE MOVING VIDEO LIVES IN THE PiP WINDOW, NOT HERE — his split, 2026-10-08: "the
+    // REM  previews like photos or documents [stay in the panes] BUT the moving video or document text
+    // REM  previres are in a PiP floating and adjustable my the user" (PiPWindow.swift). The pane keeps
+    // REM  the still, and a button to bring the PiP window back if he closed it. iPhone and iPad have no
+    // REM  floating windows, so there the video still plays here, with the shrink button.
     private var showsPlayer: Bool {
+        #if os(macOS)
+        false
+        #else
         mini.currentSource == source && mini.currentIsVideo && mini.hasStarted && !playerShrunk
+        #endif
     }
+
+    #if os(macOS)
+    @Environment(\.openWindow) private var openWindow
+    @Environment(PiPState.self) private var pip
+    #endif
 
     var body: some View {
         VStack(spacing: 0) {
             ZStack(alignment: .topTrailing) {
+                #if os(macOS)
+                PreviewPicture(item: item)
+                if mini.currentSource == source, mini.currentIsVideo, mini.hasStarted, !pip.isOpen {
+                    Button { PiPOpener.open(openWindow) } label: {
+                        Label("Show Video", systemImage: "pip.enter")
+                            .font(.lyceumBody)
+                            .padding(8)
+                            .background(.regularMaterial, in: Capsule())
+                    }
+                    .buttonStyle(.borderless)
+                    .padding(8)
+                    .help("Show the playing video in its floating window")
+                }
+                #else
                 if showsPlayer {
                     VideoPlayer(player: mini.player)
                     Button { playerShrunk = true } label: {
@@ -80,6 +108,7 @@ struct PanePreview: View {
                         .help("Show the playing video here")
                     }
                 }
+                #endif
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -93,7 +122,7 @@ struct PanePreview: View {
 
 // MARK: - The picture of what is highlighted
 
-private struct PreviewPicture: View {
+struct PreviewPicture: View {
     let item: FolderEntry?
 
     @State private var picture: CGImage?
