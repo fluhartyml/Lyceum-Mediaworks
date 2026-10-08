@@ -19,6 +19,16 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-08 ~11:00–14:05 — POSTERS + INFO: builds 64–81 (he walked through it live; "i like it")
+- **Hover help** is Lyceum's own 18-pt tip (`HoverHelp.swift`, `.lyceumHelp`), Settings → Buttons & Help (labels under pane buttons, small — his 18-pt exemption; hover on/off). The Mac shows no hover for a background app. ViewThatFits answered hover with the hidden row → pane tool row is ONE icon row.
+- **Saving tags** is quiet ("Saving…" / "Saved"); a cued-but-stopped file is released then re-cued; refused only while playing. Pictures capped at **2000 px** long side (JPEG 0.9). First real saves verified frame-for-frame (The Sleeping Giant, Assignment Outer Space).
+- **Apply one picture to many** highlighted files (seasons/albums).
+- **Find Picture…** = its own window (Mac; double-click title bar zooms). Tabs: **DuckDuckGo** (real DDG Images page in a WKWebView, private session; double-click or click + Use This Picture; takes exactly the clicked picture by pairing the large view with its thumbnail — 6/6 verified) · Wikipedia · Internet Archive · iTunes. **View File** opens Lyceum's full-size viewer (zoom/Fit/Actual Size, Use This Picture, Back). Every pick/Cancel resets and closes the window. Open in Browser… = DuckDuckGo (he uses neither Google nor Bing).
+- **Find Info & Picture…** (Tags header): Wikipedia + Wikidata, free → title (page name), year (release, else first-aired), genre (first, readable), director → 002, short + long description, Media Kind (+ TV Show for series), poster — as WAITING changes. His rule: *"if it finds both on wikimedia it would both probably be correct."* Tested 6 titles.
+- Research behind it: Bing image API retired (Aug 2025); Google Custom Search closed to new users, ends Jan 1 2027; Brave = paid key; DuckDuckGo has no official image API (hence the real page).
+- Copy/Move go into the folder HIGHLIGHTED in the other pane (else its open folder). Right-click **New Folder with Selection**. In-row rename locks the extension until → at the end of the name. Key bar: ⌘1 Help · ⌘2 Menu · ⌘Y Quick Look · ⌘I Inspector · ⌘5–⌘9 (Edit = ⌘4, menu only). Delete Immediately glyph = trash.slash (banker's box = archive).
+- ⬜ Open: Archive/quarantine (entry below) · MP3 tag writing (needs an ID3 writer) · chapters can't survive a save (refused).
+
 ### 2026-10-08 ~10:2x — ARCHIVE / QUARANTINE (banker's box) — his idea, TALKED, NOT built
 - Grew out of his glyph catch (build 59): *"the bankers box is used to archive and preserve records for future discovery requiring preserved records"* → *"do you think a preserve records bankers box with an a meant to archive to a quarantine folder would ever need practical use?"* → *"yes i believe so"*.
 - **Trash vs Archive (Claude's framing, he agreed):** Trash = "I want this gone", empties after 30 days. Archive = "out of my library, but kept" — never empties by itself; every item remembers its original path so it can be restored.
