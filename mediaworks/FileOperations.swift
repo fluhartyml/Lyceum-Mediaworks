@@ -86,10 +86,11 @@ enum FileOperations {
     }
 
     /// 30-day Trash by default; instant delete if the user turned it on in Settings.
-    static func trash(_ urls: [URL], instant: Bool, library: LibraryStore) async throws {
+    /// `quiet`: no status messages — a tag save puts its old copy away without announcing it (his ruling).
+    static func trash(_ urls: [URL], instant: Bool, library: LibraryStore, quiet: Bool = false) async throws {
         guard let libraryRoot = library.root?.url, let trashFolder = library.trashFolder else { return }
         let what = urls.count == 1 ? "“\(urls[0].lastPathComponent)”" : "\(urls.count) items"
-        library.report(instant ? "Deleting \(what)…" : "Moving \(what) to the Trash…", working: true)
+        if !quiet { library.report(instant ? "Deleting \(what)…" : "Moving \(what) to the Trash…", working: true) }
         // REM  WHERE A DELETED ITEM GOES, decided 2026-10-07 when Commander panes became able to leave
         // REM  the library (drive picker). Inside the library → the Lyceum Trash (a same-share rename,
         // REM  instant, 30 days). OUTSIDE it → the Mac's own Trash on that drive. WHY: the Lyceum Trash
@@ -119,6 +120,7 @@ enum FileOperations {
             return moved
         }.value
         done.forEach { library.journal(instant ? "delete" : "trash", from: $0.0, to: $0.1) }
+        if quiet { return }
         library.report(instant ? "Deleted \(what)"
                        : outside.isEmpty ? "Moved \(what) to the Lyceum Trash — kept 30 days"
                        : "Moved \(what) to the Trash")

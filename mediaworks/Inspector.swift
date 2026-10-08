@@ -439,7 +439,7 @@ enum TagWriter {
 
         // Step 3 — the swap.
         do {
-            try await FileOperations.trash([url], instant: instantDelete, library: library)
+            try await FileOperations.trash([url], instant: instantDelete, library: library, quiet: true)
         } catch {
             try? FileManager.default.removeItem(at: temp)
             throw FileProblem(message: "The tags were not saved — the old file could not be put away (\(error.localizedDescription)). The file is unchanged.")
@@ -450,7 +450,7 @@ enum TagWriter {
             throw FileProblem(message: "The new copy could not take the old one's name. The old file is in the Trash; the new one is “\(temp.lastPathComponent)” (hidden) in the same folder.")
         }
         library.journal("tags", from: url, to: url)
-        library.report("Saved the tags of “\(url.lastPathComponent)”" + (instantDelete ? "" : " — the old copy is in the Trash"))
+        library.report("Saved")
     }
 
     /// The tag to write for one edited field — nil when the field was emptied (it is then removed).
@@ -734,13 +734,10 @@ struct InspectorPane: View {
                 .disabled(!hasChanges || saving)
                 .lyceumHelp("Write these tags into the file")
             }
-            // REM  SAY WHAT WILL HAPPEN BEFORE IT HAPPENS — a save rewrites the whole file, which on Nineveh
-            // REM  means the whole file crosses the network twice. The label follows Settings, like every
-            // REM  delete label in the app.
-            Text("Saving writes a new copy of the file with these tags (picture and sound are copied, not changed). "
-                 + (instantDelete ? "The old copy is deleted." : "The old copy goes to the Trash."))
-                .font(.lyceumDetail)
-                .foregroundStyle(.secondary)
+            // REM  QUIET — his ruling, 2026-10-08: "it shouldnt say all that warning it should just quietly say
+            // REM  Saving . . . and quietly trash the old copy". The explanation that sat here is gone; the save says
+            // REM  "Saving…" while it works and "Saved" when done. The old copy still goes where Settings sends
+            // REM  deletes (the Lyceum Trash by default) — quietly.
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -802,7 +799,7 @@ struct InspectorPane: View {
         let releasedFrom = mini.release(item.url)
         let edits = changed, picture = picture, before = file
         saving = true
-        library.report("Saving the tags of “\(item.name)” — writing a new copy…", working: true)
+        library.report("Saving…", working: true)
         Task {
             do {
                 try await TagWriter.save(item.url, edits: edits, picture: picture, before: before,

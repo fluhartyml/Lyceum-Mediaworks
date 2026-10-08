@@ -169,7 +169,9 @@ struct PreviewPicture: View {
         }
         .font(.lyceumBody)
         .padding(12)
-        .task(id: item?.url) { await load() }
+        // REM  KEYED BY DATE AND SIZE TOO, not just the path — his screen, build 68: after a tag save the pane kept
+        // REM  showing the OLD poster and size, because the file's path had not changed.
+        .task(id: item.map { "\($0.url.path)#\($0.modified?.timeIntervalSince1970 ?? 0)#\($0.size ?? 0)" }) { await load() }
     }
 
     private var folderBody: some View {
