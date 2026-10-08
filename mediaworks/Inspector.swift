@@ -793,11 +793,13 @@ struct InspectorPane: View {
 
     private func save() {
         guard let item else { return }
-        // REM  NOT WHILE IT IS LOADED IN THE PLAYER — the old file is about to be put away underneath it.
-        if mini.current?.standardizedFileURL == item.url.standardizedFileURL {
-            problem = "“\(item.name)” is loaded in the player. Play something else first, then save its tags."
+        // REM  NOT WHILE IT IS PLAYING — the old file is about to be put away underneath it. Loaded but stopped
+        // REM  (a highlight cues it) is fine: the player lets go, and the new copy is cued again afterwards.
+        if mini.current?.standardizedFileURL == item.url.standardizedFileURL, mini.isPlaying {
+            problem = "“\(item.name)” is playing. Pause it, then save its tags."
             return
         }
+        let releasedFrom = mini.release(item.url)
         let edits = changed, picture = picture, before = file
         saving = true
         library.report("Saving the tags of “\(item.name)” — writing a new copy…", working: true)
@@ -808,9 +810,11 @@ struct InspectorPane: View {
                 self.edits = [:]
                 self.picture = nil
                 saved()
+                if let releasedFrom { mini.recue(item.url, from: releasedFrom) }
             } catch {
                 problem = error.localizedDescription
                 library.report(error.localizedDescription)
+                if let releasedFrom { mini.recue(item.url, from: releasedFrom) }
             }
             saving = false
         }

@@ -138,6 +138,29 @@ final class MiniPlayer {
         return current
     }
 
+    /// Lets go of a file that is loaded but NOT playing — so its tags can be saved — and says where it was.
+    // REM  Build 67 on his screen: Save Tags refused "The Sleeping Giant.mp4 is loaded in the player" — but it
+    // REM  was only CUED, because highlighting a video cues it. So a highlighted video could never be saved.
+    // REM  Loaded-but-stopped is let go here; only a file actually PLAYING still stops a save.
+    func release(_ url: URL) -> Source? {
+        guard current?.standardizedFileURL == url.standardizedFileURL, !isPlaying else { return nil }
+        let source = currentSource
+        player.replaceCurrentItem(with: nil)
+        current = nil
+        currentSource = nil
+        elapsed = 0
+        duration = 0
+        return source
+    }
+
+    /// Puts a file back as the cued item after its tags were saved — never starts it playing.
+    func recue(_ url: URL, from source: Source) {
+        highlighted[source] = url
+        cued = url
+        cuedSource = source
+        if !isPlaying { load(url, from: source) }
+    }
+
     // MARK: Inside
 
     private func load(_ url: URL, from source: Source) {
