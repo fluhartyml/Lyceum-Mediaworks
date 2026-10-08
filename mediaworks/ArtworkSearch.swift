@@ -251,7 +251,9 @@ struct ArtworkSearchSheet: View {
                 .labelsHidden()
                 .frame(width: 190)
                 Spacer()
-                if source == .duckduckgo {
+                // REM  While the viewer is open its own row has zoom and Use This Picture — the top row's would act on
+                // REM  the hidden results page instead, so they step aside.
+                if source == .duckduckgo && viewing == nil {
                     // REM  ZOOM — his ask, 2026-10-08: "what if i want to inspect the picture and soom in so i can see
                     // REM  it?" Pinch works too (magnification is on); these are for one hand on the mouse.
                     Button { bridge.zoom(by: -0.25) } label: { Image(systemName: "minus.magnifyingglass") }
@@ -339,7 +341,10 @@ struct ArtworkSearchSheet: View {
             if !initial.isEmpty { run() }
         }
         // REM  The window stays open between uses (Mac); a new Find Picture… brings a new file's words.
-        .onChange(of: initial) { text = initial; if !initial.isEmpty { run() } }
+        // REM  A NEW FILE CLOSES THE OLD VIEWER — his bug, 2026-10-08 (build 78): Find Picture for "Cosmos War of the
+        // REM  Planets" opened on top of the Assignment Outer Space viewer left open from the last file; Use This
+        // REM  Picture there would have put the WRONG poster on the new file.
+        .onChange(of: initial) { viewing = nil; text = initial; if !initial.isEmpty { run() } }
     }
 
     /// A picture picked on the DuckDuckGo page.
@@ -361,6 +366,7 @@ struct ArtworkSearchSheet: View {
     private func run() {
         let words = text.trimmingCharacters(in: .whitespaces)
         guard !words.isEmpty else { return }
+        viewing = nil   // a new search or source always shows its results, never an old picture
         if source == .duckduckgo {
             duckAddress = DuckDuckGo.imagesURL(words, shape: shape)
             return
