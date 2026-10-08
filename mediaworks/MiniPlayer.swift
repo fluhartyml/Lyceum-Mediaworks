@@ -133,6 +133,13 @@ final class MiniPlayer {
         lastPlayed[source] = url
         elapsed = 0
         duration = 0
+        // REM  THE LENGTH IS READ AT ONCE, not when playback starts — a cued video read "0:00 / 0:00"
+        // REM  (his screen, build 41). Only the header is read; the answer is dropped if he has moved on.
+        Task { [weak self] in
+            guard let seconds = try? await AVURLAsset(url: url).load(.duration).seconds, seconds.isFinite else { return }
+            guard let self, self.current == url, self.duration == 0 else { return }
+            self.duration = seconds
+        }
     }
 
     private func advance() {

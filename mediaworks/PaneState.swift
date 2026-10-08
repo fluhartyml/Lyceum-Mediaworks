@@ -262,7 +262,10 @@ final class PaneState {
             columns = ColumnSetting.migrated(fromOldSort: d.string(forKey: prefix + "Sort"))
         }
         showHidden = d.bool(forKey: prefix + "Hidden")
-        showPreview = d.bool(forKey: prefix + "Preview")
+        // REM  THE PREVIEW STARTS ON — his catch, 2026-10-07 (build 41): "i have a video highlighted and all
+        // REM  i see is play ff and the video name … shouldnt i see a stopped video screen?" Off by default
+        // REM  hid the very thing he asked for. His own Show/Hide choice, once made, is kept as before.
+        showPreview = d.object(forKey: prefix + "Preview") as? Bool ?? true
         playerShrunk = d.bool(forKey: prefix + "PlayerShrunk")
         previewHeight = d.double(forKey: prefix + "PreviewHeight")
         pendingSelection = Set((d.stringArray(forKey: prefix + "Selection") ?? []).map { URL(fileURLWithPath: $0) })

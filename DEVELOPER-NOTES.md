@@ -19,6 +19,9 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-07 ~19:1x — preview starts ON; length read on cue — build 42
+- His: *"i have a video highlighted and all i see is play ff and the video name with a scrubber 0:00/0:00 continuous off shouldnt i see a stopped video screen?"* → preview defaults ON (his saved choice still wins); the cued item's length is read from its header at once.
+
 ### 2026-10-07 ~19:0x — preview height is his to drag; rename field rebuilt — build 41 (not yet run by him)
 - His design: *"the video pane should be as close to full width as we can without going to high, maybe full width where the height is adjustable after the fact and the video scales to fit a smaller area when you move the top down"* → *"yes build it"*. Preview = full pane width; starts at 16:9-for-the-width + name lines, capped at half the pane; **drag bar** above it (resize cursor), saved per pane (`PreviewHeight`), double-click = automatic. List keeps ≥160 pt, preview ≥120 pt.
 - His report: *"editing the file names is not going easy if the file neme is long i get beach balls and arrows dont move the cursor"*. Mac rename field is now an **AppKit NSTextField** (owns caret/arrows/long text; stem selected; Return/click-away save, Esc cancels). **The 10-second re-read pauses while a name is open.** Cause of the beach balls NOT confirmed — a 3 s sample at 18:5x found the app idle.
