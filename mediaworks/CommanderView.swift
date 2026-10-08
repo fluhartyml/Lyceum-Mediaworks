@@ -952,6 +952,20 @@ private struct CommanderPane: View {
                 case .artist: detail(info?.artist)
                 case .album: detail(info?.album)
                 case .year: detail(info?.year.map(String.init))
+                case .title: detail(info?.title)
+                case .comment: detail(info?.comment)
+                case .summary: detail(info?.summary)
+                case .show: detail(info?.show)
+                case .season: detail(info?.season.map(String.init))
+                case .episode: detail(info?.episode.map(String.init))
+                case .mediaKind: detail(info?.mediaKind)
+                case .artwork:
+                    // REM  "012 (as the icon if possible)" — the file's own picture, row height.
+                    if let icon = MediaInfoCache.shared.icon(for: entry) {
+                        Image(decorative: icon, scale: 1).resizable().scaledToFit().frame(height: 28)
+                    } else {
+                        detail(nil)
+                    }
                 default: detail(info?.genre)
                 }
             }
@@ -1196,10 +1210,10 @@ private struct ColumnsPanel: View {
             Toggle("No Sort — your own order (the arrows below are kept, not used)", isOn: $pane.noSort)
             ForEach(pane.columns) { column in
                 HStack(spacing: 12) {
-                    Toggle(column.id.title, isOn: Binding(get: { column.visible },
+                    Toggle((column.id.amberNumber.map { $0 + "  " } ?? "") + column.id.title, isOn: Binding(get: { column.visible },
                                                           set: { pane.setShown(column.id, $0) }))
                         .disabled(column.id == .name)
-                        .frame(width: 220, alignment: .leading)
+                        .frame(width: 280, alignment: .leading)
                         .help(column.id == .name ? "Name always shows" : "Show or hide this column")
                     Button { pane.cycleArrow(column.id) } label: {
                         Text(column.arrow?.symbol ?? "–").frame(width: 28)

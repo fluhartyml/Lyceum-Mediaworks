@@ -326,7 +326,7 @@ enum TagReader {
     }
 
     /// One tag's value as the text the inspector shows.
-    private static func text(of item: AVMetadataItem, as field: TagField) async -> String? {
+    static func text(of item: AVMetadataItem, as field: TagField) async -> String? {
         var text: String?
         switch field.kind {
         case .pair:

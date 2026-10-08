@@ -31,12 +31,18 @@
 
 import Foundation
 import AVFoundation
+import ImageIO
 import Observation
 
 // MARK: - The columns
 
 enum ColumnID: String, CaseIterable, Codable, Identifiable, Sendable {
     case name, size, modified, kind, created, length, resolution, artist, album, year, genre
+    // REM  HIS PICK FROM THE AMBER PAGE, 2026-10-08: "027 001 002 005 010 012 (as the icon if possible) 017
+    // REM  019 020 021 024" — Length, Title, Artist, Genre, Comment, Picture, Short Description, TV Show,
+    // REM  Season, Episode, Media Kind. Length, Artist and Genre were already columns; these are the rest.
+    // REM  Added at the END so saved column lists pick them up hidden (PaneState merges missing ones).
+    case title, comment, artwork, summary, show, season, episode, mediaKind
     var id: String { rawValue }
 
     var title: String {
@@ -52,6 +58,35 @@ enum ColumnID: String, CaseIterable, Codable, Identifiable, Sendable {
         case .album: "Album"
         case .year: "Year"
         case .genre: "Genre"
+        case .title: "Title"
+        case .comment: "Comment"
+        case .artwork: "Picture"
+        case .summary: "Description"
+        case .show: "TV Show"
+        case .season: "Season"
+        case .episode: "Episode"
+        case .mediaKind: "Media Kind"
+        }
+    }
+
+    /// The amber page's number for a media column (Workshop/Media-Metadata-Compare), shown in Columns….
+    var amberNumber: String? {
+        switch self {
+        case .length: "027"
+        case .title: "001"
+        case .artist: "002"
+        case .album: "003"
+        case .genre: "005"
+        case .year: "006"
+        case .comment: "010"
+        case .artwork: "012"
+        case .summary: "017"
+        case .show: "019"
+        case .season: "020"
+        case .episode: "021"
+        case .mediaKind: "024"
+        case .resolution: "030"
+        default: nil
         }
     }
 
@@ -60,7 +95,8 @@ enum ColumnID: String, CaseIterable, Codable, Identifiable, Sendable {
     // REM  such a column is showing (the cost he was told about before he said build it).
     var readsTags: Bool {
         switch self {
-        case .length, .resolution, .artist, .album, .year, .genre: true
+        case .length, .resolution, .artist, .album, .year, .genre,
+             .title, .comment, .artwork, .summary, .show, .season, .episode, .mediaKind: true
         default: false
         }
     }
@@ -68,7 +104,8 @@ enum ColumnID: String, CaseIterable, Codable, Identifiable, Sendable {
     var minWidth: CGFloat {
         switch self {
         case .name: 200
-        case .year: 70
+        case .year, .season, .episode: 70
+        case .artwork: 56
         case .length, .size: 90
         default: 110
         }
@@ -81,7 +118,11 @@ enum ColumnID: String, CaseIterable, Codable, Identifiable, Sendable {
         case .year: 80
         case .modified, .created: 180
         case .kind, .genre: 150
-        case .artist, .album: 200
+        case .artist, .album, .title, .show: 200
+        case .comment, .summary: 260
+        case .artwork: 64
+        case .season, .episode: 80
+        case .mediaKind: 140
         }
     }
 }
@@ -144,6 +185,16 @@ nonisolated struct MediaInfo: Sendable, Hashable {
     var album: String?
     var year: Int?
     var genre: String?
+    var title: String?
+    var comment: String?
+    var summary: String?
+    var show: String?
+    var season: Int?
+    var episode: Int?
+    /// Media kind in words ("Movie", "TV Show"…), or the raw code if it is not a known one.
+    var mediaKind: String?
+    /// The embedded picture, shrunk to a row icon (PNG) — nil when the file has none.
+    var thumbnail: Data?
 
     var resolution: String? { width.flatMap { w in height.map { "\(w)×\($0)" } } }
 
@@ -180,7 +231,44 @@ nonisolated struct MediaInfo: Sendable, Hashable {
            let found = date.range(of: #"(1[89]|20)\d\d"#, options: .regularExpression), let year = Int(date[found]) {
             info.year = year
         }
+        // REM  The amber-page fields, read through the inspector's own table of slots (Inspector.swift),
+        // REM  so a column and the inspector can never disagree about where a tag lives.
+        func tag(_ field: TagField) async -> String? {
+            for slot in field.slots {
+                if let item = AVMetadataItem.metadataItems(from: items, filteredByIdentifier: slot).first,
+                   let text = await TagReader.text(of: item, as: field) { return text }
+            }
+            return nil
+        }
+        info.title = await tag(.title)
+        info.comment = await tag(.comment)
+        info.summary = await tag(.description)
+        info.show = await tag(.show)
+        info.season = await tag(.season).flatMap { Int($0) }
+        info.episode = await tag(.episode).flatMap { Int($0) }
+        if let code = await tag(.mediaKind) {
+            info.mediaKind = TagField.mediaKind.choices.first(where: { $0.0 == code })?.1 ?? code
+        }
+        info.thumbnail = await Self.thumbnail(of: asset)
         return info
+    }
+
+    /// The embedded picture, shrunk to 96 px and kept as a small PNG — a row icon, not the poster.
+    private static func thumbnail(of asset: AVURLAsset) async -> Data? {
+        guard let items = try? await asset.load(.commonMetadata) else { return nil }
+        for item in AVMetadataItem.metadataItems(from: items, filteredByIdentifier: .commonIdentifierArtwork) {
+            guard let data = try? await item.load(.dataValue),
+                  let source = CGImageSourceCreateWithData(data as CFData, nil),
+                  let small = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                      kCGImageSourceCreateThumbnailFromImageAlways: true,
+                      kCGImageSourceThumbnailMaxPixelSize: 96,
+                      kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary) else { continue }
+            let out = NSMutableData()
+            guard let dest = CGImageDestinationCreateWithData(out, "public.png" as CFString, 1, nil) else { return nil }
+            CGImageDestinationAddImage(dest, small, nil)
+            return CGImageDestinationFinalize(dest) ? out as Data : nil
+        }
+        return nil
     }
 }
 
@@ -202,6 +290,17 @@ final class MediaInfoCache {
     }
 
     func info(for entry: FolderEntry) -> MediaInfo? { info[Self.key(entry)] }
+
+    /// The row icon for the Picture column, decoded once.
+    @ObservationIgnored private var icons: [String: CGImage] = [:]
+    func icon(for entry: FolderEntry) -> CGImage? {
+        let key = Self.key(entry)
+        if let icon = icons[key] { return icon }
+        guard let data = info[key]?.thumbnail, let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+        icons[key] = image
+        return image
+    }
 
     /// Reads the media files not read yet.
     // REM  FOUR AT A TIME: enough to fill a screen quickly, few enough not to swamp Nineveh while
@@ -287,6 +386,15 @@ enum ColumnSort {
         case .album: return words(ai?.album, bi?.album)
         case .year: return values(ai?.year, bi?.year)
         case .genre: return words(ai?.genre, bi?.genre)
+        case .title: return words(ai?.title, bi?.title)
+        case .comment: return words(ai?.comment, bi?.comment)
+        case .summary: return words(ai?.summary, bi?.summary)
+        case .show: return words(ai?.show, bi?.show)
+        case .season: return values(ai?.season, bi?.season)
+        case .episode: return values(ai?.episode, bi?.episode)
+        case .mediaKind: return words(ai?.mediaKind, bi?.mediaKind)
+        // REM  Picture: files WITH one first (▲), the ones without last either way.
+        case .artwork: return values(ai?.thumbnail == nil ? nil : 0, bi?.thumbnail == nil ? nil : 0)
         }
     }
 }
