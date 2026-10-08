@@ -50,6 +50,41 @@ enum FileOperations {
         return url
     }
 
+    /// Finder's "New Folder with Selection": makes "New Folder With Items" beside the items and moves them in.
+    /// Returns the new folder, ready to be renamed.
+    // REM  HIS ASK, 2026-10-08: "can i do like the finder select multiple files and folders and right click
+    // REM  "new folder from selection" and have a new folder generated?" — then "after i select new folder from
+    // REM  selection i would like the newly created folder to present itself waiting for the user to rename
+    // REM  it". Finder's name and behavior. The items must share one folder (Finder's rule too); every move
+    // REM  is journaled. Within one drive a move is a rename — instant, nothing is copied.
+    // REM  If a move fails partway, the ones already moved stay in the new folder and the message says so.
+    static func newFolder(with items: [URL], in parent: URL, library: LibraryStore) async throws -> URL {
+        var name = "New Folder With Items"
+        var number = 2
+        while FileManager.default.fileExists(atPath: parent.appendingPathComponent(name).path) {
+            name = "New Folder With Items \(number)"
+            number += 1
+        }
+        let folder = parent.appendingPathComponent(name, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        library.journal("new folder", from: folder, to: nil)
+        let result: (moved: [(URL, URL)], failure: String?) = await Task.detached {
+            var moved: [(URL, URL)] = []
+            for item in items {
+                let target = folder.appendingPathComponent(item.lastPathComponent)
+                do { try FileManager.default.moveItem(at: item, to: target); moved.append((item, target)) }
+                catch { return (moved, "“\(item.lastPathComponent)”: \(error.localizedDescription)") }
+            }
+            return (moved, nil)
+        }.value
+        result.moved.forEach { library.journal("move", from: $0.0, to: $0.1) }
+        if let failure = result.failure {
+            throw FileProblem(message: "Made “\(name)” and moved \(result.moved.count) of \(items.count) into it, then stopped — \(failure)")
+        }
+        library.report("Made “\(name)” and moved \(items.count) item\(items.count == 1 ? "" : "s") into it")
+        return folder
+    }
+
     /// 30-day Trash by default; instant delete if the user turned it on in Settings.
     static func trash(_ urls: [URL], instant: Bool, library: LibraryStore) async throws {
         guard let libraryRoot = library.root?.url, let trashFolder = library.trashFolder else { return }
@@ -148,6 +183,8 @@ struct FileContextMenu: View {
     let rename: (URL) -> Void
     let newFolder: () -> Void
     let trash: ([URL]) -> Void
+    /// Commander only: "New Folder with Selection". Nil where it is not offered.
+    var newFolderWithItems: (([URL]) -> Void)? = nil
     @AppStorage("instantDelete") private var instantDelete = false
 
     var body: some View {
@@ -159,6 +196,9 @@ struct FileContextMenu: View {
             Divider()
         }
         Button("New Folder") { newFolder() }
+        if let newFolderWithItems, !urls.isEmpty {
+            Button("New Folder with Selection (\(urls.count) Item\(urls.count == 1 ? "" : "s"))") { newFolderWithItems(Array(urls)) }
+        }
         if !urls.isEmpty {
             #if os(macOS)
             Button("Show in Finder") { FileOperations.showInFinder(Array(urls)) }

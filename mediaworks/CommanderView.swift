@@ -275,7 +275,8 @@ struct CommanderView: View {
                       activate: { activeSideRaw = state.side.rawValue },
                       play: play, rename: beginRename, commitRename: rename,
                       newFolder: { activeSideRaw = state.side.rawValue; newFolder() },
-                      trash: { urls in activeSideRaw = state.side.rawValue; trash(urls) })
+                      trash: { urls in activeSideRaw = state.side.rawValue; trash(urls) },
+                      newFolderWithItems: { urls in activeSideRaw = state.side.rawValue; newFolderWithItems(urls) })
     }
 
     private func openPiPForVideo() {
@@ -535,6 +536,29 @@ struct CommanderView: View {
         }
     }
 
+    /// Right-click → New Folder with Selection: the items go into a new folder, which then waits to be named.
+    private func newFolderWithItems(_ urls: [URL]) {
+        let parents = Set(urls.map { $0.deletingLastPathComponent().standardizedFileURL })
+        guard parents.count == 1, let parent = parents.first else {
+            problem = "Highlight items from one folder only — they go into a new folder beside them."
+            return
+        }
+        busy = "Making a new folder…"
+        Task {
+            do {
+                let folder = try await FileOperations.newFolder(with: urls, in: parent, library: library)
+                for state in [left, right] { state.selection.subtract(urls) }
+                active.selection = [folder]
+                finished()
+                beginRename(folder)
+            } catch {
+                problem = error.localizedDescription
+                finished()
+            }
+            busy = nil
+        }
+    }
+
     private func startRename() {
         guard active.selection.count == 1, let url = active.selection.first else {
             problem = "Select one item to rename."
@@ -595,6 +619,7 @@ private struct CommanderPane: View {
     let commitRename: (URL, String) -> Void
     let newFolder: () -> Void
     let trash: ([URL]) -> Void
+    let newFolderWithItems: ([URL]) -> Void
 
     @Environment(MiniPlayer.self) private var mini
     @Environment(LibraryStore.self) private var store
@@ -928,7 +953,8 @@ private struct CommanderPane: View {
         .contextMenu(forSelectionType: URL.self) { urls in
             FileContextMenu(urls: urls, entries: pane.rows.map(\.entry),
                             open: { entry in if entry.isFolder { pane.open(entry.url) } else { play(entry.url) } },
-                            rename: rename, newFolder: newFolder, trash: trash)
+                            rename: rename, newFolder: newFolder, trash: trash,
+                            newFolderWithItems: newFolderWithItems)
         } primaryAction: { urls in
             // REM  A double-click opens — so a slow-click rename that was really its first half is called off.
             pendingRename?.cancel()
