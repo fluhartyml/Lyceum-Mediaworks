@@ -76,21 +76,42 @@ struct CommanderKey: Identifiable {
     // REM  THE THIRD KEY IS ⌘Y, NOT ⌘3 — his ruling, 2026-10-08: "rename command 3 to command y". ⌘3 and ⌘Y
     // REM  both opened Quick Look; ⌘Y is Finder's key for it, so the slot keeps its place and takes ⌘Y.
     // REM  ⌘3 now does nothing.
+    // REM  THE FOURTH SLOT IS ⌘I INSPECTOR — his ruling, 2026-10-08: "lets move command 4 to list within
+    // REM  command 2 and put command i in that space." Edit (open in its own app) left the bar; it lives
+    // REM  in the ⌘2 Commander menu and still answers to ⌘4. Internally it is number 10, so the slot
+    // REM  numbers stay the bar's order.
     /// What is printed on the bar and in the menu.
-    var keyLabel: String { number == 3 ? "⌘Y" : "⌘\(number)" }
+    var keyLabel: String {
+        switch number {
+        case 3: "⌘Y"
+        case 4: "⌘I"
+        case 10: "⌘4"
+        default: "⌘\(number)"
+        }
+    }
     /// The key pressed with ⌘.
-    var shortcut: Character { number == 3 ? "y" : Character(String(number)) }
+    var shortcut: Character {
+        switch number {
+        case 3: "y"
+        case 4: "i"
+        case 10: "4"
+        default: Character(String(number))
+        }
+    }
+    /// On the key bar along the bottom, or in the ⌘2 menu only.
+    var onBar: Bool { number <= 9 }
 
     static let all: [CommanderKey] = [
         CommanderKey(number: 1, title: "Help", help: "What each key does", needsSelection: false),
         CommanderKey(number: 2, title: "Menu", help: "Open the Commander menu", needsSelection: false),
         CommanderKey(number: 3, title: "Quick Look", help: "Quick Look the highlighted files in their own window; follows the highlight", needsSelection: true),
-        CommanderKey(number: 4, title: "Edit", help: "Open the highlighted files in their own apps", needsSelection: true),
+        CommanderKey(number: 4, title: "Inspector", help: "Inspector between the panes: Off → Small → Large", needsSelection: false),
         CommanderKey(number: 5, title: "Copy", help: "Copy the highlighted items to the other pane", needsSelection: true),
         CommanderKey(number: 6, title: "Move", help: "Move the highlighted items to the other pane", needsSelection: true),
         CommanderKey(number: 7, title: "New Folder", help: "Make a folder in the active pane", needsSelection: false),
         CommanderKey(number: 8, title: "Delete", help: "Delete the highlighted items (Trash or at once, as set in Settings)", needsSelection: true),
         CommanderKey(number: 9, title: "Rename", help: "Rename the highlighted item, in its row", needsSelection: true),
+        CommanderKey(number: 10, title: "Edit", help: "Open the highlighted files in their own apps (⌘2 menu only)", needsSelection: true),
     ]
 }
 
@@ -294,29 +315,23 @@ struct CommanderView: View {
     // REM  ALONG THE BOTTOM OF COMMANDER, under both panes — Library Commander's place for it (build 56,
     // REM  his "at the bottom of the app"). The number is drawn bold and first so the eye finds it.
     // REM  The buttons never take the keyboard (.focusable(false)), so a click leaves the list in charge.
-    // REM  ⌘I AND ⌘Y JOIN THE BAR WHEN THEY FIT — his ask, 2026-10-08: "command I and command Y should be
-    // REM  listed in the button row at the bottom of the widow if they fit." When the window is too narrow
-    // REM  for all eleven, the bar drops back to the nine number keys rather than squeeze every label.
+    // REM  ⌘Y AND ⌘I ARE ON THE BAR, in slots 3 and 4 — his asks, 2026-10-08 ("command I and command Y
+    // REM  should be listed in the button row", then "rename command 3 to command y" and "put command i in
+    // REM  that space"). Nine buttons again, so they fit as before.
     private var keyBar: some View {
-        ViewThatFits(in: .horizontal) {
-            keyRow(withExtras: true)
-            keyRow(withExtras: false)
-        }
+        keyRow
         .font(.lyceumBody)
         .fixedSize(horizontal: false, vertical: true)
         .background(.bar)
         .popover(isPresented: $showingKeys, arrowEdge: .top) { KeysHelp() }
     }
 
-    private func keyRow(withExtras: Bool) -> some View {
-        HStack(spacing: 0) {
-            ForEach(CommanderKey.all) { key in
+    private var keyRow: some View {
+        let bar = CommanderKey.all.filter(\.onBar)
+        return HStack(spacing: 0) {
+            ForEach(bar) { key in
                 keyButton(key.keyLabel, key.title, help: key.help, enabled: keyEnabled(key)) { runKey(key.number) }
-                if withExtras || key.number != CommanderKey.all.last?.number { Divider() }
-            }
-            if withExtras {
-                keyButton("⌘I", "Inspector", help: "Inspector between the panes: Off → Small → Large",
-                          enabled: true) { inspectorRaw = inspectorSize.next.rawValue }
+                if key.number != bar.last?.number { Divider() }
             }
         }
     }
@@ -350,7 +365,8 @@ struct CommanderView: View {
         case 1: showingKeys.toggle()
         case 2: openCommanderMenu()
         case 3: toggleQuickLook()
-        case 4: editHighlighted()
+        case 4: inspectorRaw = inspectorSize.next.rawValue
+        case 10: editHighlighted()
         case 5: transfer(move: false)
         case 6: transfer(move: true)
         case 7: newFolder()
@@ -1198,18 +1214,16 @@ struct CommanderMenu: View {
                 .keyboardShortcut(KeyEquivalent(key.shortcut), modifiers: .command)
                 .disabled(actions == nil || actions?.canAct != true
                           || (key.needsSelection && actions?.hasSelection != true))
-            if key.number == 2 || key.number == 4 || key.number == 7 { Divider() }
+            if key.number == 2 || key.number == 4 || key.number == 7 || key.number == 9 { Divider() }
         }
-        Divider()
-        // REM  ⌘I — HIS KEY, 2026-10-08: "i woult think editing in the center pane Command I" (Finder's Get Info key). Steps Off → Small → Large → Off.
-        Button("Inspector: \(inspectorSize.next.title)") { inspectorRaw = inspectorSize.next.rawValue }
-            .keyboardShortcut("i", modifiers: .command)
-            .disabled(actions == nil)
     }
 
     private func title(_ key: CommanderKey) -> String {
         switch key.number {
         case 3: actions?.quickLookOpen == true ? "Close Quick Look" : "Quick Look"
+        // REM  ⌘I — "i woult think editing in the center pane Command I" (Finder's Get Info key).
+        case 4: "Inspector: \(inspectorSize.next.title)"
+        case 10: "Edit — Open in Its App"
         case 5: "Copy to Other Pane"
         case 6: "Move to Other Pane"
         case 8: FileOperations.deleteTitle(instant: instantDelete)
@@ -1386,7 +1400,6 @@ private struct KeysHelp: View {
             }
             Divider()
             row("Tab", "Switch which pane is the source")
-            row("⌘I", "Inspector between the panes: Off → Small → Large")
             row("Click, pause, click", "Rename a name in its row")
         }
         .font(.lyceumBody)
