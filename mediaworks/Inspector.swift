@@ -526,6 +526,7 @@ struct InspectorPane: View {
     @State private var saving = false
     @State private var problem: String?
     @State private var choosingPicture = false
+    @State private var findingPicture = false
 
     private var canSave: Bool { file.writeType != nil && !saving }
     private var changed: [TagField: String] {
@@ -568,6 +569,9 @@ struct InspectorPane: View {
         .task(id: item.map { MediaInfoCache.key($0) }) { await load() }
         .fileImporter(isPresented: $choosingPicture, allowedContentTypes: [.image]) { result in
             if case .success(let url) = result { usePicture(url) }
+        }
+        .sheet(isPresented: $findingPicture) {
+            ArtworkSearchSheet(initial: searchWords) { usePicture($0) }
         }
         .alert("Inspector", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
             Button("OK") { problem = nil }
@@ -712,7 +716,9 @@ struct InspectorPane: View {
             if canSave, withButtons {
                 HStack(spacing: 12) {
                     Button("Choose Picture…") { choosingPicture = true }
-                        .lyceumHelp("Pick an album cover or movie poster to save into this file")
+                        .lyceumHelp("Choose Picture — pick an album cover or movie poster from your files to save into this file")
+                    Button("Find Picture…") { findingPicture = true }
+                        .lyceumHelp("Find Picture — search Apple's iTunes catalog for a cover or poster, starting from this file's name")
                     Button("Remove Picture") { picture = .remove; pendingPicture = nil }
                         .disabled(shownPicture == nil)
                 }
@@ -778,6 +784,9 @@ struct InspectorPane: View {
             HStack(spacing: 12) {
                 Button("Choose Picture…") { choosingPicture = true }
                     .disabled(applying)
+                Button("Find Picture…") { findingPicture = true }
+                    .disabled(applying)
+                    .lyceumHelp("Find Picture — search Apple's iTunes catalog for one cover or poster for all of them")
                     .lyceumHelp("Choose Picture — pick one album cover or poster for every highlighted file")
                 Button { applyToMany() } label: {
                     if applying { ProgressView().controlSize(.small) } else { Text("Apply to \(writable) File\(writable == 1 ? "" : "s")") }
@@ -829,6 +838,16 @@ struct InspectorPane: View {
         }
     }
 
+    /// What Find Picture… starts with: the TV show or title tag, else the cleaned-up file name.
+    private var searchWords: String {
+        if many.count > 1 {
+            return ArtworkSearch.query(fromFileName: many[0].name)
+        }
+        if let show = file.tags[.show] { return show }
+        if let title = file.tags[.title] { return title }
+        return item.map { ArtworkSearch.query(fromFileName: $0.name) } ?? ""
+    }
+
     // MARK: Reading and saving
 
     private func load() async {
@@ -853,8 +872,16 @@ struct InspectorPane: View {
     private func usePicture(_ url: URL) {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        guard let data = try? Data(contentsOf: url),
-              let source = CGImageSourceCreateWithData(data as CFData, nil),
+        guard let data = try? Data(contentsOf: url) else {
+            problem = "That picture could not be read."
+            return
+        }
+        usePicture(data)
+    }
+
+    /// A picture's bytes — from a file he chose or from Find Picture….
+    private func usePicture(_ data: Data) {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
             problem = "That picture could not be read."
             return
