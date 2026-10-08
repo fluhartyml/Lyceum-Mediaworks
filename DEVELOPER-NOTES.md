@@ -22,7 +22,7 @@ entry once it is done, and move anything that became a decision into the section
 ### 2026-10-08 ~09:1x — amber-page columns — build 49
 - His: *"for 027 to 032 are those file attributes? are thet able to be colums"* → *"i would like 027 001 002 005 010 012 (as the icon if possible) 017 019 020 021 024"* + *"these numbers would also be useful to be able to edit to help the user curate their library"*.
 - Built: new columns Title · Comment · Picture (row icon, 96 px, from the embedded art) · Description · TV Show · Season · Episode · Media Kind (027 Length, 002 Artist, 005 Genre already existed). Read only while shown, like every tag column; read through the inspector's slot table. Columns… lists each with its amber number.
-- ⬜ ASKED, not built: edit them IN the table cells, or is the inspector enough? (Each save rewrites the whole file.)
+- ✅ ANSWERED: *"i woult think editing in the center pane Command I"* → editing stays in the inspector; its key is now **⌘I** (build 50, was ⌥⌘I).
 
 ### 2026-10-08 ~08:5x — Inspector fields = the amber page's 001–026, numbered — build 47
 - His: *"for the amber page 001 through 026 i want displayed and editable inline in the center inspector"* (page: `Workshop/Media-Metadata-Compare-DRAFT-2026-10-08.html` in Claude's apartment) · then corrected: ***"the smaller showes all the fields, you just have to scroll to see them off the panel"*** → **Small = all 26 in one scrolling column; Large = 001–016 | 017–026 side by side.** Picture (012) in both, bigger in Large.
