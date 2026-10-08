@@ -19,6 +19,13 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-08 ~10:2x — ARCHIVE / QUARANTINE (banker's box) — his idea, TALKED, NOT built
+- Grew out of his glyph catch (build 59): *"the bankers box is used to archive and preserve records for future discovery requiring preserved records"* → *"do you think a preserve records bankers box with an a meant to archive to a quarantine folder would ever need practical use?"* → *"yes i believe so"*.
+- **Trash vs Archive (Claude's framing, he agreed):** Trash = "I want this gone", empties after 30 days. Archive = "out of my library, but kept" — never empties by itself; every item remembers its original path so it can be restored.
+- Uses named: suspected duplicates (the 10-05 "same movie, two names" pairs) · the original of a tag save (today → Trash) · unidentified files kept out of Jellyfin/Infuse.
+- **His retention idea:** *"maybe the quarantine delete could be adjusted by the user to preserve for 5 7 or 15 years? legal statutes of limits lifetimes?"* → choices 5 / 7 / 15 years. Claude proposed adding **Forever (default)** and that expiry **lists what is due and asks — never deletes on its own**. ⬜ Unconfirmed by him. Which period fits which record is his call, not Claude's.
+- Glyph: banker's box (`archivebox`) — his meaning for it. ⬜ Not decided: where the archive folder lives (inside the library share like `.Lyceum Trash`?), per-item retention vs one setting.
+
 ### 2026-10-08 ~09:1x — amber-page columns — build 49
 - His: *"for 027 to 032 are those file attributes? are thet able to be colums"* → *"i would like 027 001 002 005 010 012 (as the icon if possible) 017 019 020 021 024"* + *"these numbers would also be useful to be able to edit to help the user curate their library"*.
 - Built: new columns Title · Comment · Picture (row icon, 96 px, from the embedded art) · Description · TV Show · Season · Episode · Media Kind (027 Length, 002 Artist, 005 Genre already existed). Read only while shown, like every tag column; read through the inspector's slot table. Columns… lists each with its amber number.
