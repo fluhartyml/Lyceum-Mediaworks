@@ -180,7 +180,9 @@ struct FolderView: View {
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                // REM  minWidth 0 makes the frame take the COLUMN's width, not the long name's — so .clipped() cuts
+                // REM  at the column edge (without it the name drew over the Size column, build 90).
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                 .clipped()
                 .lyceumHelp(row.name)
             }
