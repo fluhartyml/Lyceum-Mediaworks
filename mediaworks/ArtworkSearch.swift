@@ -46,11 +46,13 @@ struct ArtworkResult: Identifiable, Hashable {
 
 enum ArtworkSource: String, CaseIterable, Identifiable {
     // REM  DuckDuckGo FIRST — his choice ("yes build it with duck duck go"; "i dont use google or bing").
-    case duckduckgo, wikipedia, archive, itunes
+    // REM  IMDb second — his "yes build the imdb tab", 2026-10-09 (IMDbPicker.swift).
+    case duckduckgo, imdb, wikipedia, archive, itunes
     var id: String { rawValue }
     var title: String {
         switch self {
         case .duckduckgo: "DuckDuckGo"
+        case .imdb: "IMDb"
         case .wikipedia: "Wikipedia"
         case .archive: "Internet Archive"
         case .itunes: "iTunes"
@@ -93,6 +95,7 @@ enum ArtworkSearch {
     static func search(_ text: String, in source: ArtworkSource) async throws -> [ArtworkResult] {
         switch source {
         case .duckduckgo: []   // shown as DuckDuckGo's own page (DuckDuckGoPicker.swift), not as a list
+        case .imdb: []         // shown as IMDb's own page (IMDbPicker.swift); he picks the text himself
         case .itunes: try await itunes(text)
         case .wikipedia: try await wikipedia(text)
         case .archive: try await archive(text)
@@ -221,6 +224,10 @@ struct ArtworkSearchSheet: View {
     @State private var source: ArtworkSource = .duckduckgo
     @State private var duckAddress: URL?
     @State private var bridge = DuckDuckGoBridge()
+    @State private var imdbAddress: URL?
+    @State private var imdbBridge = IMDbBridge()
+    /// The text he has picked on IMDb so far, by field.
+    @State private var imdbPicks: [TagField: String] = [:]
     /// The picture View File opened, shown full size over the results.
     @State private var viewing: URL?
     @State private var shape: ArtworkShape = .poster
@@ -276,20 +283,30 @@ struct ArtworkSearchSheet: View {
                         .lyceumHelp("Use This Picture — takes the picture DuckDuckGo is showing large (click a picture first). Or just double-click a picture.")
                 }
                 Button("Open in Browser…") {
-                    if let url = ArtworkSearch.webSearchURL(text, shape: shape) { openURL(url) }
+                    let url = source == .imdb ? IMDb.findURL(text) : ArtworkSearch.webSearchURL(text, shape: shape)
+                    if let url { openURL(url) }
                 }
                 .fixedSize()
                 .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
-                .lyceumHelp("Open in Browser — the same DuckDuckGo image search in your own browser. Drag the picture you like onto Lyceum's picture area.")
+                .lyceumHelp(source == .imdb
+                            ? "Open in Browser — the same IMDb search in your own browser."
+                            : "Open in Browser — the same DuckDuckGo image search in your own browser. Drag the picture you like onto Lyceum's picture area.")
             }
             Text(source == .duckduckgo
                  ? "Double-click a picture to use it — or click one to see it large, then Use This Picture."
+                 : source == .imdb
+                 ? "Highlight words on the page, then Select Text and choose the tag. Check the list, then Use Selected Text."
                  : source == .wikipedia
                  ? "Click the film or show: its title, year, genre, director, descriptions and poster go into the Inspector to check, then Save Tags."
                  : "Only these words are sent. From a browser, drag a picture onto the Inspector.")
                 .font(.lyceumDetail)
                 .foregroundStyle(.secondary)
-            if source == .duckduckgo {
+            if source == .imdb {
+                IMDbPane(address: imdbAddress, bridge: imdbBridge, picks: $imdbPicks) {
+                    pick(nil, imdbPicks)
+                    finish()
+                }
+            } else if source == .duckduckgo {
                 DuckDuckGoView(address: duckAddress, bridge: bridge)
                     .frame(maxWidth: .infinity, minHeight: 420, maxHeight: .infinity)
                     .layoutPriority(1)
@@ -375,8 +392,11 @@ struct ArtworkSearchSheet: View {
         results = []
         message = nil
         duckAddress = nil
+        imdbAddress = nil
+        imdbPicks = [:]
         downloading = nil
         bridge.resetZoom()
+        imdbBridge.resetZoom()
         text = ""
         dismiss()
     }
@@ -403,6 +423,10 @@ struct ArtworkSearchSheet: View {
         viewing = nil   // a new search or source always shows its results, never an old picture
         if source == .duckduckgo {
             duckAddress = DuckDuckGo.imagesURL(words, shape: shape)
+            return
+        }
+        if source == .imdb {
+            imdbAddress = IMDb.findURL(words)
             return
         }
         searching = true

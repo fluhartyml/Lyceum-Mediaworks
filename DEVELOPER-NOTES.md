@@ -19,6 +19,15 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-09 ~09:1x — IMDb TAB in Find Picture (his "yes build the imdb tab the user can highlight and press a select text button")
+- `IMDbPicker.swift`: IMDb's real page (private session), Back/Forward/zoom, **Select Text** menu → field (Title, Director→002, Genre, Year — first 4-digit year in the highlight, Short/Long Description, Comment). Picks listed with ✕ to remove; **Use Selected Text** → Inspector waiting changes, closes + resets like every pick. Builds Mac + iOS sim. **Not run by him or me yet** — unverified: IMDb loading in the web view, selection reading.
+
+### 2026-10-09 ~08:50 — HE SAYS MEDIAWORKS IS NON-COMMERCIAL ("this is non commercial")
+- Said while discussing IMDb's free data files (personal/non-commercial license). He finds movie years on IMDb by going writer → filmography → title; IMDb had more than the web search parsed. Offered: IMDb datasets in Find Info & Picture (re-check license first) — unanswered.
+
+### 2026-10-09 08:33 — NEW APP ICON, build 86 `38337c8` (his word: "lets use these icons")
+- Made by him in Image Producer (Mac App Store 1.0): media folder on an Image Playground tile, blue glow on black. Exported to `~/Desktop/Mediaworks/AppIcon.appiconset`. iOS light + dark slots filled; Mac 16–1024 resized from the light one. Tinted left empty (his rule). Built for Mac, not run by him yet.
+
 ### 2026-10-08 ~11:00–14:05 — POSTERS + INFO: builds 64–81 (he walked through it live; "i like it")
 - **Hover help** is Lyceum's own 18-pt tip (`HoverHelp.swift`, `.lyceumHelp`), Settings → Buttons & Help (labels under pane buttons, small — his 18-pt exemption; hover on/off). The Mac shows no hover for a background app. ViewThatFits answered hover with the hidden row → pane tool row is ONE icon row.
 - **Saving tags** is quiet ("Saving…" / "Saved"); a cued-but-stopped file is released then re-cued; refused only while playing. Pictures capped at **2000 px** long side (JPEG 0.9). First real saves verified frame-for-frame (The Sleeping Giant, Assignment Outer Space).

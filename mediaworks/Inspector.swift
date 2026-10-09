@@ -956,7 +956,7 @@ struct InspectorPane: View {
             filled += 1
         }
         if filled > 0 {
-            library.report("Filled \(filled) field\(filled == 1 ? "" : "s") from Wikipedia — check them, then Save Tags")
+            library.report("Filled \(filled) field\(filled == 1 ? "" : "s") from the search — check them, then Save Tags")
         }
     }
 
