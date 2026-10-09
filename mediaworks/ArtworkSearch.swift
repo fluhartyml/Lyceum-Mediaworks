@@ -264,7 +264,9 @@ struct ArtworkSearchSheet: View {
                     ForEach(ArtworkSource.allCases) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 460)
+                // REM  No visible label — on his screen (build 97) "Source" wrapped to "So / ur / ce" beside the tabs.
+                .labelsHidden()
+                .fixedSize()
                 .onChange(of: source) { run() }
                 .onChange(of: shape) { if source == .duckduckgo { run() } }
                 Picker("Shape", selection: $shape) {
@@ -329,9 +331,12 @@ struct ArtworkSearchSheet: View {
                 if let message { Text(message).foregroundStyle(.secondary) }
             } else if searching {
                 ProgressView().frame(maxWidth: .infinity, minHeight: 200)
-            } else if let message {
+            } else if results.isEmpty, let message {
                 Text(message).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 200)
             } else {
+                // REM  The results STAY after a pick — on his screen (build 97) the "Added the information…" note
+                // REM  replaced the whole grid. Now the note sits above it.
+                if let message { Text(message).foregroundStyle(.secondary) }
                 ScrollView {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 14)], spacing: 14) {
                         ForEach(ordered) { result in
@@ -445,13 +450,16 @@ struct ArtworkSearchSheet: View {
             if let collectedPicture {
                 VStack(spacing: 4) {
                     PlatformPictureView(data: collectedPicture)
-                        .frame(width: 90, height: 120)
+                        .frame(width: 60, height: 80)
                     Text(collectedFrom).font(.lyceumDetail).foregroundStyle(.secondary)
                     Button { self.collectedPicture = nil } label: { Image(systemName: "xmark.circle") }
                         .buttonStyle(.borderless)
                         .lyceumHelp("Remove this picture")
                 }
             }
+            // REM  COMPACT — his screen (build 97): the tray took a third of the window and squeezed the web page.
+            // REM  It is capped now and scrolls inside itself when many items are collected.
+            ScrollView {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Collected").font(.lyceumHeadline)
                 ForEach(TagField.allCases.filter { collectedInfo[$0] != nil }) { field in
@@ -467,8 +475,10 @@ struct ArtworkSearchSheet: View {
                 }
                 if collectedInfo.isEmpty { Text("No information yet").foregroundStyle(.secondary) }
             }
+            }
+            .frame(maxHeight: 120)
         }
-        .padding(10)
+        .padding(8)
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
     }
 

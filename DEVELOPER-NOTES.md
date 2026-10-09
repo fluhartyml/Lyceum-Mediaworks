@@ -22,7 +22,7 @@ entry once it is done, and move anything that became a decision into the section
 ### 2026-10-09 ~12:0x — BUILD 97 USED FOR REAL (walked through G.I. Joe Arise, Serpentor, Arise!) — "it works within reason"
 - Confirmed: tray kept his DuckDuckGo poster while Wikipedia facts were added; IMDb Storyline → 018 via Select Text. He did The Revenge of Cobra alone "very easily" (poster + title saved 12:07).
 - ⬜ IMDb: dragging across a LINK (release date) opens it on mouse-up — he gave up on the date. Workaround told: Option-drag. Offered fix (ignore a link click when text was just highlighted) — he called these "DRM speedbumps"; told him it is ordinary link behaviour. Unanswered.
-- ⬜ Seen on his screen, not raised yet: the "Source" picker label wraps to "So/ur/ce"; with the tray open the web page area is cramped; after a Wikipedia pick the message replaces the results grid (results hidden).
+- ✅ Fixed at his "yes fix those" (build 98+): Source label hidden (was wrapping "So/ur/ce"); tray compact (60×80 picture, list capped 120 pt, scrolls); results grid stays after a pick with the note above it. Built Mac + iOS sim, not run yet.
 
 ### 2026-10-09 ~11:4x — FIND WINDOW COLLECTS ACROSS TABS · DUCKDUCKGO CLICK TAKES THE PICTURE (his "yes fix both")
 - His: switching tabs "breaks the chain of custody" (info OR picture, never both) — every pick closed the window. Now picks GATHER in a tray at the bottom: facts from Wikipedia (merged) or IMDb Select Text, ONE picture from any tab (Wikipedia's poster only if none chosen yet). ✕ removes any item. **Use All** delivers picture + facts together and closes; Cancel/new file empties it. Replaces the 10-08 "every pick closes" rule for this window.
