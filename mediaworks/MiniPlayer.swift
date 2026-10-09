@@ -153,6 +153,33 @@ final class MiniPlayer {
         return source
     }
 
+    /// Lets go of anything about to be deleted or moved — the files themselves, or anything inside a folder
+    /// among them — even if it is playing (it is going away).
+    // REM  HIS SCREEN, 2026-10-09: an emptied "Documentary" folder would not delete — "you don't have permission".
+    // REM  Inside it on Nineveh: a hidden 122 MB ".smbdeleteAAA17264.4". A file deleted while still OPEN on a
+    // REM  network share is only renamed by the server until it is closed — and this player had the deleted
+    // REM  video cued (cueing opens it). So the folder was never empty. Now the player lets go first.
+    func letGo(of urls: [URL]) {
+        let paths = urls.map { $0.standardizedFileURL.path }
+        func hit(_ url: URL?) -> Bool {
+            guard let path = url?.standardizedFileURL.path else { return false }
+            return paths.contains { path == $0 || path.hasPrefix($0 + "/") }
+        }
+        if hit(current) {
+            player.pause()
+            isPlaying = false
+            player.replaceCurrentItem(with: nil)
+            current = nil
+            currentSource = nil
+            elapsed = 0
+            duration = 0
+        }
+        if hit(cued) {
+            cued = nil
+            cuedSource = nil
+        }
+    }
+
     /// Puts a file back as the cued item after its tags were saved — never starts it playing.
     func recue(_ url: URL, from source: Source) {
         highlighted[source] = url

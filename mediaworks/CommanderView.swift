@@ -560,6 +560,8 @@ struct CommanderView: View {
 
         let pane = active
         let next = move ? nextRow(after: Set(sources), in: pane) : nil
+        // An open file cannot really leave a network share — the player lets go first.
+        if move { mini.letGo(of: sources) }
         busy = "\(move ? "Moving" : "Copying") \(sources.count) item\(sources.count == 1 ? "" : "s") to \(destination.lastPathComponent)…"
         library.report(busy!, working: true)
         Task {
@@ -698,6 +700,8 @@ struct CommanderView: View {
         guard !urls.isEmpty else { return }
         let pane = active
         let next = nextRow(after: Set(urls), in: pane)
+        // An open file cannot really be deleted from a network share — the player lets go first.
+        mini.letGo(of: urls)
         busy = instantDelete ? "Deleting…" : "Moving to Trash…"
         Task {
             do {

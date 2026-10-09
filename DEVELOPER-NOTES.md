@@ -19,6 +19,10 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-09 ~10:2x — FOLDER WOULD NOT DELETE: THE PLAYER HELD THE DELETED FILE OPEN
+- His screen (build 92): empty "Documentary" → "couldn't be removed because you don't have permission". On multitronic5 the folder held `.smbdeleteAAA17264.4` (122 MB) — Samba's rename of a file deleted while still OPEN; the mini player had the deleted video cued (cueing loads it into AVPlayer). Fix: `MiniPlayer.letGo(of:)` before Commander Delete and Move — unloads the current item (even if playing) and clears the cue when it is one of the files or inside one of the folders.
+- The leftover `.smbdelete…` file should go when build 92 quits (its handle closes); then Documentary deletes normally. Not deleted by me.
+
 ### 2026-10-09 ~10:1x — RENAME: EXTENSION UNLOCKS ONLY BY A MOUSE CLICK ON IT (his correction)
 - His: one → at the end of the name unlocked the extension too easily ("i dont want to inadvertantly change or remove the file extention"). Now → never unlocks; the extension is drawn gray while locked; a click on the extension (past the dot) unlocks it and turns it normal. ⌘1 Help has the row. Built Mac + iOS sim, not run yet.
 
