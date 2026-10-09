@@ -59,7 +59,7 @@ struct mediaworksApp: App {
         .restorationBehavior(.disabled)
 
         // REM  Find Picture… — a real window, resizable; double-click the title bar to zoom it to the screen.
-        Window("Find Picture", id: "findpicture") {
+        Window("Find Info & Picture", id: "findpicture") {
             FindPictureWindow()
                 .environment(picturePick)
                 .environment(library)

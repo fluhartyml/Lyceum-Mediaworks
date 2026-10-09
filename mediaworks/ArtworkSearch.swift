@@ -252,7 +252,9 @@ struct ArtworkSearchSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Find Picture").font(.lyceumHeadline)
+            // REM  ONE NAME FOR WHAT IT DOES — his catch, 2026-10-09: opened by Find Info & Picture… it still said
+            // REM  "Find Picture". Since the tray (build 97) every tab can bring both, so it is named for both.
+            Text("Find Info & Picture").font(.lyceumHeadline)
             HStack(spacing: 10) {
                 TextField("Search", text: $text)
                     .textFieldStyle(.roundedBorder)
@@ -385,6 +387,9 @@ struct ArtworkSearchSheet: View {
         .font(.lyceumBody)
         .padding(20)
         .frame(minWidth: 900, minHeight: 700)
+        // REM  TOP-ALIGNED — his "too much white space" (build 101): a short page (no results yet) sat in the middle
+        // REM  of a tall window with an empty band above the heading.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear {
             source = startOn
             viewing = nil
