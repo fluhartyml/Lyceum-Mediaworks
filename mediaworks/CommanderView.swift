@@ -489,6 +489,8 @@ struct CommanderView: View {
             return
         }
 
+        let pane = active
+        let next = move ? nextRow(after: Set(sources), in: pane) : nil
         busy = "\(move ? "Moving" : "Copying") \(sources.count) item\(sources.count == 1 ? "" : "s") to \(destination.lastPathComponent)…"
         library.report(busy!, working: true)
         Task {
@@ -507,11 +509,35 @@ struct CommanderView: View {
             case .success(let done):
                 done.forEach { library.journal(move ? "move" : "copy", from: $0.0, to: $0.1) }
                 library.report("\(move ? "Moved" : "Copied") \(done.count) item\(done.count == 1 ? "" : "s") to \(destination.lastPathComponent)")
-            case .failure(let error): problem = error.localizedDescription
+                if move { pane.selection = next.map { [$0] } ?? [] }
+            case .failure(let error):
+                problem = error.localizedDescription
+                if move { pane.selection = [] }
             }
-            if move { active.selection = [] }
             finished()
         }
+    }
+
+    /// The row to highlight once these rows are moved or deleted: the next one below them in the same folder,
+    /// else the one above them, else the next row of any kind.
+    // REM  HIS ASK, 2026-10-09: "i am going file by file, if i press command 8 to delete or command 6 to move it
+    // REM  doesnt automatically move to the next file, the moved or deleted file is no longer listed so i have to
+    // REM  try and find where i left off at." So the highlight lands where the gone row was — like Finder's list.
+    // REM  ⚠️ FILES ONLY — his NO AUTO-HIGHLIGHT rule (2026-09-28, PaneState.swift) exists because a highlighted
+    // REM  FOLDER is where copies and moves land. A highlight he did not make must never be a folder, so this
+    // REM  skips folders; with no file left to go to, nothing is highlighted.
+    private func nextRow(after removed: Set<URL>, in pane: PaneState) -> URL? {
+        let rows = pane.rows
+        let indices = rows.indices.filter { removed.contains(rows[$0].id) }
+        guard let first = indices.first, let last = indices.last else { return nil }
+        let folder = rows[last].id.deletingLastPathComponent().standardizedFileURL
+        func file(_ row: PaneRow) -> Bool { !removed.contains(row.id) && !row.entry.isFolder }
+        func sameFolder(_ row: PaneRow) -> Bool {
+            file(row) && row.id.deletingLastPathComponent().standardizedFileURL == folder
+        }
+        if let below = rows[(last + 1)...].first(where: sameFolder) { return below.id }
+        if let above = rows[..<first].last(where: sameFolder) { return above.id }
+        return nil
     }
 
     /// Where Copy and Move go: the one folder highlighted in the other pane, else the folder it has open.
@@ -601,9 +627,14 @@ struct CommanderView: View {
 
     private func trash(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
+        let pane = active
+        let next = nextRow(after: Set(urls), in: pane)
         busy = instantDelete ? "Deleting…" : "Moving to Trash…"
         Task {
-            do { try await FileOperations.trash(urls, instant: instantDelete, library: library) }
+            do {
+                try await FileOperations.trash(urls, instant: instantDelete, library: library)
+                pane.selection = next.map { [$0] } ?? []
+            }
             catch { problem = error.localizedDescription }
             busy = nil
             finished()

@@ -19,6 +19,9 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-09 ~09:3x — ⌘6 MOVE / ⌘8 DELETE: HIGHLIGHT GOES TO THE NEXT FILE (his "i have to try and find where i left off at")
+- `nextRow(after:in:)` in CommanderView: next FILE below in the same folder, else the one above, else nothing. **Never a folder** — his 09-28 no-auto-highlight rule (a highlighted folder is a copy/move destination). Copy (⌘5) unchanged. Built, not run by him yet. He confirmed the IMDb tab build 87 was running.
+
 ### 2026-10-09 ~09:1x — IMDb TAB in Find Picture (his "yes build the imdb tab the user can highlight and press a select text button")
 - `IMDbPicker.swift`: IMDb's real page (private session), Back/Forward/zoom, **Select Text** menu → field (Title, Director→002, Genre, Year — first 4-digit year in the highlight, Short/Long Description, Comment). Picks listed with ✕ to remove; **Use Selected Text** → Inspector waiting changes, closes + resets like every pick. Builds Mac + iOS sim. **Not run by him or me yet** — unverified: IMDb loading in the web view, selection reading.
 
