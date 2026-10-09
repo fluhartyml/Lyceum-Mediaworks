@@ -20,7 +20,7 @@ progress, what was promised, what is waiting on him. **Newest on top. Date every
 entry once it is done, and move anything that became a decision into the sections below.
 
 ### 2026-10-09 ~13:1x — FIND SEARCHES FROM THE FILE NAME, ALWAYS (his: "the transformers alone is too vague")
-- `Inspector.searchWords` no longer prefers the TV Show / Title tag. `ArtworkSearch.query` also drops season/episode numbers (S02E46, S2 E46, S02E46-E49, S02E46-49). Checked: "#Transformers# (1984) G1 S02E46-E49.mp4" → "Transformers (1984) G1"; "Star Blazers - S01E11 - The Desslok Mines.mp4" → "Star Blazers The Desslok Mines".
+- `Inspector.searchWords` no longer prefers the TV Show / Title tag. Dropping season/episode numbers was tried in build 100 and REVERTED at his word ("that exclusion makes the search not as effective") — S/E numbers stay in the search words.
 - File-name advice given: `Show (Year) - S02E46-E49 - Story Title.mp4` — show, year and story title are what web searches match. He is normalising names himself.
 - ⬜ Offered, unanswered: a **Web** tab (any address, e.g. fan wikis) with Select Text into the tray.
 

@@ -90,10 +90,8 @@ enum ArtworkSearch {
         if let range = stem.range(of: #"^\d{2,4}( - | )"#, options: .regularExpression) { stem.removeSubrange(range) }
         stem = stem.replacingOccurrences(of: "#", with: " ")
         stem = stem.replacingOccurrences(of: "_", with: " ")
-        // REM  SEASON/EPISODE NUMBERS LEFT OUT — his "yes", 2026-10-09: web searches match the show, year and title;
-        // REM  "S02E46-E49" only throws them off. Covers S02E46, S2 E46, S02E46-E49, S02E46-49.
-        stem = stem.replacingOccurrences(of: #"(?i)\bS\d{1,2}\s?E\d{1,3}(\s?-\s?E?\d{1,3})?\b"#, with: " ",
-                                         options: .regularExpression)
+        // REM  SEASON/EPISODE NUMBERS STAY — his correction, 2026-10-09: "that exclusion makes the search not as
+        // REM  effective". (Build 100 had dropped them for one build.)
         return stem.split(whereSeparator: \.isWhitespace).filter { $0 != "-" }.joined(separator: " ")
     }
 
