@@ -150,10 +150,11 @@ struct PreviewPicture: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // REM  The whole name, wrapping — his 2026-10-09 "line return", never "…" in the middle.
                 Text(item.name)
                     .font(.lyceumHeadline)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                 ForEach(lines, id: \.self) { line in
                     Text(line)
                         .foregroundStyle(.secondary)

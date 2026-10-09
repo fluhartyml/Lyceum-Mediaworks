@@ -211,6 +211,12 @@ final class PaneState {
     var playerShrunk: Bool { didSet { save(playerShrunk, "PlayerShrunk") } }
     /// The preview's height, as he dragged it. 0 = automatic (16:9 at the pane's width, at most half).
     var previewHeight: Double { didSet { save(previewHeight, "PreviewHeight") } }
+    /// The column widths he dragged (or double-click fitted). Saved, per pane.
+    // REM  HIS CATCH, 2026-10-09: "column width is not persistant over app restarts". Only WIDTH is kept here —
+    // REM  which columns show and their order stay in `columns`, because the order is his sort priority.
+    var columnWidths: TableColumnCustomization<PaneRow> {
+        didSet { if let data = try? JSONEncoder().encode(columnWidths) { save(data, "ColumnWidths") } }
+    }
 
     /// What is in the folder, as last read. Written by the pane view.
     var entries: [FolderEntry] = []
@@ -288,6 +294,8 @@ final class PaneState {
         noSort = d.object(forKey: prefix + "NoSort") as? Bool ?? true
         playerShrunk = d.bool(forKey: prefix + "PlayerShrunk")
         previewHeight = d.double(forKey: prefix + "PreviewHeight")
+        columnWidths = d.data(forKey: prefix + "ColumnWidths")
+            .flatMap { try? JSONDecoder().decode(TableColumnCustomization<PaneRow>.self, from: $0) } ?? .init()
         pendingSelection = Set((d.stringArray(forKey: prefix + "Selection") ?? []).map { URL(fileURLWithPath: $0) })
         revealed = Set(d.stringArray(forKey: prefix + "Revealed") ?? [])
         drives = Drives.mounted()

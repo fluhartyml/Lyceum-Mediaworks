@@ -982,7 +982,7 @@ private struct CommanderPane: View {
     // REM  MULTI-SELECT LIKE FINDER (his "yes like finder", 2026-09-28): click, ⌘-click, ⇧-click and
     // REM  ⇧↑/⇧↓ — the Mac table does all four natively, so nothing custom is written for them.
     private var fileList: some View {
-        Table(of: PaneRow.self, selection: $pane.selection, sortOrder: $headerClick) {
+        Table(of: PaneRow.self, selection: $pane.selection, sortOrder: $headerClick, columnCustomization: $pane.columnWidths) {
             // REM  THE COLUMNS COME FROM THE PANE'S OWN LIST, in his order, each title carrying its arrow.
             // REM  HOW A HEADER CLICK BECOMES HIS THREE-STATE ARROW: the table is handed a sort that is
             // REM  always EMPTY. A click makes the table report the clicked column; that report is read,
@@ -995,6 +995,9 @@ private struct CommanderPane: View {
                     cell(row, column.id)
                 }
                 .width(min: column.id.minWidth, ideal: column.id.idealWidth)
+                .customizationID(column.id.rawValue)
+                // REM  Width only — showing, hiding and order belong to his column list (his sort priority).
+                .disabledCustomizationBehavior([.reorder, .visibility])
             }
         } rows: {
             // REM  DRAG TO REORDER — only in Unsorted, so in every other sort a click-drag still does the
@@ -1016,6 +1019,12 @@ private struct CommanderPane: View {
             }
         }
         .font(.lyceumBody)
+        #if os(macOS)
+        // REM  DOUBLE-CLICK A COLUMN'S EDGE = FIT IT — his ask, 2026-10-09: "when i go to the end of a colum to
+        // REM  resize … i cant double click it to auto expand". Finder does it; SwiftUI's table does not, so
+        // REM  ColumnFit (ColumnFit.swift) catches the double-click on the header and sets the width here.
+        .background(ColumnFit { index in fitWidth(ofShownColumn: index) })
+        #endif
         .focused($listFocused)
         .contextMenu(forSelectionType: URL.self) { urls in
             FileContextMenu(urls: urls, entries: pane.rows.map(\.entry),
@@ -1099,6 +1108,58 @@ private struct CommanderPane: View {
         }
     }
 
+    // MARK: Fitting a column
+
+    /// The width that shows the longest thing in this column without cutting it, or nil to leave it alone.
+    private func fitWidth(ofShownColumn index: Int) -> CGFloat? {
+        guard pane.shownColumns.indices.contains(index) else { return nil }
+        let column = pane.shownColumns[index]
+        guard column.id != .artwork else { return nil }
+        let font = PlatformFont.systemFont(ofSize: 18)
+        func width(_ text: String) -> CGFloat { ceil((text as NSString).size(withAttributes: [.font: font]).width) }
+        // The header's own title (and arrow) must fit too.
+        var widest = width(column.id.title + (pane.noSort ? "" : column.arrow.map { "  " + $0.symbol } ?? "")) + 24
+        for row in pane.rows {
+            if column.id == .name {
+                // Indent + chevron + icon + spacing, as nameCell draws them.
+                widest = max(widest, CGFloat(row.depth) * 20 + 18 + 4 + 30 + width(row.entry.name) + 16)
+            } else {
+                widest = max(widest, width(cellText(row, column.id) ?? "—") + 16)
+            }
+        }
+        return max(column.id.minWidth, widest)
+    }
+
+    /// The words a text column shows for a row — the same as `cell` draws.
+    private func cellText(_ row: PaneRow, _ id: ColumnID) -> String? {
+        let entry = row.entry
+        switch id {
+        case .name: return entry.name
+        case .size: return entry.isFolder ? nil : ByteCountFormatter.string(fromByteCount: entry.size ?? 0, countStyle: .file)
+        case .modified: return entry.modified.map { $0.formatted(date: .abbreviated, time: .shortened) }
+        case .created: return entry.created.map { $0.formatted(date: .abbreviated, time: .shortened) }
+        case .kind: return entry.kind
+        default:
+            let info = MediaInfoCache.shared.info(for: entry)
+            switch id {
+            case .length: return info?.length.map { FolderView.lengthText($0) }
+            case .resolution: return info?.resolution
+            case .artist: return info?.artist
+            case .album: return info?.album
+            case .year: return info?.year.map(String.init)
+            case .title: return info?.title
+            case .comment: return info?.comment
+            case .summary: return info?.summary
+            case .show: return info?.show
+            case .season: return info?.season.map(String.init)
+            case .episode: return info?.episode.map(String.init)
+            case .mediaKind: return info?.mediaKind
+            case .artwork: return nil
+            default: return info?.genre
+            }
+        }
+    }
+
     // MARK: Cells
 
     @ViewBuilder
@@ -1172,8 +1233,12 @@ private struct CommanderPane: View {
                     }
                     Label(entry.name, systemImage: entry.isFolder ? "folder.fill" : (entry.isVideo ? "film" : (entry.isAudio ? "music.note" : "doc")))
                         .foregroundStyle(entry.isHidden ? Color.red : Color.primary)
+                        // REM  NO "…" IN THE MIDDLE OF A NAME — his ruling, 2026-10-09: "it truncates in the middle when the file name
+                        // REM  should just continue off the screen or line return". In a list row the name runs on and the column
+                        // REM  edge cuts it (no ellipsis); widen the column, or double-click its edge, to see it all.
                         .lineLimit(1)
-                        .truncationMode(.middle)
+                        // Not while renaming — the rename field must fit the column so the end stays in view.
+                        .fixedSize(horizontal: pane.renamingURL != entry.url, vertical: false)
                         .lyceumHelp(entry.name)
                         .simultaneousGesture(TapGesture().onEnded { slowClick(entry.url) })
                         .opacity(pane.renamingURL == entry.url ? 0 : 1)
@@ -1185,6 +1250,8 @@ private struct CommanderPane: View {
                             }
                         }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .clipped()
     }
 
     // MARK: The preview's height — his to drag

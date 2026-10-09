@@ -287,16 +287,15 @@ struct MiniPlayerBar: View {
 
     private func title(_ url: URL) -> some View {
         VStack(alignment: .leading, spacing: 4) {
+            // REM  The whole name, wrapping — his 2026-10-09 "line return", never "…" in the middle.
             Text(url.deletingPathExtension().lastPathComponent)
                 .font(.lyceumBody)
-                .lineLimit(1)
-                .truncationMode(.middle)
+                .fixedSize(horizontal: false, vertical: true)
             if let cued = mini.cued, cued != url {
                 Text("Cued: \(cued.deletingPathExtension().lastPathComponent)")
                     .font(.lyceumDetail)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

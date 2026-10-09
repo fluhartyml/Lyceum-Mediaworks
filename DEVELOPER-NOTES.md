@@ -19,6 +19,12 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-09 ~09:4x — COLUMN WIDTHS SAVED · DOUBLE-CLICK EDGE TO FIT · NO "…" IN NAMES
+- **Widths persist** per pane (`PaneState.columnWidths`, a `TableColumnCustomization`, key `commander<Side>ColumnWidths`). Width only — reorder/visibility customization disabled; his column list keeps order (= sort priority).
+- **Double-click a header edge = fit** (`ColumnFit.swift`, Mac): a local mouse monitor finds the header divider; `CommanderView.fitWidth` measures the column's text (18 pt) incl. indent/chevron/icon for Name. ⚠️ Reaches the NSTableView under SwiftUI's Table — UNVERIFIED that a width set this way is also saved by the customization.
+- **No middle "…"** (his: *"should just continue off the screen or line return"*): list names run on and are clipped at the column edge (not while renaming); preview caption, Library preview caption and player line wrap.
+- Built Mac + iOS sim. Not run by him or me.
+
 ### 2026-10-09 ~09:3x — ⌘6 MOVE / ⌘8 DELETE: HIGHLIGHT GOES TO THE NEXT FILE (his "i have to try and find where i left off at")
 - `nextRow(after:in:)` in CommanderView: next FILE below in the same folder, else the one above, else nothing. **Never a folder** — his 09-28 no-auto-highlight rule (a highlighted folder is a copy/move destination). Copy (⌘5) unchanged. Built, not run by him yet. His screen showed build 87 running; the IMDb tab itself not yet seen used.
 

@@ -175,10 +175,13 @@ struct FolderView: View {
                 HStack(spacing: 10) {
                     Thumbnail(entry: row.entry, width: 64)
                         .frame(width: 64, height: 36)
+                    // REM  No "…" in the middle — his 2026-10-09 ruling (see CommanderView's nameCell).
                     Text(row.name)
                         .lineLimit(1)
-                        .truncationMode(.middle)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .clipped()
                 .lyceumHelp(row.name)
             }
             .width(min: 220, ideal: 420)
@@ -359,10 +362,10 @@ private struct EntryTile: View {
         VStack(alignment: .leading, spacing: 8) {
             Thumbnail(entry: entry, width: width)
                 .frame(height: width * 9 / 16)
+            // REM  The whole name, wrapping — his 2026-10-09 "line return", never "…" in the middle.
             Text(entry.name)
                 .font(.lyceumHeadline)
-                .lineLimit(2)
-                .truncationMode(.middle)
+                .fixedSize(horizontal: false, vertical: true)
             if let details {
                 Text(details)
                     .font(.lyceumDetail)
