@@ -125,6 +125,16 @@ struct CommanderView: View {
     @AppStorage("instantDelete") private var instantDelete = false
     @AppStorage("commanderActiveSide") private var activeSideRaw = PaneSide.left.rawValue
     @AppStorage("inspectorSize") private var inspectorRaw = InspectorSize.off.rawValue
+    // REM  DRAGGABLE PANE EDGES — his "yes make the edges draggable", 2026-10-09 (the edge gave no resize
+    // REM  pointer). Each layout keeps its OWN widths, as shares of the window, so Off / Small / Large each
+    // REM  come back the way he left them. The starting values are his 2026-10-08 design (below).
+    @AppStorage("splitOffLeft") private var splitOffLeft = 0.5
+    @AppStorage("splitSmallLeft") private var splitSmallLeft = 1.0 / 3
+    @AppStorage("splitSmallRight") private var splitSmallRight = 1.0 / 3
+    @AppStorage("splitLargeLeft") private var splitLargeLeft = 0.25
+    @AppStorage("splitLargeRight") private var splitLargeRight = 0.25
+    /// The shares when a drag began — each drag measures from there.
+    @State private var splitDragStart: (left: Double, right: Double)?
     @Environment(MiniPlayer.self) private var mini
     @Environment(PiPState.self) private var pip
     #if os(macOS)
@@ -175,17 +185,19 @@ struct CommanderView: View {
             // REM  (Left | Inspector Inspector | Right — a quarter, the middle half, a quarter). The
             // REM  Commander panes always stay on the outside. Off = the two panes, half each, as before.
             GeometryReader { space in
-                let parts: CGFloat = switch inspectorSize { case .off: 2; case .small: 3; case .large: 4 }
-                let unit = (space.size.width - (inspectorSize == .off ? 1 : 2)) / parts
+                let usable = max(space.size.width - (inspectorSize == .off ? 1 : 2), 1)
+                let shares = splitShares
+                let leftWidth = usable * shares.left
+                let rightWidth = inspectorSize == .off ? usable - leftWidth : usable * shares.right
                 HStack(spacing: 0) {
-                    pane(left).frame(width: unit)
-                    Divider()
+                    pane(left).frame(width: leftWidth)
+                    splitEdge(usable: usable, isLeft: true)
                     if inspectorSize != .off {
                         InspectorPane(item: inspected, many: inspectedMany, size: inspectorSize, saved: { finished() })
-                            .frame(width: inspectorSize == .large ? unit * 2 : unit)
-                        Divider()
+                            .frame(width: max(usable - leftWidth - rightWidth, 0))
+                        splitEdge(usable: usable, isLeft: false)
                     }
-                    pane(right).frame(width: unit)
+                    pane(right).frame(width: rightWidth)
                 }
             }
             Divider()
@@ -440,6 +452,63 @@ struct CommanderView: View {
         let list = quickLookList
         if let current = quickLookURL, list.contains(current) { return }
         quickLookURL = list.first
+    }
+
+    // MARK: Pane edges
+
+    /// The left and right panes' shares of the window for the layout on show (Off: right = the rest).
+    private var splitShares: (left: Double, right: Double) {
+        switch inspectorSize {
+        case .off: (splitOffLeft, 1 - splitOffLeft)
+        case .small: (splitSmallLeft, splitSmallRight)
+        case .large: (splitLargeLeft, splitLargeRight)
+        }
+    }
+
+    private func setSplit(left: Double, right: Double) {
+        switch inspectorSize {
+        case .off: splitOffLeft = left
+        case .small: splitSmallLeft = left; splitSmallRight = right
+        case .large: splitLargeLeft = left; splitLargeRight = right
+        }
+    }
+
+    /// One edge between two parts: the resize pointer, a drag, and a double-click back to his design.
+    // REM  Narrowest a pane may go: 240 pt; the Inspector: 300 pt — so nothing can be dragged shut by accident.
+    private func splitEdge(usable: CGFloat, isLeft: Bool) -> some View {
+        let minPane = Double(240 / usable), minInspector = inspectorSize == .off ? 0 : Double(300 / usable)
+        return Divider()
+            .overlay {
+                Color.clear
+                    .frame(width: 10)
+                    .contentShape(Rectangle())
+                    #if os(macOS)
+                    .onHover { inside in if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
+                    #endif
+                    .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                        .onChanged { drag in
+                            if splitDragStart == nil { splitDragStart = splitShares }
+                            guard let start = splitDragStart else { return }
+                            let moved = Double(drag.translation.width / usable)
+                            if isLeft {
+                                let most = inspectorSize == .off ? 1 - minPane : 1 - start.right - minInspector
+                                setSplit(left: min(max(start.left + moved, minPane), most), right: start.right)
+                            } else {
+                                let most = 1 - start.left - minInspector
+                                setSplit(left: start.left, right: min(max(start.right - moved, minPane), most))
+                            }
+                        }
+                        .onEnded { _ in splitDragStart = nil })
+                    .onTapGesture(count: 2) {
+                        switch inspectorSize {
+                        case .off: setSplit(left: 0.5, right: 0.5)
+                        case .small: setSplit(left: 1.0 / 3, right: 1.0 / 3)
+                        case .large: setSplit(left: 0.25, right: 0.25)
+                        }
+                    }
+                    .lyceumHelp("Drag to resize — double-click to put the panes back to their starting widths")
+            }
+            .zIndex(1)
     }
 
     // MARK: Operations
