@@ -130,8 +130,8 @@ extension IMDbView {
 struct IMDbPane: View {
     let address: URL?
     let bridge: IMDbBridge
+    /// The window's collection — Select Text adds to it directly.
     @Binding var picks: [TagField: String]
-    let use: () -> Void
     @State private var message: String?
 
     var body: some View {
@@ -158,27 +158,6 @@ struct IMDbPane: View {
                 .frame(maxWidth: .infinity, minHeight: 360, maxHeight: .infinity)
                 .layoutPriority(1)
             if let message { Text(message).foregroundStyle(.secondary) }
-            if !picks.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(IMDb.fields.filter { picks[$0] != nil }) { field in
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Text(field.number).foregroundStyle(.secondary).monospacedDigit()
-                            Text(field == .artist ? "Director (Artist)" : field.label).foregroundStyle(.secondary)
-                            Text(picks[field] ?? "").lineLimit(2).textSelection(.enabled)
-                            Spacer()
-                            Button { picks[field] = nil } label: { Image(systemName: "xmark.circle") }
-                                .buttonStyle(.borderless)
-                                .lyceumHelp("Remove — don't use this one")
-                        }
-                    }
-                    HStack {
-                        Spacer()
-                        Button("Use Selected Text") { use() }
-                            .keyboardShortcut(.defaultAction)
-                            .lyceumHelp("Use Selected Text — put these in the Inspector to check, then Save Tags")
-                    }
-                }
-            }
         }
     }
 

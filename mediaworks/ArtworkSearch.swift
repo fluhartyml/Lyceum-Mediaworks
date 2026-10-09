@@ -26,6 +26,7 @@
 //
 
 import SwiftUI
+import ImageIO
 #if os(macOS)
 import AppKit
 #endif
@@ -226,8 +227,15 @@ struct ArtworkSearchSheet: View {
     @State private var bridge = DuckDuckGoBridge()
     @State private var imdbAddress: URL?
     @State private var imdbBridge = IMDbBridge()
-    /// The text he has picked on IMDb so far, by field.
-    @State private var imdbPicks: [TagField: String] = [:]
+    // REM  ONE COLLECTION FOR THE WHOLE WINDOW — his frustration, 2026-10-09: "when i switch between buttons it breaks
+    // REM  the 'chain of custody' between the find info part and only finds a picture" → "yes fix both". Every pick
+    // REM  used to close the window at once, so the Wikipedia facts and a DuckDuckGo picture could never travel
+    // REM  together. Now picks GATHER here — facts from Wikipedia or IMDb, one picture from any tab — shown in the
+    // REM  tray at the bottom, each removable; Use All sends them to the Inspector together and closes.
+    // REM  (This replaces the 2026-10-08 "every pick closes" rule for this window — his newer word.)
+    @State private var collectedInfo: [TagField: String] = [:]
+    @State private var collectedPicture: Data?
+    @State private var collectedFrom = ""
     /// The picture View File opened, shown full size over the results.
     @State private var viewing: URL?
     @State private var shape: ArtworkShape = .poster
@@ -293,19 +301,16 @@ struct ArtworkSearchSheet: View {
                             : "Open in Browser — the same DuckDuckGo image search in your own browser. Drag the picture you like onto Lyceum's picture area.")
             }
             Text(source == .duckduckgo
-                 ? "Double-click a picture to use it — or click one to see it large, then Use This Picture."
+                 ? "Double-click a picture to collect it — or click one to see it large, then Use This Picture."
                  : source == .imdb
-                 ? "Highlight words on the page, then Select Text and choose the tag. Check the list, then Use Selected Text."
+                 ? "Highlight words on the page, then Select Text and choose the tag. They are collected below."
                  : source == .wikipedia
-                 ? "Click the film or show: its title, year, genre, director, descriptions and poster go into the Inspector to check, then Save Tags."
+                 ? "Click the film or show: its title, year, genre, director and descriptions are collected below — and its poster, if you have not picked one."
                  : "Only these words are sent. From a browser, drag a picture onto the Inspector.")
                 .font(.lyceumDetail)
                 .foregroundStyle(.secondary)
             if source == .imdb {
-                IMDbPane(address: imdbAddress, bridge: imdbBridge, picks: $imdbPicks) {
-                    pick(nil, imdbPicks)
-                    finish()
-                }
+                IMDbPane(address: imdbAddress, bridge: imdbBridge, picks: $collectedInfo)
             } else if source == .duckduckgo {
                 DuckDuckGoView(address: duckAddress, bridge: bridge)
                     .frame(maxWidth: .infinity, minHeight: 420, maxHeight: .infinity)
@@ -314,7 +319,7 @@ struct ArtworkSearchSheet: View {
                     .overlay {
                         if let viewing {
                             PictureViewer(address: viewing,
-                                          use: { data in pick(data, [:]); finish() },
+                                          use: { data in collect(picture: data, from: "DuckDuckGo"); self.viewing = nil },
                                           back: { self.viewing = nil })
                                 .padding(10)
                                 .background(.background)
@@ -358,9 +363,16 @@ struct ArtworkSearchSheet: View {
                     }
                 }
             }
+            if collectedPicture != nil || !collectedInfo.isEmpty { tray }
             HStack {
                 Spacer()
                 Button("Cancel") { finish() }.keyboardShortcut(.cancelAction)
+                Button("Use All") {
+                    pick(collectedPicture, collectedInfo)
+                    finish()
+                }
+                .disabled(collectedPicture == nil && collectedInfo.isEmpty)
+                .lyceumHelp("Use All — put the collected picture and information in the Inspector to check, then Save Tags")
             }
         }
         .font(.lyceumBody)
@@ -380,7 +392,11 @@ struct ArtworkSearchSheet: View {
         // REM  A NEW FILE CLOSES THE OLD VIEWER — his bug, 2026-10-08 (build 78): Find Picture for "Cosmos War of the
         // REM  Planets" opened on top of the Assignment Outer Space viewer left open from the last file; Use This
         // REM  Picture there would have put the WRONG poster on the new file.
-        .onChange(of: initial) { viewing = nil; source = startOn; text = initial; if !initial.isEmpty { run() } }
+        .onChange(of: initial) {
+            viewing = nil; source = startOn; text = initial
+            collectedInfo = [:]; collectedPicture = nil; collectedFrom = ""   // a new file starts an empty collection
+            if !initial.isEmpty { run() }
+        }
     }
 
     /// Clears everything and closes — ready for the next file's search.
@@ -393,7 +409,9 @@ struct ArtworkSearchSheet: View {
         message = nil
         duckAddress = nil
         imdbAddress = nil
-        imdbPicks = [:]
+        collectedInfo = [:]
+        collectedPicture = nil
+        collectedFrom = ""
         downloading = nil
         bridge.resetZoom()
         imdbBridge.resetZoom()
@@ -408,13 +426,56 @@ struct ArtworkSearchSheet: View {
         message = nil
         Task {
             do {
-                pick(try await DuckDuckGo.download(address), [:])
-                finish()
+                collect(picture: try await DuckDuckGo.download(address), from: "DuckDuckGo")
             } catch {
                 message = error.localizedDescription
             }
             downloading = nil
         }
+    }
+
+    private func collect(picture: Data, from site: String) {
+        collectedPicture = picture
+        collectedFrom = site
+    }
+
+    /// What has been collected so far — the picture and each piece of information, each removable.
+    private var tray: some View {
+        HStack(alignment: .top, spacing: 14) {
+            if let collectedPicture {
+                VStack(spacing: 4) {
+                    PlatformPictureView(data: collectedPicture)
+                        .frame(width: 90, height: 120)
+                    Text(collectedFrom).font(.lyceumDetail).foregroundStyle(.secondary)
+                    Button { self.collectedPicture = nil } label: { Image(systemName: "xmark.circle") }
+                        .buttonStyle(.borderless)
+                        .lyceumHelp("Remove this picture")
+                }
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Collected").font(.lyceumHeadline)
+                ForEach(TagField.allCases.filter { collectedInfo[$0] != nil }) { field in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(field.number).foregroundStyle(.secondary).monospacedDigit()
+                        Text(field.label).foregroundStyle(.secondary)
+                        Text(Self.shown(field, collectedInfo[field] ?? "")).lineLimit(1)
+                        Spacer()
+                        Button { collectedInfo[field] = nil } label: { Image(systemName: "xmark.circle") }
+                            .buttonStyle(.borderless)
+                            .lyceumHelp("Remove — don't use this one")
+                    }
+                }
+                if collectedInfo.isEmpty { Text("No information yet").foregroundStyle(.secondary) }
+            }
+        }
+        .padding(10)
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    /// Media Kind is stored as a number; show its name.
+    private static func shown(_ field: TagField, _ value: String) -> String {
+        guard field == .mediaKind else { return value }
+        switch value { case "9": return "Movie"; case "10": return "TV Show"; default: return value }
     }
 
     private func run() {
@@ -455,13 +516,16 @@ struct ArtworkSearchSheet: View {
                 // REM  FROM WIKIPEDIA, THE FACTS COME WITH THE PICTURE — his ruling: "if it finds both on wikimedia it
                 // REM  would both probably be correct." A page with no picture still gives its facts.
                 if let page = result.wikiPage {
+                    // REM  Wikipedia's poster comes along only if no picture is collected yet — a picture he chose
+                    // REM  himself on another tab is never swapped out behind his back.
                     async let facts = WikiInfo.fetch(page)
-                    let data = result.thumbnail == nil ? nil : try? await ArtworkSearch.download(result)
-                    pick(data, try await facts)
+                    let data = (result.thumbnail == nil || collectedPicture != nil) ? nil : try? await ArtworkSearch.download(result)
+                    collectedInfo.merge(try await facts) { _, new in new }
+                    if let data { collect(picture: data, from: "Wikipedia") }
+                    message = "Added the information from “\(result.title)” — pick a picture on any tab, or Use All."
                 } else {
-                    pick(try await ArtworkSearch.download(result), [:])
+                    collect(picture: try await ArtworkSearch.download(result), from: source.title)
                 }
-                finish()
             } catch {
                 message = error.localizedDescription
             }
@@ -626,5 +690,18 @@ enum WikiInfo {
             out[id] = (((entity as? [String: Any])?["labels"] as? [String: Any])?["en"] as? [String: Any])?["value"] as? String
         }
         return out
+    }
+}
+
+/// A picture from its bytes, fitted — for the collection tray.
+struct PlatformPictureView: View {
+    let data: Data
+    var body: some View {
+        if let source = CGImageSourceCreateWithData(data as CFData, nil),
+           let image = CGImageSourceCreateImageAtIndex(source, 0, nil) {
+            Image(decorative: image, scale: 1).resizable().scaledToFit()
+        } else {
+            Image(systemName: "photo").foregroundStyle(.secondary)
+        }
     }
 }

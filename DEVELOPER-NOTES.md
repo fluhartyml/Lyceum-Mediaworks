@@ -19,6 +19,11 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-09 ~11:4x — FIND WINDOW COLLECTS ACROSS TABS · DUCKDUCKGO CLICK TAKES THE PICTURE (his "yes fix both")
+- His: switching tabs "breaks the chain of custody" (info OR picture, never both) — every pick closed the window. Now picks GATHER in a tray at the bottom: facts from Wikipedia (merged) or IMDb Select Text, ONE picture from any tab (Wikipedia's poster only if none chosen yet). ✕ removes any item. **Use All** delivers picture + facts together and closes; Cancel/new file empties it. Replaces the 10-08 "every pick closes" rule for this window.
+- His: clicking a DuckDuckGo picture sometimes opened a blank viewer — the click followed the link to the source WEBSITE and the page address went to the picture viewer. Now a non-picture address is swapped for the clicked picture (`largestShownImage`).
+- Built Mac + iOS sim. Not run yet. ⬜ Offered, unanswered: save 3–4 files at once when applying a picture to many (each ~2–4 s, fast path verified on Nineveh mtimes).
+
 ### 2026-10-09 10:23 — CONFIRMED ON HIS SCREEN (build 95): "it work as invisioned"
 - Rename shows the extension gray and locked (Things to Come … .mp4). Pane edges dragged (left wider, Inspector narrower). Documentary deleted after the old build quit (10:16:34).
 

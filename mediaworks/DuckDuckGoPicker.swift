@@ -133,15 +133,34 @@ final class DuckDuckGoBridge: NSObject, WKScriptMessageHandler, WKUIDelegate, WK
     // REM  so the results page is never lost with no Back button.
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if let url = action.request.url { opened(url) }
+        if let url = action.request.url { show(url, in: webView) }
         return nil
+    }
+
+    /// Opens the viewer on a PICTURE — never on a web page.
+    // REM  HIS CATCH, 2026-10-09: "sometimes if i touch the picture it tries to view the original file but it opens
+    // REM  to a blank screen, why doesnt it scrape the picture i double clicked". A click on DuckDuckGo's large
+    // REM  picture follows its link to the WEBSITE it came from; that page address went to the picture viewer,
+    // REM  which cannot draw a web page — blank. Now an address that is a picture opens as before; any other
+    // REM  address is swapped for the picture he clicked (the same choice Use This Picture makes).
+    private func show(_ url: URL, in webView: WKWebView) {
+        let pictureTypes: Set<String> = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "tif", "tiff", "heic", "avif"]
+        if pictureTypes.contains(url.pathExtension.lowercased()) || DuckDuckGo.original(of: url) != nil {
+            opened(url)
+            return
+        }
+        webView.evaluateJavaScript(DuckDuckGo.largestShownImage) { [weak self] result, _ in
+            Task { @MainActor in
+                if let text = result as? String, let picture = URL(string: text) { self?.opened(picture) }
+            }
+        }
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
         if action.targetFrame?.isMainFrame == true, let url = action.request.url,
            let host = url.host, !host.hasSuffix("duckduckgo.com"), url.scheme?.hasPrefix("http") == true {
-            opened(url)
+            show(url, in: webView)
             decisionHandler(.cancel)
             return
         }
