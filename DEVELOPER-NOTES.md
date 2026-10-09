@@ -19,6 +19,9 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-09 10:23 — CONFIRMED ON HIS SCREEN (build 95): "it work as invisioned"
+- Rename shows the extension gray and locked (Things to Come … .mp4). Pane edges dragged (left wider, Inspector narrower). Documentary deleted after the old build quit (10:16:34).
+
 ### 2026-10-09 ~10:2x — FOLDER WOULD NOT DELETE: THE PLAYER HELD THE DELETED FILE OPEN
 - His screen (build 92): empty "Documentary" → "couldn't be removed because you don't have permission". On multitronic5 the folder held `.smbdeleteAAA17264.4` (122 MB) — Samba's rename of a file deleted while still OPEN; the mini player had the deleted video cued (cueing loads it into AVPlayer). Fix: `MiniPlayer.letGo(of:)` before Commander Delete and Move — unloads the current item (even if playing) and clears the cue when it is one of the files or inside one of the folders.
 - The leftover `.smbdelete…` file should go when build 92 quits (its handle closes); then Documentary deletes normally. Not deleted by me.
