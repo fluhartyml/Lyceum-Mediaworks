@@ -19,6 +19,11 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-09 ~13:1x — FIND SEARCHES FROM THE FILE NAME, ALWAYS (his: "the transformers alone is too vague")
+- `Inspector.searchWords` no longer prefers the TV Show / Title tag. `ArtworkSearch.query` also drops season/episode numbers (S02E46, S2 E46, S02E46-E49, S02E46-49). Checked: "#Transformers# (1984) G1 S02E46-E49.mp4" → "Transformers (1984) G1"; "Star Blazers - S01E11 - The Desslok Mines.mp4" → "Star Blazers The Desslok Mines".
+- File-name advice given: `Show (Year) - S02E46-E49 - Story Title.mp4` — show, year and story title are what web searches match. He is normalising names himself.
+- ⬜ Offered, unanswered: a **Web** tab (any address, e.g. fan wikis) with Select Text into the tray.
+
 ### 2026-10-09 ~12:0x — BUILD 97 USED FOR REAL (walked through G.I. Joe Arise, Serpentor, Arise!) — "it works within reason"
 - Confirmed: tray kept his DuckDuckGo poster while Wikipedia facts were added; IMDb Storyline → 018 via Select Text. He did The Revenge of Cobra alone "very easily" (poster + title saved 12:07).
 - ⬜ IMDb: dragging across a LINK (release date) opens it on mouse-up — he gave up on the date. Workaround told: Option-drag. Offered fix (ignore a link click when text was just highlighted) — he called these "DRM speedbumps"; told him it is ordinary link behaviour. Unanswered.

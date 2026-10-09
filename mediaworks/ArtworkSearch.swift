@@ -90,7 +90,11 @@ enum ArtworkSearch {
         if let range = stem.range(of: #"^\d{2,4}( - | )"#, options: .regularExpression) { stem.removeSubrange(range) }
         stem = stem.replacingOccurrences(of: "#", with: " ")
         stem = stem.replacingOccurrences(of: "_", with: " ")
-        return stem.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        // REM  SEASON/EPISODE NUMBERS LEFT OUT — his "yes", 2026-10-09: web searches match the show, year and title;
+        // REM  "S02E46-E49" only throws them off. Covers S02E46, S2 E46, S02E46-E49, S02E46-49.
+        stem = stem.replacingOccurrences(of: #"(?i)\bS\d{1,2}\s?E\d{1,3}(\s?-\s?E?\d{1,3})?\b"#, with: " ",
+                                         options: .regularExpression)
+        return stem.split(whereSeparator: \.isWhitespace).filter { $0 != "-" }.joined(separator: " ")
     }
 
     static func search(_ text: String, in source: ArtworkSource) async throws -> [ArtworkResult] {

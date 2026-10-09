@@ -961,12 +961,12 @@ struct InspectorPane: View {
     }
 
     /// What Find Picture… starts with: the TV show or title tag, else the cleaned-up file name.
+    // REM  ALWAYS THE FILE NAME — his ruling, 2026-10-09: "use the file name because 'the transformers' alone is too
+    // REM  vague for a search on the web". It used to prefer the TV Show / Title tag once a file had one.
     private var searchWords: String {
         if many.count > 1 {
             return ArtworkSearch.query(fromFileName: many[0].name)
         }
-        if let show = file.tags[.show] { return show }
-        if let title = file.tags[.title] { return title }
         return item.map { ArtworkSearch.query(fromFileName: $0.name) } ?? ""
     }
 
