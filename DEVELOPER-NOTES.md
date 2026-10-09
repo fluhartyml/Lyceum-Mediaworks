@@ -19,6 +19,12 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-09 ~09:5x — BEACH BALLS: THE SORT (measured), build 92
+- His question: indexing, network copying, or the Trash? A 60 s `sample` (build 90, Debug under Xcode) put ~10 s of the main thread in `ColumnSort.sorted` ← `PaneState.listed` (every refresh): each comparison called `MediaInfoCache.info(for:)`, which rebuilds the path+date+size key string — twice per comparison, even for a Name-only sort. Fixed: tags looked up once per file, and only when a tag column has an arrow.
+- NOT the Trash: his `instantDelete` = 1 (Delete Immediately), so ⌘8 is `removeItem`, off the main thread. Moves within Nineveh are server-side renames, off the main thread. Tag reading is off the main thread, 4 at a time.
+- Build 91 also fixed names drawing over the Size column (`minWidth: 0` so `.clipped()` cuts at the column).
+- ⬜ Re-sample after he runs it to confirm the beach balls are gone.
+
 ### 2026-10-09 ~09:4x — COLUMN WIDTHS SAVED · DOUBLE-CLICK EDGE TO FIT · NO "…" IN NAMES
 - **Widths persist** per pane (`PaneState.columnWidths`, a `TableColumnCustomization`, key `commander<Side>ColumnWidths`). Width only — reorder/visibility customization disabled; his column list keeps order (= sort priority).
 - **Double-click a header edge = fit** (`ColumnFit.swift`, Mac): a local mouse monitor finds the header divider; `CommanderView.fitWidth` measures the column's text (18 pt) incl. indent/chevron/icon for Name. ⚠️ Reaches the NSTableView under SwiftUI's Table — UNVERIFIED that a width set this way is also saved by the customization.

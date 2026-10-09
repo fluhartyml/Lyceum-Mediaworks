@@ -337,11 +337,22 @@ enum ColumnSort {
     @MainActor
     static func sorted(_ entries: [FolderEntry], by columns: [ColumnSetting]) -> [FolderEntry] {
         let keys = columns.filter { $0.visible && $0.arrow != nil }
-        let cache = MediaInfoCache.shared
+        // REM  TAGS LOOKED UP ONCE PER FILE, NOT PER COMPARISON — his beach balls, 2026-10-09. A 60-second sample
+        // REM  had the main thread ~10 s inside this sort: every comparison rebuilt each file's cache key (path +
+        // REM  date + size string) twice, even when only Name was sorting. Now: one lookup per file, and none at
+        // REM  all unless a tag column carries an arrow.
+        let fileColumns: Set<ColumnID> = [.name, .size, .modified, .created, .kind]
+        let infos: [URL: MediaInfo]
+        if keys.contains(where: { !fileColumns.contains($0.id) }) {
+            let cache = MediaInfoCache.shared
+            infos = entries.reduce(into: [:]) { $0[$1.url] = cache.info(for: $1) }
+        } else {
+            infos = [:]
+        }
         return entries.sorted { a, b in
             if a.isFolder != b.isFolder { return a.isFolder }
             for column in keys {
-                switch compare(a, b, column.id, cache) {
+                switch compare(a, b, column.id, infos[a.url], infos[b.url]) {
                 case .same: continue
                 case .emptyLast(let aFirst): return aFirst
                 case .ordered(let ascending): return column.arrow == .up ? ascending : !ascending
@@ -354,7 +365,7 @@ enum ColumnSort {
     private enum Outcome { case same, emptyLast(aFirst: Bool), ordered(ascending: Bool) }
 
     @MainActor
-    private static func compare(_ a: FolderEntry, _ b: FolderEntry, _ id: ColumnID, _ cache: MediaInfoCache) -> Outcome {
+    private static func compare(_ a: FolderEntry, _ b: FolderEntry, _ id: ColumnID, _ ai: MediaInfo?, _ bi: MediaInfo?) -> Outcome {
         func values<T: Comparable>(_ x: T?, _ y: T?) -> Outcome {
             switch (x, y) {
             case (nil, nil): return .same
@@ -373,7 +384,6 @@ enum ColumnSort {
                 return order == .orderedSame ? .same : .ordered(ascending: order == .orderedAscending)
             }
         }
-        let ai = cache.info(for: a), bi = cache.info(for: b)
         switch id {
         case .name: return words(a.name, b.name)
         case .size: return values(a.isFolder ? nil : a.size, b.isFolder ? nil : b.size)
