@@ -1593,6 +1593,11 @@ private struct InlineRename: View {
 // REM    deliberate way in. From the first highlight that is two presses: one to drop the highlight at the
 // REM    end of the name, one to step over the dot.
 // REM  · A folder has no extension to lock.
+// REM  ⚠️ CHANGED 2026-10-09 — HIS CORRECTION: "if i am editing the file name, i dont want to inadvertantly change
+// REM  or remove the file extention … maybe they need to use the mouse pointer to activate the extention editing"
+// REM  → "yes build it that way". One → at the end of the name was too easy to press by accident, so:
+// REM  · → NO LONGER UNLOCKS. The ONLY way in is a CLICK ON THE EXTENSION ITSELF — a deliberate mouse act.
+// REM  · While locked the extension is drawn GRAY, so he can see it is not part of what he is typing.
 // REM  HOW: the field gets its OWN field editor (the text view the Mac types into while a field is being
 // REM  edited). Only the editor can refuse a change or a caret move before it happens — a text-field
 // REM  subclass cannot (tried; AppKit does not expose those hooks on the field).
@@ -1604,6 +1609,34 @@ private final class ExtensionLockingEditor: NSTextView {
     /// Where the name ends right now (it moves as he types).
     var nameEnd: Int { (string as NSString).length - extensionLength }
     private var guarding: Bool { locked && extensionLength > 0 }
+
+    /// Gray while locked, normal once he clicks into it.
+    func paintExtension() {
+        guard extensionLength > 0, let storage = textStorage else { return }
+        let length = (string as NSString).length
+        storage.addAttribute(.foregroundColor, value: NSColor.labelColor, range: NSRange(location: 0, length: length))
+        if locked {
+            storage.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor,
+                                 range: NSRange(location: nameEnd, length: extensionLength))
+        }
+    }
+
+    override func didChangeText() {
+        super.didChangeText()
+        paintExtension()
+    }
+
+    /// A click ON the extension (past the dot) is the one way in.
+    override func mouseDown(with event: NSEvent) {
+        if guarding {
+            let index = characterIndexForInsertion(at: convert(event.locationInWindow, from: nil))
+            if index > nameEnd {
+                locked = false
+                paintExtension()
+            }
+        }
+        super.mouseDown(with: event)
+    }
 
     override func shouldChangeText(in range: NSRange, replacementString: String?) -> Bool {
         if guarding, NSMaxRange(range) > nameEnd || range.location > nameEnd {
@@ -1663,6 +1696,7 @@ private struct RenameField: NSViewRepresentable {
             window.makeFirstResponder(field)
             field.currentEditor()?.selectedRange = NSRange(location: 0,
                                                            length: (InlineRename.stem(original) as NSString).length)
+            (field.currentEditor() as? ExtensionLockingEditor)?.paintExtension()
         }
         return field
     }
@@ -1675,15 +1709,6 @@ private struct RenameField: NSViewRepresentable {
         init(_ parent: RenameField) { self.parent = parent }
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
-            // REM  → at the very end of the name, nothing highlighted: the one way into the extension.
-            if selector == #selector(NSResponder.moveRight(_:)), let editor = textView as? ExtensionLockingEditor,
-               editor.locked, editor.extensionLength > 0 {
-                let caret = editor.selectedRange()
-                if caret.length == 0, caret.location == editor.nameEnd {
-                    editor.locked = false
-                }
-                return false
-            }
             if selector == #selector(NSResponder.cancelOperation(_:)) {
                 guard !done else { return true }
                 done = true
@@ -1745,6 +1770,7 @@ private struct KeysHelp: View {
             Divider()
             row("Tab", "Switch which pane is the source")
             row("Click, pause, click", "Rename a name in its row")
+            row("Click the gray extension", "While renaming, unlock the extension (.mp4) to change it")
         }
         .font(.lyceumBody)
         .padding(20)

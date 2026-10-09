@@ -19,6 +19,9 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-09 ~10:1x — RENAME: EXTENSION UNLOCKS ONLY BY A MOUSE CLICK ON IT (his correction)
+- His: one → at the end of the name unlocked the extension too easily ("i dont want to inadvertantly change or remove the file extention"). Now → never unlocks; the extension is drawn gray while locked; a click on the extension (past the dot) unlocks it and turns it normal. ⌘1 Help has the row. Built Mac + iOS sim, not run yet.
+
 ### 2026-10-09 ~10:0x — DRAGGABLE PANE EDGES (his "yes make the edges draggable")
 - The edges between Left | Inspector | Right show the ↔ pointer and drag. Widths saved PER LAYOUT as window shares (`splitOffLeft`, `splitSmallLeft/Right`, `splitLargeLeft/Right`); defaults = his 10-08 design (halves / thirds / quarter-half-quarter). Double-click an edge = back to those. Mins: pane 240 pt, Inspector 300 pt. Built Mac + iOS sim, not run yet.
 - Build 92 seen on his screen: no name overlap, next-file highlight after a move worked. Both panes' Name columns came up very wide (Size/Date scrolled off) — cause unknown (asked if he double-clicked; unanswered).
