@@ -47,6 +47,26 @@ enum IMDb {
 
     /// What is highlighted on the page right now.
     static let selectionScript = "window.getSelection ? window.getSelection().toString() : ''"
+
+    // REM  A DRAG SELECTS, IT NEVER FOLLOWS — his yes, 2026-10-10. The release date is a link, and letting go after
+    // REM  dragging across it opened IMDb's release calendar every time ("everytime i highlight the release date and
+    // REM  let go it opens this page"). Links stop being draggable objects, and a mouse-up that MOVED more than a few
+    // REM  points is not a click. A plain click on a link still follows it.
+    static let dragSelectsScript = """
+    (function () {
+      var style = document.createElement('style');
+      style.textContent = 'a { -webkit-user-drag: none !important; }';
+      (document.head || document.documentElement).appendChild(style);
+      var downX = 0, downY = 0;
+      window.addEventListener('mousedown', function (e) { downX = e.clientX; downY = e.clientY; }, true);
+      window.addEventListener('click', function (e) {
+        if (Math.abs(e.clientX - downX) > 4 || Math.abs(e.clientY - downY) > 4) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }, true);
+    })();
+    """
 }
 
 /// Talks to the IMDb page: Back, Forward, zoom, and reading the highlighted text.
@@ -109,6 +129,8 @@ extension IMDbView {
         let configuration = WKWebViewConfiguration()
         // REM  A private, throwaway session, like DuckDuckGo's: nothing he looks up is kept on disk.
         configuration.websiteDataStore = .nonPersistent()
+        configuration.userContentController.addUserScript(
+            WKUserScript(source: IMDb.dragSelectsScript, injectionTime: .atDocumentEnd, forMainFrameOnly: false))
         let view = WKWebView(frame: .zero, configuration: configuration)
         view.uiDelegate = bridge
         #if os(macOS)
