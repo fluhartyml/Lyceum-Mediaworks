@@ -21,6 +21,10 @@ struct ContentView: View {
 
     var body: some View {
         Group {
+            #if !os(macOS)
+            // REM  ONLY THE MAC ASKS FOR THE LIBRARY FOLDER — his ruling, 2026-10-10 (FromYourMacView.swift).
+            FromYourMacView()
+            #else
             if let root = library.root {
                 switch library.mode {
                 case .library: libraryView(root: root)
@@ -30,9 +34,12 @@ struct ContentView: View {
             } else {
                 OnboardingView()
             }
+            #endif
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
+            #if os(macOS)
             if library.root != nil { StatusBar() }
+            #endif
         }
         .alert("Library", isPresented: Binding(get: { library.errorMessage != nil },
                                                set: { if !$0 { library.errorMessage = nil } })) {
