@@ -29,8 +29,13 @@ final class MacLibrary {
 
     /// Runs the sync against the copy on hand — after each word from the Mac, and when the mode changes.
     func syncNow() {
+        // REM  APPLE TV: the listing syncs, the files never do — "apple tv is synch only with no physical copies" (004d).
+        #if os(tvOS)
+        return
+        #else
         guard let snapshot else { return }
         Task { await sync.run(snapshot) }
+        #endif
     }
 
     /// Looks for the Mac now and every minute after. Call from a `.task`.
@@ -312,7 +317,9 @@ private struct CachedFolderList: View {
         }
         .font(.lyceumBody)
         .navigationTitle(folder.name)
+        #if os(iOS)
         .toolbar { if isTop { ToolbarItem { SyncMenu() } } }
+        #endif
     }
 
     private func join(_ name: String) -> String { path.isEmpty ? name : path + "/" + name }
