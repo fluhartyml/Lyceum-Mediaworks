@@ -14,6 +14,9 @@ import SwiftUI
 struct ContentView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(\.scenePhase) private var scenePhase
+    #if !os(macOS)
+    @State private var fromMac = MacLibrary()
+    #endif
     #if os(iOS)
     @State private var showingAbout = false
     @State private var showingSettings = false
@@ -23,7 +26,12 @@ struct ContentView: View {
         Group {
             #if !os(macOS)
             // REM  ONLY THE MAC ASKS FOR THE LIBRARY FOLDER — his ruling, 2026-10-10 (FromYourMacView.swift).
-            FromYourMacView()
+            // REM  The Mac's cache once one has arrived (LibraryFromMac.swift); until then, where it comes from.
+            if let snapshot = fromMac.snapshot {
+                MacLibraryView(snapshot: snapshot, heard: fromMac.heard)
+            } else {
+                FromYourMacView()
+            }
             #else
             if let root = library.root {
                 switch library.mode {
@@ -41,6 +49,15 @@ struct ContentView: View {
             if library.root != nil { StatusBar() }
             #endif
         }
+        #if os(macOS)
+        // REM  THE MAC KEEPS THE CACHE CURRENT while a library is open — for the iPhone, iPad and Apple TV (LibraryCatalog.swift).
+        .task(id: library.root?.path) {
+            guard let root = library.root?.url else { return }
+            await LibraryCatalog.shared.keep(root) { library.report($0) }
+        }
+        #else
+        .task { await fromMac.keepUpToDate() }
+        #endif
         .alert("Library", isPresented: Binding(get: { library.errorMessage != nil },
                                                set: { if !$0 { library.errorMessage = nil } })) {
             Button("OK") { library.errorMessage = nil }
