@@ -59,7 +59,14 @@ final class FolderNode: Identifiable, Hashable {
 
 @Observable
 final class LibraryStore {
-    private(set) var root: FolderNode?
+    private(set) var root: FolderNode? {
+        didSet { treeVersion += 1 }
+    }
+    /// Goes up every time the tree is rebuilt. The sidebar is keyed on it, so a rebuilt tree is drawn fresh.
+    // REM  HIS CATCH, 2026-10-10 11:19 (build 118): after Music Videos was flattened on Nineveh the status bar said "the sidebar
+    // REM  was updated" but the sidebar still listed all 31 removed genre folders. FolderNode is equal BY PATH, so SwiftUI took
+    // REM  the new root for the old one and kept the old rows — with their old, cached subfolders. A fresh id per rebuild fixes it.
+    private(set) var treeVersion = 0
     /// Shown as an alert, and kept in the status bar after the alert is dismissed.
     var errorMessage: String? {
         didSet { if let errorMessage { report(errorMessage) } }

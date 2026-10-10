@@ -118,6 +118,7 @@ struct ContentView: View {
         return NavigationSplitView {
             List(selection: $library.selection) {
                 FolderTreeRow(node: root)
+                    .id(library.treeVersion)
             }
             .navigationSplitViewColumnWidth(min: 240, ideal: 300)
             // Changes made on the server are not announced over a network share, so check
