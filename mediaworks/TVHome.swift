@@ -45,7 +45,7 @@ struct TVHome: View {
         .task { await library.keepUpToDate() }
         .task { theater.announce() }
         .fullScreenCover(isPresented: Binding(get: { theater.presented }, set: { theater.presented = $0 })) {
-            TVPlayer().environment(theater)
+            TVPlayer().environment(theater).environment(library)
         }
     }
 }
@@ -133,17 +133,154 @@ final class TVTheater {
     }
 }
 
-/// Apple's own TV player — Siri Remote controls — on the TV's one player.
+/// The TV's player, driven by the Siri Remote the way he laid it out (platforms 004e).
+// REM  HIS LAYOUT, 2026-10-10 13:2x: "thumbs up you press up and thumbs down press down then it skips to the next song
+// REM  pressing forward once skips to the next video pressing back goes to the previous video long press forwars or back
+// REM  scrubs forward or reverse." Apple's own player keeps the arrows for itself (left/right = 10 s), so this one reads
+// REM  the remote's presses directly: a short press acts when it is let go; a press held past half a second scrubs until
+// REM  it is let go. Select / Play-Pause toggle; Back (Menu) leaves.
 struct TVPlayer: View {
     @Environment(TVTheater.self) private var theater
+    @Environment(MacLibrary.self) private var library
+    @State private var flash: String?
+    @State private var showInfo = false
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            VideoPlayer(player: theater.player).ignoresSafeArea()
-            if let problem = theater.problem { Text(problem).font(.lyceumBody).foregroundStyle(.white) }
+            RemotePlayerView(player: theater.player, handle: handle)
+                .ignoresSafeArea()
+            if let flash { Text(flash).font(.system(size: 220)).transition(.scale.combined(with: .opacity)) }
+            if showInfo || theater.problem != nil { infoBar }
         }
-        .onDisappear { if theater.presented == false { theater.player.pause() } }
+        .onDisappear { if !theater.presented { theater.player.pause() } }
+    }
+
+    private var infoBar: some View {
+        VStack {
+            Spacer()
+            VStack(spacing: 8) {
+                if let problem = theater.problem { Text(problem) }
+                if let path = theater.current {
+                    Text(library.snapshot?.file(at: path)?.info?.title ?? (path as NSString).lastPathComponent).font(.lyceumHeadline)
+                }
+                Text("▲ 👍   ▼ 👎 + next   ◀︎ previous   ▶︎ next   hold ◀︎ ▶︎ to scrub").foregroundStyle(.secondary)
+            }
+            .font(.lyceumBody)
+            .padding(30)
+            .frame(maxWidth: .infinity)
+            .background(.black.opacity(0.6))
+        }
+        .foregroundStyle(.white)
+    }
+
+    private func handle(_ press: RemotePress) {
+        switch press {
+        case .up:
+            if let path = theater.current { library.change(.thumbsUp, path) }
+            show("👍")
+        case .down:
+            if let path = theater.current { library.change(.thumbsDown, path) }
+            show("👎")
+            theater.next()
+        case .right: theater.next(); peek()
+        case .left: theater.previous(); peek()
+        case .scrub(let seconds): theater.skip(seconds); peek()
+        case .playPause: if theater.isPlaying { theater.player.pause() } else { theater.player.play() }; peek()
+        case .back: theater.presented = false
+        }
+    }
+
+    private func show(_ symbol: String) {
+        withAnimation { flash = symbol }
+        Task { try? await Task.sleep(for: .seconds(0.9)); withAnimation { flash = nil } }
+    }
+
+    /// Shows the title and the key line for a few seconds after a press.
+    private func peek() {
+        withAnimation { showInfo = true }
+        Task { try? await Task.sleep(for: .seconds(3)); withAnimation { showInfo = false } }
+    }
+}
+
+enum RemotePress { case up, down, left, right, scrub(Double), playPause, back }
+
+/// The video, and the Siri Remote's presses — read straight from UIKit, so short and held presses can be told apart.
+struct RemotePlayerView: UIViewControllerRepresentable {
+    let player: AVPlayer
+    let handle: (RemotePress) -> Void
+
+    func makeUIViewController(context: Context) -> Controller {
+        let controller = Controller()
+        controller.playerLayer.player = player
+        controller.handle = handle
+        return controller
+    }
+
+    func updateUIViewController(_ controller: Controller, context: Context) {
+        controller.playerLayer.player = player
+        controller.handle = handle
+    }
+
+    final class Controller: UIViewController {
+        let playerLayer = AVPlayerLayer()
+        var handle: (RemotePress) -> Void = { _ in }
+        private var heldSince: Date?
+        private var scrubTimer: Timer?
+
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            view.backgroundColor = .black
+            playerLayer.videoGravity = .resizeAspect
+            view.layer.addSublayer(playerLayer)
+        }
+
+        override func viewDidLayoutSubviews() {
+            super.viewDidLayoutSubviews()
+            playerLayer.frame = view.bounds
+        }
+
+        // REM  The remote's presses go to the focused view and up its responder chain — so the player's own view takes focus.
+        override func loadView() { view = FocusView() }
+        override var preferredFocusEnvironments: [UIFocusEnvironment] { [view] }
+
+        final class FocusView: UIView {
+            override var canBecomeFocused: Bool { true }
+        }
+
+        override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+            guard let type = presses.first?.type else { return super.pressesBegan(presses, with: event) }
+            switch type {
+            case .leftArrow, .rightArrow:
+                // REM  Held past half a second = scrub, 10 s every quarter second, until it is let go.
+                let step: Double = type == .rightArrow ? 10 : -10
+                heldSince = .now
+                scrubTimer?.invalidate()
+                scrubTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+                    MainActor.assumeIsolated {
+                        guard let self, let since = self.heldSince, Date.now.timeIntervalSince(since) > 0.5 else { return }
+                        self.handle(.scrub(step))
+                    }
+                }
+            case .upArrow, .downArrow, .select, .playPause: break
+            default: super.pressesBegan(presses, with: event)
+            }
+        }
+
+        override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+            guard let type = presses.first?.type else { return super.pressesEnded(presses, with: event) }
+            switch type {
+            case .leftArrow, .rightArrow:
+                let held = heldSince.map { Date.now.timeIntervalSince($0) } ?? 0
+                scrubTimer?.invalidate(); scrubTimer = nil; heldSince = nil
+                if held <= 0.5 { handle(type == .rightArrow ? .right : .left) }
+            case .upArrow: handle(.up)
+            case .downArrow: handle(.down)
+            case .select, .playPause: handle(.playPause)
+            case .menu: handle(.back)
+            default: super.pressesEnded(presses, with: event)
+            }
+        }
     }
 }
 
