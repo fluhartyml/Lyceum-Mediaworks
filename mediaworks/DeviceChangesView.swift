@@ -31,8 +31,7 @@ struct DeviceChangesView: View {
                         Text(change.device).frame(width: 160, alignment: .leading)
                         VStack(alignment: .leading, spacing: 2) {
                             Text("\(Self.what(change.op)) · \((change.path as NSString).lastPathComponent)")
-                            Text("Before: \(change.wasChecked ? "checked" : "unchecked")\(change.wasThumbedUp ? ", in Thumbs Up" : "")")
-                                .foregroundStyle(.secondary)
+                            Text(Self.before(change)).foregroundStyle(.secondary)
                         }
                         Spacer()
                         if let undone = change.undone {
@@ -50,6 +49,17 @@ struct DeviceChangesView: View {
         .frame(minWidth: 820, minHeight: 420)
     }
 
+    private static func before(_ change: DeviceChange) -> String {
+        if let trashedTo = change.trashedTo { return "Now in the Trash: \(trashedTo)" }
+        if let old = change.beforeTags, let new = change.tags {
+            return old.keys.sorted().map { key in
+                let label = TagField(rawValue: key).map { "\($0.number) \($0.label)" } ?? key
+                return "\(label): “\(old[key] ?? "")” → “\(new[key] ?? "")”"
+            }.joined(separator: " · ") + (change.beforePicture != nil ? " · picture replaced" : "")
+        }
+        return "Before: \(change.wasChecked ? "checked" : "unchecked")\(change.wasThumbedUp ? ", in Thumbs Up" : "")"
+    }
+
     private static func what(_ op: CacheRequest.Op) -> String {
         switch op {
         case .get: "Looked"
@@ -58,6 +68,8 @@ struct DeviceChangesView: View {
         case .thumbsUp: "👍 Thumbs up"
         case .thumbsDown: "👎 Thumbs down"
         case .file: "Copied"
+        case .setTags: "Changed tags"
+        case .trash: "Moved to Trash"
         }
     }
 }

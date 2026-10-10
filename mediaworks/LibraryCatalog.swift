@@ -14,6 +14,7 @@
 import Foundation
 import Network
 import Observation
+import ImageIO
 
 @MainActor
 @Observable
@@ -25,10 +26,13 @@ final class LibraryCatalog {
     /// Tags already read, by path + date + size — kept on disk, so each file is read once, ever.
     @ObservationIgnored private var infos: [String: CachedInfo] = [:]
     @ObservationIgnored private var running: URL?
+    /// The open library — the iPad's tag edits are saved through it, exactly as the Mac's own Inspector saves.
+    @ObservationIgnored private weak var store: LibraryStore?
     @ObservationIgnored private var listener: NWListener?
     @ObservationIgnored private var payload = Data()
     /// The last walk, so a checkmark or 👍 can republish at once without walking Nineveh again.
     @ObservationIgnored private var lastFound: Found?
+    @ObservationIgnored private var report: (String) -> Void = { _ in }
     /// Files whose sync checkmark is OFF, relative to the library. Everything else is checked (iTunes' default).
     @ObservationIgnored private var unchecked: Set<String> = []
     /// Playlists by name — paths relative to the library. 👍 adds to "Thumbs Up".
@@ -57,8 +61,10 @@ final class LibraryCatalog {
     }
 
     /// Keeps the cache current for this library while the app is open. Call from a `.task` — it runs until cancelled.
-    func keep(_ root: URL, report: @escaping (String) -> Void) async {
+    func keep(_ root: URL, store: LibraryStore, report: @escaping (String) -> Void) async {
         running = root
+        self.store = store
+        self.report = report
         announce()
         while !Task.isCancelled {
             let tree = await Task.detached { Self.walk(root) }.value
@@ -187,7 +193,7 @@ final class LibraryCatalog {
     // REM  a thumbs up playlist" · "thats the point of thumbs downing it to take it out of synch rotation". The Mac keeps
     // REM  the marks (Marks.json), puts them in the cache, and every device sees them on its next look. Nothing is deleted.
     private func apply(_ request: CacheRequest) {
-        guard let path = request.path, !path.isEmpty, request.op != .get, request.op != .file else { return }
+        guard let path = request.path, !path.isEmpty, ![.get, .file, .setTags, .trash].contains(request.op) else { return }
         // REM  A DEVICE'S CHANGE IS RECORDED WITH WHAT IT WAS BEFORE — his rule, 2026-10-10 (platforms 002e/f): "the change should
         // REM  need to be able to be reversed if the mac (user) disaproves." The Mac's own checkbox is not a device change.
         if let device = request.device {
@@ -198,7 +204,7 @@ final class LibraryCatalog {
             saveChanges()
         }
         switch request.op {
-        case .get, .file: return
+        case .get, .file, .setTags, .trash: return
         case .check: unchecked.remove(path)
         case .uncheck: unchecked.insert(path)
         case .thumbsUp:
@@ -214,6 +220,15 @@ final class LibraryCatalog {
     /// Puts the file back the way it was before a device's change, and passes that to every device.
     func undo(_ change: DeviceChange) {
         guard let index = deviceChanges.firstIndex(where: { $0.id == change.id }), deviceChanges[index].undone == nil else { return }
+        if change.op == .setTags || change.op == .trash {
+            Task {
+                if await undoTagsOrTrash(change), let i = deviceChanges.firstIndex(where: { $0.id == change.id }) {
+                    deviceChanges[i].undone = .now
+                    saveChanges()
+                }
+            }
+            return
+        }
         if change.wasChecked { unchecked.remove(change.path) } else { unchecked.insert(change.path) }
         var list = playlists[LibraryCache.thumbsUp] ?? []
         if !change.wasThumbedUp { list.removeAll { $0 == change.path } }
@@ -221,6 +236,108 @@ final class LibraryCatalog {
         deviceChanges[index].undone = .now
         saveChanges()
         saveMarksAndPublish()
+    }
+
+    // MARK: The iPad's tag edits and Trash moves (platforms 003a / 003b)
+
+    /// The library file a device named — only ever inside the library.
+    private func libraryFile(_ path: String?) -> URL? {
+        guard let root = running?.standardizedFileURL, let path else { return nil }
+        let url = root.appending(path: path).standardizedFileURL
+        return url.path.hasPrefix(root.path + "/") ? url : nil
+    }
+
+    /// Carries out an iPad's tag edit or Trash move, records it with what it was before, then refreshes the cache.
+    // REM  HIS DESIGN, 2026-10-10: the iPad "can edit tags and send changes to the mac it can use the meadiaworks web scraper
+    // REM  tools" (003a) · "the ipad can delete but maybe they only delter to the trasgcan and only the mac can instantly
+    // REM  delete" (003b). The tags are written by TagWriter — the same code the Mac's Inspector uses — and a delete is
+    // REM  ALWAYS a move into the 30-day Lyceum Trash, whatever the Mac's own instant-delete setting says.
+    func carryOut(_ request: CacheRequest) async {
+        guard let url = libraryFile(request.path), let path = request.path, let store, let root = running else { return }
+        let who = request.device ?? "A device"
+        var change = DeviceChange(when: .now, device: who, op: request.op, path: path,
+                                  wasChecked: !unchecked.contains(path),
+                                  wasThumbedUp: playlists[LibraryCache.thumbsUp]?.contains(path) ?? false)
+        switch request.op {
+        case .setTags:
+            guard let entry = FolderListing.entries(in: url.deletingLastPathComponent())
+                    .first(where: { $0.url.standardizedFileURL == url }) else { return }
+            let before = await TagReader.read(entry)
+            let edits = Dictionary(uniqueKeysWithValues: (request.tags ?? [:]).compactMap { key, value in
+                TagField(rawValue: key).map { ($0, value) }
+            })
+            var picture: PictureEdit?
+            if let data = request.picture { picture = .replace(data, isPNG: data.starts(with: [0x89, 0x50, 0x4E, 0x47])) }
+            if picture != nil, let old = before.artwork, let png = Self.png(old) {
+                let name = "picture-\(change.id.uuidString).png"
+                try? png.write(to: Self.changesURL.deletingLastPathComponent().appending(path: name))
+                change.beforePicture = name
+            }
+            do {
+                try await TagWriter.save(url, edits: edits, picture: picture, before: before, instantDelete: false, library: store)
+            } catch {
+                report("\(who): tags for “\(url.lastPathComponent)” were not saved — \(error.localizedDescription)")
+                return
+            }
+            change.tags = request.tags
+            change.beforeTags = Dictionary(uniqueKeysWithValues: edits.keys.map { ($0.rawValue, before.tags[$0] ?? "") })
+            report("\(who) changed the tags of “\(url.lastPathComponent)”")
+        case .trash:
+            guard let trash = store.trashFolder,
+                  let moved = try? LibraryStore.moveToTrash([url], libraryRoot: root, trash: trash).first else { return }
+            let base = root.standardizedFileURL.path + "/"
+            change.trashedTo = String(moved.1.standardizedFileURL.path.dropFirst(base.count))
+            report("\(who) moved “\(url.lastPathComponent)” to the Trash")
+        default:
+            return
+        }
+        deviceChanges.insert(change, at: 0)
+        saveChanges()
+        await rescan()
+    }
+
+    /// Walks the library again now, so a change shows on every device without waiting for the five-minute walk.
+    private func rescan() async {
+        guard let root = running else { return }
+        let tree = await Task.detached { Self.walk(root) }.value
+        publish(tree)
+        await readMissingTags(in: tree, under: root, report: report)
+    }
+
+    private func undoTagsOrTrash(_ change: DeviceChange) async -> Bool {
+        guard let store, let root = running else { return false }
+        if let trashedTo = change.trashedTo, let from = libraryFile(trashedTo), let to = libraryFile(change.path) {
+            guard !FileManager.default.fileExists(atPath: to.path) else {
+                report("Undo: “\(to.lastPathComponent)” is back already, or another file has its name — left as it is")
+                return false
+            }
+            do { try FileManager.default.moveItem(at: from, to: to) } catch { report("Undo failed: \(error.localizedDescription)"); return false }
+            await rescan()
+            return true
+        }
+        if let beforeTags = change.beforeTags, let url = libraryFile(change.path),
+           let entry = FolderListing.entries(in: url.deletingLastPathComponent()).first(where: { $0.url.standardizedFileURL == url }) {
+            let before = await TagReader.read(entry)
+            let edits = Dictionary(uniqueKeysWithValues: beforeTags.compactMap { key, value in TagField(rawValue: key).map { ($0, value) } })
+            var picture: PictureEdit?
+            if let name = change.beforePicture,
+               let data = try? Data(contentsOf: Self.changesURL.deletingLastPathComponent().appending(path: name)) {
+                picture = .replace(data, isPNG: true)
+            }
+            do { try await TagWriter.save(url, edits: edits, picture: picture, before: before, instantDelete: false, library: store) }
+            catch { report("Undo failed: \(error.localizedDescription)"); return false }
+            _ = root
+            await rescan()
+            return true
+        }
+        return false
+    }
+
+    private static func png(_ image: CGImage) -> Data? {
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, "public.png" as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(destination, image, nil)
+        return CGImageDestinationFinalize(destination) ? data as Data : nil
     }
 
     private func saveChanges() {
@@ -286,6 +403,13 @@ final class LibraryCatalog {
                     let catalog = LibraryCatalog.shared
                     if let data, let request = try? LibraryCache.decoder.decode(CacheRequest.self, from: data) {
                         if request.op == .file { catalog.sendFile(request.path, on: connection); return }
+                        if request.op == .setTags || request.op == .trash {
+                            Task { @MainActor in
+                                await catalog.carryOut(request)
+                                connection.send(content: Framing.frame(catalog.payload), completion: .contentProcessed { _ in connection.cancel() })
+                            }
+                            return
+                        }
                         catalog.apply(request)
                     }
                     connection.send(content: Framing.frame(catalog.payload), completion: .contentProcessed { _ in connection.cancel() })

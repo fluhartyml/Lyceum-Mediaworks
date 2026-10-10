@@ -58,7 +58,7 @@ struct ContentView: View {
         // REM  THE MAC KEEPS THE CACHE CURRENT while a library is open — for the iPhone, iPad and Apple TV (LibraryCatalog.swift).
         .task(id: library.root?.path) {
             guard let root = library.root?.url else { return }
-            await LibraryCatalog.shared.keep(root) { library.report($0) }
+            await LibraryCatalog.shared.keep(root, store: library) { library.report($0) }
         }
         #else
         .task { await fromMac.keepUpToDate() }

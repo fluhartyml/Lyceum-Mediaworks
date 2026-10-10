@@ -43,11 +43,21 @@ final class MacLibrary {
 
     // REM  CHANGES WAIT ON THE DEVICE when the Mac is out of reach (platforms 002b: "if one ios device changes a file the mac
     // REM  updates all nodes"). Kept on disk, sent oldest first; each one the Mac answers is crossed off.
+    // REM  Kept in a FILE, not UserDefaults — a tag edit can carry a picture, too big for the defaults store.
+    private static var pendingURL: URL { LibraryCache.fileURL.deletingLastPathComponent().appending(path: "PendingChanges.json") }
     private(set) var pending: [CacheRequest] = {
-        guard let data = UserDefaults.standard.data(forKey: "pendingMacChanges") else { return [] }
+        guard let data = try? Data(contentsOf: MacLibrary.pendingURL) else { return [] }
         return (try? JSONDecoder().decode([CacheRequest].self, from: data)) ?? []
     }() {
-        didSet { UserDefaults.standard.set(try? JSONEncoder().encode(pending), forKey: "pendingMacChanges") }
+        didSet { try? JSONEncoder().encode(pending).write(to: Self.pendingURL, options: .atomic) }
+    }
+
+    /// An iPad tag edit or Trash move for the Mac to carry out (platforms 003a / 003b). Waits here if the Mac is away.
+    func send(_ request: CacheRequest) {
+        var request = request
+        request.device = Self.deviceName
+        pending.append(request)
+        Task { await fetch() }
     }
 
     /// A change for the Mac: shown here at once, sent now, kept until the Mac takes it.
@@ -389,6 +399,12 @@ private struct CachedFileView: View {
     #if os(iOS)
     @Environment(PhonePlayer.self) private var phone: PhonePlayer?
     #endif
+    @State private var editing = false
+    @State private var scraping = false
+    @State private var confirmTrash = false
+    @State private var scraped: (Data?, [TagField: String])?
+
+    private static var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
         ScrollView {
@@ -413,6 +429,16 @@ private struct CachedFileView: View {
                     }
                 }
                 #endif
+                if Self.isPad, file.isMedia {
+                    // REM  THE iPAD EDITS (platforms 003a / 003b): tags and the Web Metadata Scraper, sent to the Mac to write;
+                    // REM  delete goes to the 30-day Trash only — "only the mac can instantly delete."
+                    HStack(spacing: 12) {
+                        Button { editing = true } label: { Label("Edit Tags…", systemImage: "tag") }
+                        Button { scraping = true } label: { Label("Web Metadata Scraper…", systemImage: "globe") }
+                        Button(role: .destructive) { confirmTrash = true } label: { Label("Move to Trash", systemImage: "trash") }
+                    }
+                    .buttonStyle(.bordered)
+                }
                 if file.isMedia {
                     // REM  👍 checks the file and adds it to "Thumbs Up"; 👎 unchecks it — "thats the point of thumbs downing it
                     // REM  to take it out of synch rotation." Nothing is ever deleted (platforms 001c).
@@ -451,6 +477,24 @@ private struct CachedFileView: View {
             .padding(16)
         }
         .navigationTitle(file.info?.title ?? file.name)
+        .sheet(isPresented: $editing) {
+            TagEditSheet(file: file, scraped: scraped) { tags, picture in
+                library.send(CacheRequest(op: .setTags, path: path, tags: tags, picture: picture))
+            }
+        }
+        .sheet(isPresented: $scraping) {
+            ArtworkSearchSheet(initial: ArtworkSearch.query(fromFileName: file.name), startOn: .duckduckgo, isVideo: file.isVideo) { data, info in
+                // The scraper's picks open in the tag editor to check before anything is sent.
+                scraped = (data, info)
+                scraping = false
+                Task { try? await Task.sleep(for: .milliseconds(400)); editing = true }
+            }
+        }
+        .confirmationDialog("Move “\(file.name)” to the Trash?", isPresented: $confirmTrash, titleVisibility: .visible) {
+            Button("Move to Trash", role: .destructive) { library.send(CacheRequest(op: .trash, path: path)) }
+        } message: {
+            Text("Your Mac moves it to the Lyceum Trash, where it stays for 30 days. You can undo it on the Mac.")
+        }
     }
 
     @ViewBuilder
@@ -479,5 +523,63 @@ private struct CachedPicture: View {
 
 private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+#endif
+
+#if !os(macOS)
+/// The iPad's tag editor: the main text tags, prefilled with what the Mac last read. Only fields that changed are sent.
+private struct TagEditSheet: View {
+    let file: CachedFile
+    let scraped: (Data?, [TagField: String])?
+    let send: ([String: String], Data?) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var values: [TagField: String] = [:]
+    @State private var original: [TagField: String] = [:]
+    @State private var picture: Data?
+
+    private static let fields: [TagField] = [.title, .artist, .album, .albumArtist, .composer, .genre, .year, .track, .disc,
+                                              .show, .season, .episode, .episodeID, .network, .description, .longDescription,
+                                              .comment, .rating]
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if let picture, let image = UIImage(data: picture) {
+                    Section("012 Picture (new)") { Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 200) }
+                }
+                ForEach(Self.fields) { field in
+                    Section("\(field.number) \(field.label)") {
+                        TextField(field.label, text: Binding(get: { values[field] ?? "" }, set: { values[field] = $0 }),
+                                  axis: field == .longDescription || field == .description || field == .comment ? .vertical : .horizontal)
+                    }
+                }
+            }
+            .font(.lyceumBody)
+            .navigationTitle(file.name)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Send to Mac") {
+                        let changed = Self.fields.filter { (values[$0] ?? "") != (original[$0] ?? "") }
+                        send(Dictionary(uniqueKeysWithValues: changed.map { ($0.rawValue, values[$0] ?? "") }), picture)
+                        dismiss()
+                    }
+                    .disabled(Self.fields.allSatisfy { (values[$0] ?? "") == (original[$0] ?? "") } && picture == nil)
+                }
+            }
+        }
+        .onAppear {
+            let info = file.info
+            original = [.title: info?.title, .artist: info?.artist, .album: info?.album, .genre: info?.genre,
+                        .year: info?.year.map(String.init), .description: info?.summary, .show: info?.show,
+                        .season: info?.season.map(String.init), .episode: info?.episode.map(String.init)]
+                .compactMapValues { $0 }
+            values = original
+            if let scraped {
+                for (field, value) in scraped.1 where Self.fields.contains(field) { values[field] = value }
+                picture = scraped.0
+            }
+        }
+    }
 }
 #endif

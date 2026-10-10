@@ -80,12 +80,17 @@ nonisolated struct LibrarySnapshot: Codable, Sendable {
 /// What a phone or iPad asks the Mac — the Mac is the gatekeeper for every change (platforms 002b).
 nonisolated struct CacheRequest: Codable, Sendable, Hashable {
     /// `file` asks for one file's bytes, for a device's synced copy (platforms 002c).
-    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file }
+    /// `setTags` and `trash` come from an iPad (platforms 003a/003b) — the Mac carries them out.
+    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash }
     var op: Op
     /// The file, relative to the library root ("Music Videos/Rock/1990s/Queensryche - Silent Lucidity.mp4").
     var path: String?
     /// The device asking, as it names itself — shown in the Mac's "Changes from Devices" list.
     var device: String?
+    /// For `setTags`: the new values, by tag field (TagField raw value) — only the fields that changed.
+    var tags: [String: String]?
+    /// For `setTags`: a new picture for 012, if one was chosen.
+    var picture: Data?
 }
 
 /// One change a phone or iPad made, as the Mac recorded it — with what it was before, so it can be undone (platforms 002e/f).
@@ -101,6 +106,13 @@ nonisolated struct DeviceChange: Codable, Sendable, Hashable, Identifiable {
     var wasThumbedUp: Bool
     /// Set once the change is undone on the Mac.
     var undone: Date?
+    /// A tag edit: the new values, and what those fields held before.
+    var tags: [String: String]?
+    var beforeTags: [String: String]?
+    /// A tag edit that replaced the picture: the old picture, saved beside the change list, by file name.
+    var beforePicture: String?
+    /// A Trash move: where the file went, inside the library.
+    var trashedTo: String?
 }
 
 nonisolated enum LibraryCache {
