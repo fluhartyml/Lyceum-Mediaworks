@@ -723,8 +723,8 @@ struct InspectorPane: View {
                 Spacer()
                 if canSave {
                     // REM  FIND INFO & PICTURE — his "can it do both at the same time?" → "yes build it that way".
-                    Button("Find Info & Picture…") { findOn = .wikipedia; findingPicture = true }
-                        .lyceumHelp("Find Info & Picture — search Wikipedia for this film or show; one click fills its title, year, genre, director, descriptions and poster here to check before Save Tags")
+                    Button("Web Metadata Scraper…") { findOn = .wikipedia; findingPicture = true }
+                        .lyceumHelp("Web Metadata Scraper — opens on Wikipedia for this file's name; one click fills title, year, genre, director, descriptions and poster. Any web page works too: highlight words, then Select Text. Nothing is saved until Save Tags")
                 }
             }
             if loading {
@@ -827,8 +827,8 @@ struct InspectorPane: View {
                 HStack(spacing: 12) {
                     Button("Choose Picture…") { choosingPicture = true }
                         .lyceumHelp("Choose Picture — pick an album cover or movie poster from your files to save into this file")
-                    Button("Find Picture…") { findOn = .duckduckgo; findingPicture = true }
-                        .lyceumHelp("Find Picture — search Apple's iTunes catalog for a cover or poster, starting from this file's name")
+                    Button("Web Metadata Scraper…") { findOn = .duckduckgo; findingPicture = true }
+                        .lyceumHelp("Web Metadata Scraper — opens on DuckDuckGo pictures for this file's name; double-click a picture to collect it")
                     Button("Remove Picture") { picture = .remove; pendingPicture = nil }
                         .disabled(shownPicture == nil)
                 }
@@ -894,9 +894,9 @@ struct InspectorPane: View {
             HStack(spacing: 12) {
                 Button("Choose Picture…") { choosingPicture = true }
                     .disabled(applying)
-                Button("Find Picture…") { findOn = .duckduckgo; findingPicture = true }
+                Button("Web Metadata Scraper…") { findOn = .duckduckgo; findingPicture = true }
                     .disabled(applying)
-                    .lyceumHelp("Find Picture — search Apple's iTunes catalog for one cover or poster for all of them")
+                    .lyceumHelp("Web Metadata Scraper — find one cover or poster for all of them, starting on DuckDuckGo pictures")
                     .lyceumHelp("Choose Picture — pick one album cover or poster for every highlighted file")
                 Button { applyToMany() } label: {
                     if applying { ProgressView().controlSize(.small) } else { Text("Apply to \(writable) File\(writable == 1 ? "" : "s")") }
