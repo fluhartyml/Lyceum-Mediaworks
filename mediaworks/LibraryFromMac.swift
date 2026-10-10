@@ -44,7 +44,7 @@ final class MacLibrary {
 
     /// A change for the Mac: shown here at once, sent now, kept until the Mac takes it.
     func change(_ op: CacheRequest.Op, _ path: String) {
-        pending.append(CacheRequest(op: op, path: path))
+        pending.append(CacheRequest(op: op, path: path, device: Self.deviceName))
         if var copy = snapshot {
             copy.root = Self.marking(copy.root, path.split(separator: "/").map(String.init), op)
             if op == .thumbsUp {
@@ -55,6 +55,13 @@ final class MacLibrary {
             snapshot = copy
         }
         Task { await fetch() }
+    }
+
+    /// This device as the Mac's change list shows it.
+    static var deviceName: String {
+        let idiom = UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone"
+        let name = UIDevice.current.name
+        return name.isEmpty || name == idiom ? idiom : name
     }
 
     private static func marking(_ folder: CachedFolder, _ parts: [String], _ op: CacheRequest.Op) -> CachedFolder {

@@ -46,6 +46,13 @@ struct mediaworksApp: App {
                 .environment(library)
         }
 
+        // REM  CHANGES FROM DEVICES — every change a phone or iPad made, each with Undo (platforms 002e/f). In the Window menu.
+        Window("Changes from Devices", id: "devicechanges") {
+            DeviceChangesView()
+        }
+        .defaultSize(width: 1000, height: 600)
+        .restorationBehavior(.disabled)
+
         // REM  THE PiP WINDOW — floats above every window; he moves it and sizes it (PiPWindow.swift).
         // REM  Not restored at launch: it opens when a video plays, or from a pane's Show Video.
         Window("PiP", id: "pip") {

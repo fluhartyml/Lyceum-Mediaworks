@@ -83,6 +83,23 @@ nonisolated struct CacheRequest: Codable, Sendable, Hashable {
     var op: Op
     /// The file, relative to the library root ("Music Videos/Rock/1990s/Queensryche - Silent Lucidity.mp4").
     var path: String?
+    /// The device asking, as it names itself — shown in the Mac's "Changes from Devices" list.
+    var device: String?
+}
+
+/// One change a phone or iPad made, as the Mac recorded it — with what it was before, so it can be undone (platforms 002e/f).
+nonisolated struct DeviceChange: Codable, Sendable, Hashable, Identifiable {
+    var id = UUID()
+    var when: Date
+    var device: String
+    var op: CacheRequest.Op
+    var path: String
+    /// The file's checkmark before the change.
+    var wasChecked: Bool
+    /// Whether the file was already in Thumbs Up before the change.
+    var wasThumbedUp: Bool
+    /// Set once the change is undone on the Mac.
+    var undone: Date?
 }
 
 nonisolated enum LibraryCache {

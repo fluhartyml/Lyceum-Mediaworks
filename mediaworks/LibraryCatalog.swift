@@ -39,6 +39,10 @@ final class LibraryCatalog {
 
     private struct Marks: Codable { var unchecked: Set<String>; var playlists: [String: [String]] }
 
+    /// Every change a phone or iPad made, newest first — "Changes from Devices" on the Mac, each with Undo.
+    private(set) var deviceChanges: [DeviceChange] = []
+    private static var changesURL: URL { LibraryCache.fileURL.deletingLastPathComponent().appending(path: "DeviceChanges.json") }
+
     private init() {
         if let data = try? Data(contentsOf: Self.infosURL),
            let saved = try? LibraryCache.decoder.decode([String: CachedInfo].self, from: data) { infos = saved }
@@ -46,6 +50,8 @@ final class LibraryCatalog {
             unchecked = marks.unchecked
             playlists = marks.playlists
         }
+        if let data = try? Data(contentsOf: Self.changesURL),
+           let saved = try? LibraryCache.decoder.decode([DeviceChange].self, from: data) { deviceChanges = saved }
         snapshot = LibraryCache.load()
         if let snapshot { payload = (try? LibraryCache.encoder.encode(snapshot)) ?? Data() }
     }
@@ -181,7 +187,16 @@ final class LibraryCatalog {
     // REM  a thumbs up playlist" · "thats the point of thumbs downing it to take it out of synch rotation". The Mac keeps
     // REM  the marks (Marks.json), puts them in the cache, and every device sees them on its next look. Nothing is deleted.
     private func apply(_ request: CacheRequest) {
-        guard let path = request.path, !path.isEmpty else { return }
+        guard let path = request.path, !path.isEmpty, request.op != .get else { return }
+        // REM  A DEVICE'S CHANGE IS RECORDED WITH WHAT IT WAS BEFORE — his rule, 2026-10-10 (platforms 002e/f): "the change should
+        // REM  need to be able to be reversed if the mac (user) disaproves." The Mac's own checkbox is not a device change.
+        if let device = request.device {
+            deviceChanges.insert(DeviceChange(when: .now, device: device, op: request.op, path: path,
+                                              wasChecked: !unchecked.contains(path),
+                                              wasThumbedUp: playlists[LibraryCache.thumbsUp]?.contains(path) ?? false), at: 0)
+            if deviceChanges.count > 1000 { deviceChanges.removeLast(deviceChanges.count - 1000) }
+            saveChanges()
+        }
         switch request.op {
         case .get: return
         case .check: unchecked.remove(path)
@@ -193,6 +208,26 @@ final class LibraryCatalog {
             playlists[LibraryCache.thumbsUp] = list
         case .thumbsDown: unchecked.insert(path)
         }
+        saveMarksAndPublish()
+    }
+
+    /// Puts the file back the way it was before a device's change, and passes that to every device.
+    func undo(_ change: DeviceChange) {
+        guard let index = deviceChanges.firstIndex(where: { $0.id == change.id }), deviceChanges[index].undone == nil else { return }
+        if change.wasChecked { unchecked.remove(change.path) } else { unchecked.insert(change.path) }
+        var list = playlists[LibraryCache.thumbsUp] ?? []
+        if !change.wasThumbedUp { list.removeAll { $0 == change.path } }
+        playlists[LibraryCache.thumbsUp] = list.isEmpty ? nil : list
+        deviceChanges[index].undone = .now
+        saveChanges()
+        saveMarksAndPublish()
+    }
+
+    private func saveChanges() {
+        if let data = try? LibraryCache.encoder.encode(deviceChanges) { try? data.write(to: Self.changesURL, options: .atomic) }
+    }
+
+    private func saveMarksAndPublish() {
         marksVersion += 1
         if let data = try? LibraryCache.encoder.encode(Marks(unchecked: unchecked, playlists: playlists)) {
             try? data.write(to: Self.marksURL, options: .atomic)
