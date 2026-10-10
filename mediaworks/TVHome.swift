@@ -19,6 +19,8 @@ import Network
 struct TVHome: View {
     @State private var library = MacLibrary()
     @State private var theater = TVTheater()
+    @State private var showSettings = false
+    @State private var showInfo = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -41,7 +43,16 @@ struct TVHome: View {
             } else {
                 FromYourMacView()
             }
+            // REM  SETTINGS and INFO — his ask, 2026-10-10: "add a settings sheet and an info sheet that has our standard
+            // REM  contact / feedback and links and atteributes".
+            HStack(spacing: 40) {
+                Button { showSettings = true } label: { Label("Settings", systemImage: "gearshape") }
+                Button { showInfo = true } label: { Label("Info", systemImage: "info.circle") }
+            }
+            .padding(.vertical, 20)
         }
+        .sheet(isPresented: $showSettings) { TVSettingsSheet() }
+        .sheet(isPresented: $showInfo) { AboutView() }
         .environment(theater)
         .task { await library.keepUpToDate() }
         .task { theater.announce() }
@@ -193,6 +204,7 @@ struct TVPlayer: View {
     @Environment(MacLibrary.self) private var library
     @State private var flash: String?
     @State private var showInfo = false
+    @AppStorage("tvAlwaysShowFileName") private var alwaysShowFileName = false
 
     var body: some View {
         ZStack {
@@ -200,7 +212,7 @@ struct TVPlayer: View {
             RemotePlayerView(player: theater.player, handle: handle)
                 .ignoresSafeArea()
             if let flash { Text(flash).font(.system(size: 220)).transition(.scale.combined(with: .opacity)) }
-            if showInfo || theater.problem != nil { infoBar }
+            if showInfo || alwaysShowFileName || theater.problem != nil { infoBar }
         }
         .onDisappear { if !theater.presented { theater.player.pause() } }
         .onAppear { peek(for: 5) }
@@ -217,7 +229,10 @@ struct TVPlayer: View {
                 if let path = theater.current {
                     Text((path as NSString).lastPathComponent).font(.lyceumHeadline)
                 }
-                Text("▲ 👍   ▼ 👎 + next   ◀︎ previous   ▶︎ next   hold ◀︎ ▶︎ to scrub").foregroundStyle(.secondary)
+                // The key line only with a peek — "always" keeps just the file name on screen.
+                if showInfo {
+                    Text("▲ 👍   ▼ 👎 + next   ◀︎ previous   ▶︎ next   hold ◀︎ ▶︎ to scrub").foregroundStyle(.secondary)
+                }
             }
             .font(.lyceumBody)
             .padding(30)
@@ -340,6 +355,31 @@ struct RemotePlayerView: UIViewControllerRepresentable {
             case .menu: handle(.back)
             default: super.pressesEnded(presses, with: event)
             }
+        }
+    }
+}
+
+// MARK: - Settings
+
+/// The TV's settings.
+struct TVSettingsSheet: View {
+    // REM  HIS ASK, 2026-10-10: "default show the file name for a short period of time but i want a toggle in settings to
+    // REM  always show file name at the bottom of the screen". Off = the 5-second default; on = always.
+    @AppStorage("tvAlwaysShowFileName") private var alwaysShowFileName = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("While a video plays") {
+                    Toggle("Always show the file name", isOn: $alwaysShowFileName)
+                    Text(alwaysShowFileName
+                         ? "The file name stays at the bottom of the screen the whole time."
+                         : "The file name shows for 5 seconds when each video starts, and after a remote press.")
+                        .foregroundStyle(.secondary)
+                }
+                Section { Text("Build \(BuildStamp.number) · \(BuildStamp.commit)").foregroundStyle(.secondary) }
+            }
+            .navigationTitle("Settings")
         }
     }
 }
