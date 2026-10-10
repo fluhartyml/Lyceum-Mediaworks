@@ -24,6 +24,14 @@ final class MacLibrary {
     /// When this device last heard from the Mac.
     private(set) var heard: Date?
     @ObservationIgnored private var browser: NWBrowser?
+    /// This device's copies of the files — Off, Automatic or Manual (DeviceSync.swift).
+    let sync = DeviceSync()
+
+    /// Runs the sync against the copy on hand — after each word from the Mac, and when the mode changes.
+    func syncNow() {
+        guard let snapshot else { return }
+        Task { await sync.run(snapshot) }
+    }
 
     /// Looks for the Mac now and every minute after. Call from a `.task`.
     func keepUpToDate() async {
@@ -98,28 +106,29 @@ final class MacLibrary {
         snapshot = fresh
         heard = .now
         try? data.write(to: LibraryCache.fileURL, options: .atomic)
+        syncNow()
     }
 
-    /// Finds the first Mac announcing a Lyceum library, sends one request, and reads the cache it answers with.
-    /// Nil if none answers within 8 seconds.
-    private static func ask(_ request: CacheRequest) async -> Data? {
+    /// Finds the first Mac announcing a Lyceum library, connects, and sends one request. Nil if none answers in 8 seconds.
+    static func open(sending request: CacheRequest) async -> NWConnection? {
         let message = Framing.frame((try? LibraryCache.encoder.encode(request)) ?? Data())
-        return await withCheckedContinuation { (done: CheckedContinuation<Data?, Never>) in
+        return await withCheckedContinuation { (done: CheckedContinuation<NWConnection?, Never>) in
             let browser = NWBrowser(for: .bonjour(type: LibraryCache.serviceType, domain: nil), using: .tcp)
             var finished = false
-            var asked = false
-            func finish(_ data: Data?) {
-                guard !finished else { return }
+            func finish(_ connection: NWConnection?) {
+                guard !finished else { connection?.cancel(); return }
                 finished = true
                 browser.cancel()
-                done.resume(returning: data)
+                done.resume(returning: connection)
             }
             browser.browseResultsChangedHandler = { results, _ in
                 MainActor.assumeIsolated {
                     // One connection per request — a second sighting of the same Mac must not send the change twice.
-                    guard !finished, !asked, let mac = results.first else { return }
-                    asked = true
-                    read(from: mac.endpoint, sending: message) { finish($0) }
+                    guard !finished, let mac = results.first else { return }
+                    let connection = NWConnection(to: mac.endpoint, using: .tcp)
+                    connection.start(queue: .main)
+                    connection.send(content: message, completion: .contentProcessed { _ in })
+                    finish(connection)
                 }
             }
             browser.start(queue: .main)
@@ -127,17 +136,49 @@ final class MacLibrary {
         }
     }
 
-    /// Sends the request, then reads the framed answer.
-    private static func read(from endpoint: NWEndpoint, sending message: Data, _ done: @escaping @MainActor (Data?) -> Void) {
-        let connection = NWConnection(to: endpoint, using: .tcp)
-        connection.start(queue: .main)
-        connection.send(content: message, completion: .contentProcessed { _ in })
-        Framing.read(connection) { data in
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated { connection.cancel(); done(data) }
+    /// Sends one request and reads the cache the Mac answers with.
+    private static func ask(_ request: CacheRequest) async -> Data? {
+        guard let connection = await open(sending: request) else { return nil }
+        return await withCheckedContinuation { (done: CheckedContinuation<Data?, Never>) in
+            Framing.read(connection) { data in
+                DispatchQueue.main.async { connection.cancel(); done.resume(returning: data) }
             }
         }
     }
+
+    /// Copies one library file from the Mac into `destination`, a piece at a time. False if it did not arrive whole.
+    static func download(_ path: String, to destination: URL) async -> Bool {
+        guard let connection = await open(sending: CacheRequest(op: .file, path: path)) else { return false }
+        let partial = destination.appendingPathExtension("partial")
+        try? FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: partial.path, contents: nil)
+        guard let handle = try? FileHandle(forWritingTo: partial) else { connection.cancel(); return false }
+        let whole = await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
+            connection.receive(minimumIncompleteLength: 8, maximumLength: 8) { header, _, _, _ in
+                guard let header, header.count == 8 else { done.resume(returning: false); return }
+                let length = header.reduce(0) { ($0 << 8) | Int($1) }
+                guard length > 0 else { done.resume(returning: false); return }
+                let got = Counter()
+                func more() {
+                    connection.receive(minimumIncompleteLength: 1, maximumLength: 1 << 20) { chunk, _, complete, error in
+                        if let chunk { try? handle.write(contentsOf: chunk); got.value += chunk.count }
+                        if got.value >= length { done.resume(returning: true) }
+                        else if complete || error != nil { done.resume(returning: false) }
+                        else { more() }
+                    }
+                }
+                more()
+            }
+        }
+        try? handle.close()
+        connection.cancel()
+        guard whole else { try? FileManager.default.removeItem(at: partial); return false }
+        try? FileManager.default.removeItem(at: destination)
+        do { try FileManager.default.moveItem(at: partial, to: destination) } catch { return false }
+        return true
+    }
+
+    private final class Counter: @unchecked Sendable { var value = 0 }
 }
 
 // MARK: - Browsing the copy
@@ -170,6 +211,9 @@ struct MacLibraryView: View {
                             if !library.pending.isEmpty {
                                 Text("\(library.pending.count) change\(library.pending.count == 1 ? "" : "s") waiting for your Mac")
                             }
+                            if !library.sync.status.isEmpty {
+                                Text(library.sync.status)
+                            }
                         }
                         .font(.lyceumDetail)
                         .foregroundStyle(.secondary)
@@ -180,6 +224,24 @@ struct MacLibraryView: View {
             }
             .environment(library)
         }
+    }
+}
+
+/// The Sync menu — Off, Automatic or Manual, for THIS device only (platforms 002d).
+private struct SyncMenu: View {
+    @Environment(MacLibrary.self) private var library
+
+    var body: some View {
+        @Bindable var sync = library.sync
+        Menu {
+            Picker("Keep a copy on this device", selection: $sync.mode) {
+                ForEach(DeviceSync.Mode.allCases) { Text($0.title).tag($0) }
+            }
+        } label: {
+            Label("Sync: \(library.sync.mode == .off ? "Off" : library.sync.mode == .automatic ? "Automatic" : "Manual")",
+                  systemImage: library.sync.running ? "arrow.triangle.2.circlepath" : "iphone.and.arrow.forward")
+        }
+        .onChange(of: library.sync.mode) { library.syncNow() }
     }
 }
 
@@ -221,6 +283,7 @@ private struct CachedFolderList: View {
         }
         .font(.lyceumBody)
         .navigationTitle(folder.name)
+        .toolbar { if isTop { ToolbarItem { SyncMenu() } } }
     }
 
     private func join(_ name: String) -> String { path.isEmpty ? name : path + "/" + name }
@@ -271,7 +334,14 @@ private struct FileLink: View {
             NavigationLink {
                 CachedFileView(path: path, fallback: fallback)
             } label: {
-                CachedFileRow(file: file)
+                HStack {
+                    CachedFileRow(file: file)
+                    Spacer()
+                    if library.sync.hasCopy(path, size: file.size) {
+                        Image(systemName: "iphone").foregroundStyle(.secondary)
+                            .accessibilityLabel("A copy is on this device")
+                    }
+                }
             }
         }
     }

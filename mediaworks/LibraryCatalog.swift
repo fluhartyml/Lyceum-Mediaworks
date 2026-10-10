@@ -187,7 +187,7 @@ final class LibraryCatalog {
     // REM  a thumbs up playlist" · "thats the point of thumbs downing it to take it out of synch rotation". The Mac keeps
     // REM  the marks (Marks.json), puts them in the cache, and every device sees them on its next look. Nothing is deleted.
     private func apply(_ request: CacheRequest) {
-        guard let path = request.path, !path.isEmpty, request.op != .get else { return }
+        guard let path = request.path, !path.isEmpty, request.op != .get, request.op != .file else { return }
         // REM  A DEVICE'S CHANGE IS RECORDED WITH WHAT IT WAS BEFORE — his rule, 2026-10-10 (platforms 002e/f): "the change should
         // REM  need to be able to be reversed if the mac (user) disaproves." The Mac's own checkbox is not a device change.
         if let device = request.device {
@@ -198,7 +198,7 @@ final class LibraryCatalog {
             saveChanges()
         }
         switch request.op {
-        case .get: return
+        case .get, .file: return
         case .check: unchecked.remove(path)
         case .uncheck: unchecked.insert(path)
         case .thumbsUp:
@@ -235,6 +235,35 @@ final class LibraryCatalog {
         if let lastFound { publish(lastFound) }
     }
 
+    // MARK: Sending a file for a device's synced copy (platforms 002c)
+
+    // REM  The file goes in 1 MB pieces, each sent when the last has gone — a 250 MB video is never held in memory whole.
+    // REM  Only a file inside the library can be asked for: the path is resolved and must stay under the library root.
+    func sendFile(_ path: String?, on connection: NWConnection) {
+        guard let root = running?.standardizedFileURL, let path,
+              case let url = root.appending(path: path).standardizedFileURL,
+              url.path.hasPrefix(root.path + "/"),
+              let handle = try? FileHandle(forReadingFrom: url),
+              let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else {
+            connection.send(content: Framing.frame(Data()), completion: .contentProcessed { _ in connection.cancel() })
+            return
+        }
+        var length = UInt64(size).bigEndian
+        connection.send(content: Data(bytes: &length, count: 8), completion: .contentProcessed { _ in })
+        func next() {
+            let chunk = (try? handle.read(upToCount: 1 << 20)) ?? nil
+            guard let chunk, !chunk.isEmpty else {
+                try? handle.close()
+                connection.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { _ in connection.cancel() })
+                return
+            }
+            connection.send(content: chunk, completion: .contentProcessed { error in
+                if error != nil { try? handle.close(); connection.cancel() } else { next() }
+            })
+        }
+        next()
+    }
+
     // MARK: Serving it on the home network
 
     /// Announces "_lyceum._tcp". Each connection sends one request (framed JSON); the Mac applies it and answers with
@@ -256,6 +285,7 @@ final class LibraryCatalog {
                 MainActor.assumeIsolated {
                     let catalog = LibraryCatalog.shared
                     if let data, let request = try? LibraryCache.decoder.decode(CacheRequest.self, from: data) {
+                        if request.op == .file { catalog.sendFile(request.path, on: connection); return }
                         catalog.apply(request)
                     }
                     connection.send(content: Framing.frame(catalog.payload), completion: .contentProcessed { _ in connection.cancel() })

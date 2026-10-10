@@ -57,6 +57,7 @@ struct DeviceChangesView: View {
         case .uncheck: "Unchecked"
         case .thumbsUp: "👍 Thumbs up"
         case .thumbsDown: "👎 Thumbs down"
+        case .file: "Copied"
         }
     }
 }
