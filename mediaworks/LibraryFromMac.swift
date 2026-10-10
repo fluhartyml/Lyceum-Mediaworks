@@ -390,8 +390,55 @@ private struct FileLink: View {
     @Environment(MacLibrary.self) private var library
 
     private var file: CachedFile { library.snapshot?.file(at: path) ?? fallback }
+    #if os(tvOS)
+    @Environment(TVTheater.self) private var theater
+    @State private var showInfo = false
+    @State private var editing = false
+    #endif
 
     var body: some View {
+        #if os(tvOS)
+        tvRow
+        #else
+        phoneRow
+        #endif
+    }
+
+    #if os(tvOS)
+    // REM  ON THE TV A HIGHLIGHTED FILE PLAYS AT ONCE — his catch, 2026-10-10 13:23 on the Living Room TV: "if i highlight a song
+    // REM  and press play pause it doesnt play and if i press center button it does a more info or inspector ... then you have
+    // REM  to press play again". Center click AND Play/Pause play it (then the rest of the folder). Long-press center = the
+    // REM  menu: Info, check / uncheck, and Genre, Kind, Title & Playlist.
+    private var tvRow: some View {
+        Button { play() } label: {
+            HStack(spacing: 14) {
+                if file.isMedia {
+                    Image(systemName: file.isChecked ? "checkmark.square.fill" : "square")
+                        .foregroundStyle(file.isChecked ? Color.accentColor : .secondary)
+                }
+                CachedFileRow(file: file)
+                Spacer()
+            }
+        }
+        .onPlayPauseCommand { play() }
+        .contextMenu {
+            Button("Info") { showInfo = true }
+            if file.isMedia {
+                Button(file.isChecked ? "Uncheck" : "Check") { library.change(file.isChecked ? .uncheck : .check, path) }
+                Button("Genre, Kind, Title & Playlist…") { editing = true }
+            }
+        }
+        .navigationDestination(isPresented: $showInfo) { CachedFileView(path: path, fallback: fallback) }
+        .sheet(isPresented: $editing) { TVEditSheet(path: path, file: file).environment(library) }
+    }
+
+    private func play() {
+        guard file.isMedia else { showInfo = true; return }
+        theater.play(path, in: library.snapshot?.siblings(of: path) ?? [path])
+    }
+    #endif
+
+    private var phoneRow: some View {
         HStack(spacing: 10) {
             if file.isMedia {
                 // REM  THE SYNC CHECKMARK — his iTunes "manual synchronization" (platforms 002d): unchecked files stay off a
