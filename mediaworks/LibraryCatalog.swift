@@ -27,12 +27,25 @@ final class LibraryCatalog {
     @ObservationIgnored private var running: URL?
     @ObservationIgnored private var listener: NWListener?
     @ObservationIgnored private var payload = Data()
+    /// The last walk, so a checkmark or 👍 can republish at once without walking Nineveh again.
+    @ObservationIgnored private var lastFound: Found?
+    /// Files whose sync checkmark is OFF, relative to the library. Everything else is checked (iTunes' default).
+    @ObservationIgnored private var unchecked: Set<String> = []
+    /// Playlists by name — paths relative to the library. 👍 adds to "Thumbs Up".
+    @ObservationIgnored private var playlists: [String: [String]] = [:]
 
     private static var infosURL: URL { LibraryCache.fileURL.deletingLastPathComponent().appending(path: "TagCache.json") }
+    private static var marksURL: URL { LibraryCache.fileURL.deletingLastPathComponent().appending(path: "Marks.json") }
+
+    private struct Marks: Codable { var unchecked: Set<String>; var playlists: [String: [String]] }
 
     private init() {
         if let data = try? Data(contentsOf: Self.infosURL),
            let saved = try? LibraryCache.decoder.decode([String: CachedInfo].self, from: data) { infos = saved }
+        if let data = try? Data(contentsOf: Self.marksURL), let marks = try? LibraryCache.decoder.decode(Marks.self, from: data) {
+            unchecked = marks.unchecked
+            playlists = marks.playlists
+        }
         snapshot = LibraryCache.load()
         if let snapshot { payload = (try? LibraryCache.encoder.encode(snapshot)) ?? Data() }
     }
@@ -116,6 +129,7 @@ final class LibraryCatalog {
 
     /// Fills the tree with the tags known so far, writes the cache, and serves it.
     private func publish(_ found: Found) {
+        lastFound = found
         let keys = Dictionary(found.media.map { ($0.url.standardizedFileURL.path, $0.key) }, uniquingKeysWith: { a, _ in a })
         let base = running?.standardizedFileURL.path ?? ""
         func fill(_ folder: CachedFolder, _ path: String) -> CachedFolder {
@@ -124,36 +138,71 @@ final class LibraryCatalog {
             folder.files = folder.files.map { file in
                 var file = file
                 if let key = keys[path + "/" + file.name] { file.info = infos[key] }
+                let relative = String((path + "/" + file.name).dropFirst(base.count + 1))
+                file.checked = unchecked.contains(relative) ? false : nil
                 return file
             }
             return folder
         }
         let snapshot = LibrarySnapshot(made: .now, macName: Host.current().localizedName ?? "Mac",
-                                       root: fill(found.folder, base))
+                                       root: fill(found.folder, base), playlists: playlists)
         self.snapshot = snapshot
         guard let data = try? LibraryCache.encoder.encode(snapshot) else { return }
         payload = data
         try? data.write(to: LibraryCache.fileURL, options: .atomic)
     }
 
+    // MARK: Changes from the phones and iPads — the Mac is the gatekeeper (platforms 002b)
+
+    // REM  HIS DESIGN, 2026-10-10 (platforms 001c / 002d): "it checks or unchecks the media file and a thumbs up also adds to
+    // REM  a thumbs up playlist" · "thats the point of thumbs downing it to take it out of synch rotation". The Mac keeps
+    // REM  the marks (Marks.json), puts them in the cache, and every device sees them on its next look. Nothing is deleted.
+    private func apply(_ request: CacheRequest) {
+        guard let path = request.path, !path.isEmpty else { return }
+        switch request.op {
+        case .get: return
+        case .check: unchecked.remove(path)
+        case .uncheck: unchecked.insert(path)
+        case .thumbsUp:
+            unchecked.remove(path)
+            var list = playlists[LibraryCache.thumbsUp] ?? []
+            if !list.contains(path) { list.append(path) }
+            playlists[LibraryCache.thumbsUp] = list
+        case .thumbsDown: unchecked.insert(path)
+        }
+        if let data = try? LibraryCache.encoder.encode(Marks(unchecked: unchecked, playlists: playlists)) {
+            try? data.write(to: Self.marksURL, options: .atomic)
+        }
+        if let lastFound { publish(lastFound) }
+    }
+
     // MARK: Serving it on the home network
 
-    /// Announces "_lyceum._tcp"; each connection receives the cache as an 8-byte length and the JSON, then closes.
+    /// Announces "_lyceum._tcp". Each connection sends one request (framed JSON); the Mac applies it and answers with
+    /// the whole cache, framed — so a phone that made a change sees the result at once.
     private func announce() {
         guard listener == nil, let listener = try? NWListener(using: .tcp) else { return }
         listener.service = NWListener.Service(name: Host.current().localizedName, type: LibraryCache.serviceType)
         listener.newConnectionHandler = { connection in
-            MainActor.assumeIsolated { LibraryCatalog.shared.send(to: connection) }
+            MainActor.assumeIsolated { LibraryCatalog.shared.serve(connection) }
         }
         listener.start(queue: .main)
         self.listener = listener
     }
 
-    private func send(to connection: NWConnection) {
-        var length = UInt64(payload.count).bigEndian
-        let message = Data(bytes: &length, count: 8) + payload
+    private func serve(_ connection: NWConnection) {
         connection.start(queue: .main)
-        connection.send(content: message, completion: .contentProcessed { _ in connection.cancel() })
+        Framing.read(connection) { data in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    let catalog = LibraryCatalog.shared
+                    if let data, let request = try? LibraryCache.decoder.decode(CacheRequest.self, from: data) {
+                        catalog.apply(request)
+                    }
+                    connection.send(content: Framing.frame(catalog.payload), completion: .contentProcessed { _ in connection.cancel() })
+                }
+            }
+        }
     }
 }
 #endif

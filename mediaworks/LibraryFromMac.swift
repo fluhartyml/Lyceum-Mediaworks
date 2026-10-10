@@ -33,20 +33,74 @@ final class MacLibrary {
         }
     }
 
+    // REM  CHANGES WAIT ON THE DEVICE when the Mac is out of reach (platforms 002b: "if one ios device changes a file the mac
+    // REM  updates all nodes"). Kept on disk, sent oldest first; each one the Mac answers is crossed off.
+    private(set) var pending: [CacheRequest] = {
+        guard let data = UserDefaults.standard.data(forKey: "pendingMacChanges") else { return [] }
+        return (try? JSONDecoder().decode([CacheRequest].self, from: data)) ?? []
+    }() {
+        didSet { UserDefaults.standard.set(try? JSONEncoder().encode(pending), forKey: "pendingMacChanges") }
+    }
+
+    /// A change for the Mac: shown here at once, sent now, kept until the Mac takes it.
+    func change(_ op: CacheRequest.Op, _ path: String) {
+        pending.append(CacheRequest(op: op, path: path))
+        if var copy = snapshot {
+            copy.root = Self.marking(copy.root, path.split(separator: "/").map(String.init), op)
+            if op == .thumbsUp {
+                var list = copy.playlists?[LibraryCache.thumbsUp] ?? []
+                if !list.contains(path) { list.append(path) }
+                copy.playlists = (copy.playlists ?? [:]).merging([LibraryCache.thumbsUp: list]) { $1 }
+            }
+            snapshot = copy
+        }
+        Task { await fetch() }
+    }
+
+    private static func marking(_ folder: CachedFolder, _ parts: [String], _ op: CacheRequest.Op) -> CachedFolder {
+        var folder = folder
+        guard let first = parts.first else { return folder }
+        if parts.count == 1 {
+            folder.files = folder.files.map { file in
+                guard file.name == first else { return file }
+                var file = file
+                file.checked = (op == .check || op == .thumbsUp) ? nil : false
+                return file
+            }
+        } else {
+            folder.folders = folder.folders.map { $0.name == first ? marking($0, Array(parts.dropFirst()), op) : $0 }
+        }
+        return folder
+    }
+
     private func fetch() async {
         looking = true
         defer { looking = false }
-        guard let data = await Self.receive(), let fresh = try? LibraryCache.decoder.decode(LibrarySnapshot.self, from: data) else { return }
+        // Waiting changes go first, one per connection; each answer is the whole cache with that change in it.
+        while let next = pending.first {
+            guard let data = await Self.ask(next), let fresh = try? LibraryCache.decoder.decode(LibrarySnapshot.self, from: data) else { return }
+            pending.removeFirst()
+            take(fresh, data)
+        }
+        guard let data = await Self.ask(CacheRequest(op: .get)),
+              let fresh = try? LibraryCache.decoder.decode(LibrarySnapshot.self, from: data) else { return }
+        take(fresh, data)
+    }
+
+    private func take(_ fresh: LibrarySnapshot, _ data: Data) {
         snapshot = fresh
         heard = .now
         try? data.write(to: LibraryCache.fileURL, options: .atomic)
     }
 
-    /// Finds the first Mac announcing a Lyceum library and reads its cache. Nil if none answers within 8 seconds.
-    private static func receive() async -> Data? {
-        await withCheckedContinuation { (done: CheckedContinuation<Data?, Never>) in
+    /// Finds the first Mac announcing a Lyceum library, sends one request, and reads the cache it answers with.
+    /// Nil if none answers within 8 seconds.
+    private static func ask(_ request: CacheRequest) async -> Data? {
+        let message = Framing.frame((try? LibraryCache.encoder.encode(request)) ?? Data())
+        return await withCheckedContinuation { (done: CheckedContinuation<Data?, Never>) in
             let browser = NWBrowser(for: .bonjour(type: LibraryCache.serviceType, domain: nil), using: .tcp)
             var finished = false
+            var asked = false
             func finish(_ data: Data?) {
                 guard !finished else { return }
                 finished = true
@@ -55,8 +109,10 @@ final class MacLibrary {
             }
             browser.browseResultsChangedHandler = { results, _ in
                 MainActor.assumeIsolated {
-                    guard !finished, let mac = results.first else { return }
-                    read(from: mac.endpoint) { finish($0) }
+                    // One connection per request — a second sighting of the same Mac must not send the change twice.
+                    guard !finished, !asked, let mac = results.first else { return }
+                    asked = true
+                    read(from: mac.endpoint, sending: message) { finish($0) }
                 }
             }
             browser.start(queue: .main)
@@ -64,26 +120,14 @@ final class MacLibrary {
         }
     }
 
-    /// The 8-byte length, then exactly that much JSON.
-    private static func read(from endpoint: NWEndpoint, _ done: @escaping @MainActor (Data?) -> Void) {
+    /// Sends the request, then reads the framed answer.
+    private static func read(from endpoint: NWEndpoint, sending message: Data, _ done: @escaping @MainActor (Data?) -> Void) {
         let connection = NWConnection(to: endpoint, using: .tcp)
         connection.start(queue: .main)
-        connection.receive(minimumIncompleteLength: 8, maximumLength: 8) { header, _, _, _ in
-            MainActor.assumeIsolated {
-                guard let header, header.count == 8 else { connection.cancel(); done(nil); return }
-                let length = header.reduce(0) { ($0 << 8) | Int($1) }
-                var body = Data()
-                func more() {
-                    connection.receive(minimumIncompleteLength: 1, maximumLength: 1 << 20) { chunk, _, complete, error in
-                        MainActor.assumeIsolated {
-                            if let chunk { body.append(chunk) }
-                            if body.count >= length { connection.cancel(); done(body.prefix(length)) }
-                            else if complete || error != nil { connection.cancel(); done(nil) }
-                            else { more() }
-                        }
-                    }
-                }
-                more()
+        connection.send(content: message, completion: .contentProcessed { _ in })
+        Framing.read(connection) { data in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { connection.cancel(); done(data) }
             }
         }
     }
@@ -91,34 +135,71 @@ final class MacLibrary {
 
 // MARK: - Browsing the copy
 
+extension LibrarySnapshot {
+    /// The file at a library-relative path, as this copy has it now.
+    func file(at path: String) -> CachedFile? {
+        var parts = path.split(separator: "/").map(String.init)
+        guard let name = parts.popLast() else { return nil }
+        var folder = root
+        for part in parts {
+            guard let next = folder.folders.first(where: { $0.name == part }) else { return nil }
+            folder = next
+        }
+        return folder.files.first { $0.name == name }
+    }
+}
+
 /// The Library on iPhone and iPad: the Mac's folders and files, read from the cache.
 struct MacLibraryView: View {
-    let snapshot: LibrarySnapshot
-    let heard: Date?
+    let library: MacLibrary
 
     var body: some View {
-        NavigationStack {
-            CachedFolderList(folder: snapshot.root)
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    Text("From \(snapshot.macName) · \(snapshot.made.formatted(date: .abbreviated, time: .shortened))\(heard == nil ? " · saved copy" : "")")
+        if let snapshot = library.snapshot {
+            NavigationStack {
+                CachedFolderList(folder: snapshot.root, path: "", isTop: true)
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        VStack(spacing: 2) {
+                            Text("From \(snapshot.macName) · \(snapshot.made.formatted(date: .abbreviated, time: .shortened))\(library.heard == nil ? " · saved copy" : "")")
+                            if !library.pending.isEmpty {
+                                Text("\(library.pending.count) change\(library.pending.count == 1 ? "" : "s") waiting for your Mac")
+                            }
+                        }
                         .font(.lyceumDetail)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity)
                         .padding(8)
                         .background(.bar)
-                }
+                    }
+            }
+            .environment(library)
         }
     }
 }
 
 private struct CachedFolderList: View {
     let folder: CachedFolder
+    /// This folder, relative to the library ("" for the top).
+    let path: String
+    var isTop = false
+    @Environment(MacLibrary.self) private var library
 
     var body: some View {
         List {
+            // REM  THE THUMBS UP PLAYLIST at the top of the library — every file 👍'd on any device (platforms 001c).
+            if isTop, let list = library.snapshot?.playlists?[LibraryCache.thumbsUp], !list.isEmpty {
+                NavigationLink {
+                    PlaylistList(name: LibraryCache.thumbsUp, paths: list)
+                } label: {
+                    HStack {
+                        Label(LibraryCache.thumbsUp, systemImage: "hand.thumbsup.fill")
+                        Spacer()
+                        Text("\(list.count)").foregroundStyle(.secondary).monospacedDigit()
+                    }
+                }
+            }
             ForEach(folder.folders) { sub in
                 NavigationLink {
-                    CachedFolderList(folder: sub)
+                    CachedFolderList(folder: sub, path: join(sub.name))
                 } label: {
                     HStack {
                         Label(sub.name, systemImage: "folder")
@@ -128,15 +209,64 @@ private struct CachedFolderList: View {
                 }
             }
             ForEach(folder.files) { file in
-                NavigationLink {
-                    CachedFileView(file: file)
-                } label: {
-                    CachedFileRow(file: file)
-                }
+                FileLink(path: join(file.name), fallback: file)
             }
         }
         .font(.lyceumBody)
         .navigationTitle(folder.name)
+    }
+
+    private func join(_ name: String) -> String { path.isEmpty ? name : path + "/" + name }
+}
+
+/// A playlist: the files it points to, wherever they live in the library.
+private struct PlaylistList: View {
+    let name: String
+    let paths: [String]
+    @Environment(MacLibrary.self) private var library
+
+    var body: some View {
+        List(paths, id: \.self) { path in
+            if let file = library.snapshot?.file(at: path) {
+                FileLink(path: path, fallback: file)
+            } else {
+                Text(path).foregroundStyle(.secondary)
+            }
+        }
+        .font(.lyceumBody)
+        .navigationTitle(name)
+    }
+}
+
+/// One file's row: its checkmark (tap to change) and a link to its page.
+private struct FileLink: View {
+    let path: String
+    let fallback: CachedFile
+    @Environment(MacLibrary.self) private var library
+
+    private var file: CachedFile { library.snapshot?.file(at: path) ?? fallback }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if file.isMedia {
+                // REM  THE SYNC CHECKMARK — his iTunes "manual synchronization" (platforms 002d): unchecked files stay off a
+                // REM  phone set to Manual. A tap here goes to the Mac, which passes it to every device.
+                Button {
+                    library.change(file.isChecked ? .uncheck : .check, path)
+                } label: {
+                    Image(systemName: file.isChecked ? "checkmark.square.fill" : "square")
+                        .font(.system(size: 24))
+                        .foregroundStyle(file.isChecked ? Color.accentColor : .secondary)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(file.isChecked ? "Checked — tap to uncheck" : "Unchecked — tap to check")
+            }
+            NavigationLink {
+                CachedFileView(path: path, fallback: fallback)
+            } label: {
+                CachedFileRow(file: file)
+            }
+        }
     }
 }
 
@@ -158,9 +288,14 @@ private struct CachedFileRow: View {
     }
 }
 
-/// One file's picture and tags, as the Mac last read them.
+/// One file's picture, 👍 / 👎, and tags, as the Mac last read them.
 private struct CachedFileView: View {
-    let file: CachedFile
+    let path: String
+    let fallback: CachedFile
+    @Environment(MacLibrary.self) private var library
+
+    private var file: CachedFile { library.snapshot?.file(at: path) ?? fallback }
+    private var thumbedUp: Bool { library.snapshot?.playlists?[LibraryCache.thumbsUp]?.contains(path) ?? false }
 
     var body: some View {
         ScrollView {
@@ -168,6 +303,21 @@ private struct CachedFileView: View {
                 CachedPicture(data: file.info?.thumbnail, isVideo: file.isVideo)
                     .frame(maxWidth: .infinity, maxHeight: 260)
                 Text(file.name).font(.lyceumHeadline).textSelection(.enabled)
+                if file.isMedia {
+                    // REM  👍 checks the file and adds it to "Thumbs Up"; 👎 unchecks it — "thats the point of thumbs downing it
+                    // REM  to take it out of synch rotation." Nothing is ever deleted (platforms 001c).
+                    HStack(spacing: 14) {
+                        Button { library.change(.thumbsUp, path) } label: {
+                            Label("Thumbs Up", systemImage: thumbedUp ? "hand.thumbsup.fill" : "hand.thumbsup")
+                        }
+                        Button { library.change(.thumbsDown, path) } label: {
+                            Label("Thumbs Down", systemImage: file.isChecked ? "hand.thumbsdown" : "hand.thumbsdown.fill")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    Text(file.isChecked ? "Checked — in sync rotation" : "Unchecked — out of sync rotation")
+                        .foregroundStyle(.secondary)
+                }
                 if let info = file.info {
                     fact("001 Title", info.title)
                     fact("002 Artist", info.artist)

@@ -15,6 +15,7 @@
 //
 
 import Foundation
+import Network
 
 nonisolated struct CachedInfo: Codable, Hashable, Sendable {
     var length: Double?
@@ -46,7 +47,11 @@ nonisolated struct CachedFile: Codable, Hashable, Sendable, Identifiable {
     /// "video", "audio" or "other".
     var kind: String
     var info: CachedInfo?
+    /// The sync checkmark — nil and true both mean checked (iTunes' default). Unchecked files stay off a phone set
+    /// to Manual sync; 👎 unchecks, 👍 checks (platforms 001c / 002d).
+    var checked: Bool?
     var id: String { name }
+    var isChecked: Bool { checked ?? true }
     var isVideo: Bool { kind == "video" }
     var isMedia: Bool { kind != "other" }
 }
@@ -68,6 +73,16 @@ nonisolated struct LibrarySnapshot: Codable, Sendable {
     /// The Mac it came from, as its owner named it.
     var macName: String
     var root: CachedFolder
+    /// Playlists by name, each a list of file paths relative to the library — "Thumbs Up" first.
+    var playlists: [String: [String]]?
+}
+
+/// What a phone or iPad asks the Mac — the Mac is the gatekeeper for every change (platforms 002b).
+nonisolated struct CacheRequest: Codable, Sendable, Hashable {
+    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown }
+    var op: Op
+    /// The file, relative to the library root ("Music Videos/Rock/1990s/Queensryche - Silent Lucidity.mp4").
+    var path: String?
 }
 
 nonisolated enum LibraryCache {
@@ -86,6 +101,37 @@ nonisolated enum LibraryCache {
         return try? decoder.decode(LibrarySnapshot.self, from: data)
     }
 
+    /// Name of the playlist 👍 adds to.
+    static let thumbsUp = "Thumbs Up"
+
     static let encoder: JSONEncoder = { let e = JSONEncoder(); e.dateEncodingStrategy = .iso8601; return e }()
     static let decoder: JSONDecoder = { let d = JSONDecoder(); d.dateDecodingStrategy = .iso8601; return d }()
+}
+
+/// The wire format both ways: an 8-byte big-endian length, then exactly that many bytes.
+nonisolated enum Framing {
+    static func frame(_ body: Data) -> Data {
+        var length = UInt64(body.count).bigEndian
+        return Data(bytes: &length, count: 8) + body
+    }
+
+    /// Reads one framed message; nil if the connection ends first.
+    static func read(_ connection: NWConnection, _ done: @escaping @Sendable (Data?) -> Void) {
+        connection.receive(minimumIncompleteLength: 8, maximumLength: 8) { header, _, _, _ in
+            guard let header, header.count == 8 else { done(nil); return }
+            let length = header.reduce(0) { ($0 << 8) | Int($1) }
+            let body = Body()
+            func more() {
+                connection.receive(minimumIncompleteLength: 1, maximumLength: 1 << 20) { chunk, _, complete, error in
+                    if let chunk { body.data.append(chunk) }
+                    if body.data.count >= length { done(body.data.prefix(length)) }
+                    else if complete || error != nil { done(nil) }
+                    else { more() }
+                }
+            }
+            if length == 0 { done(Data()) } else { more() }
+        }
+    }
+
+    private final class Body: @unchecked Sendable { var data = Data() }
 }

@@ -27,8 +27,8 @@ struct ContentView: View {
             #if !os(macOS)
             // REM  ONLY THE MAC ASKS FOR THE LIBRARY FOLDER — his ruling, 2026-10-10 (FromYourMacView.swift).
             // REM  The Mac's cache once one has arrived (LibraryFromMac.swift); until then, where it comes from.
-            if let snapshot = fromMac.snapshot {
-                MacLibraryView(snapshot: snapshot, heard: fromMac.heard)
+            if fromMac.snapshot != nil {
+                MacLibraryView(library: fromMac)
             } else {
                 FromYourMacView()
             }
