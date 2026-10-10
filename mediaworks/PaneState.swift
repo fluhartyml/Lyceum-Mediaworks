@@ -155,6 +155,17 @@ enum Grants {
     #if os(macOS)
     /// Asks once, with the system's Open panel opened at that place. Returns what he chose.
     static func ask(for url: URL?) -> URL? {
+        // REM  WARN FIRST — 2026-10-09 double-clicking Nineveh threw the Open panel up unannounced
+        // REM  ("that was weird and unexpected"). When the app asks on its own, say so before the window
+        // REM  appears. Not for Open… (url nil): he asked for that window himself.
+        if let url {
+            let alert = NSAlert()
+            alert.messageText = "“\(FileManager.default.displayName(atPath: url.path))” needs your OK once"
+            alert.informativeText = "A window will open next. Press Allow in it, and Lyceum Mediaworks won't ask about this place again."
+            alert.addButton(withTitle: "Continue")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        }
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
