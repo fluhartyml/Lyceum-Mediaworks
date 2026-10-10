@@ -191,6 +191,7 @@ private struct TheaterPage: View {
         VStack(spacing: 18) {
             Image(systemName: "play.rectangle").font(.system(size: 64)).foregroundStyle(.tint)
             Text("Theater").font(.lyceumTitle)
+            Text("Build \(BuildStamp.number) · \(BuildStamp.commit)").font(.lyceumBody).foregroundStyle(.secondary).monospacedDigit()
             if let path = player.current {
                 let file = library.snapshot?.file(at: path)
                 Text(file?.info?.title ?? (path as NSString).lastPathComponent)

@@ -311,6 +311,9 @@ struct MacLibraryView: View {
                             if !library.sync.status.isEmpty {
                                 Text(library.sync.status)
                             }
+                            // REM  THE BUILD NUMBER ON EVERY SCREEN — his rule (BUILD-NUMBER-STANDARD), caught 2026-10-10 12:59 on
+                            // REM  the iPhone: "it doesnt show the build number". It was only on the waiting-for-your-Mac screen.
+                            Text("Build \(BuildStamp.number) · \(BuildStamp.commit)").monospacedDigit()
                         }
                         .font(.lyceumDetail)
                         .foregroundStyle(.secondary)
