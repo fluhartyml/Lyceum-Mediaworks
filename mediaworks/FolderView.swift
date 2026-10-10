@@ -23,6 +23,8 @@ enum FolderViewMode: String, CaseIterable, Identifiable {
 struct FolderRow: Identifiable {
     let entry: FolderEntry
     let length: Double
+    /// How far inside a revealed folder this row sits (0 = the folder on show).
+    var depth = 0
 
     var id: URL { entry.url }
     var name: String { entry.name }
@@ -55,6 +57,13 @@ struct FolderView: View {
     @State private var renaming: RenameTarget?
     @State private var newName = ""
     @State private var problem: String?
+    // REM  FOLDER REVEALS — his ask, 2026-10-10 (screen, build 113): "these should have folder >reveals so the folder contents
+    // REM  show below a revealed folder or if opened it only shows folder contents." The chevron shows a folder's contents
+    // REM  indented under it; double-click still OPENS the folder and shows only its contents. Same as Commander.
+    // REM  Which folders are revealed is remembered across launches.
+    @State private var revealed: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "libraryRevealed") ?? [])
+    /// What is inside each revealed folder, read when it is revealed.
+    @State private var inside: [String: [FolderEntry]] = [:]
 
     var body: some View {
         Group {
@@ -96,7 +105,7 @@ struct FolderView: View {
         .onChange(of: selection) {
             // A highlight cues the mini player; Play starts it.
             if selection.count == 1, let url = selection.first,
-               entries.first(where: { $0.url == url })?.isMedia == true {
+               entry(url)?.isMedia == true {
                 mini.cue(url, from: .library)
             }
         }
@@ -163,16 +172,62 @@ struct FolderView: View {
     // MARK: List
 
     private var rows: [FolderRow] {
-        let all = entries.map { FolderRow(entry: $0, length: lengths[$0.url] ?? -1) }
-        let folders = all.filter(\.entry.isFolder).sorted(using: sortOrder)
-        let files = all.filter { !$0.entry.isFolder }.sorted(using: sortOrder)
-        return folders + files
+        var out: [FolderRow] = []
+        func add(_ list: [FolderEntry], depth: Int) {
+            let all = list.map { FolderRow(entry: $0, length: lengths[$0.url] ?? -1, depth: depth) }
+            let ordered = all.filter(\.entry.isFolder).sorted(using: sortOrder) + all.filter { !$0.entry.isFolder }.sorted(using: sortOrder)
+            for row in ordered {
+                out.append(row)
+                let path = row.entry.url.standardizedFileURL.path
+                if row.entry.isFolder, depth < 8, revealed.contains(path), let items = inside[path] {
+                    add(items, depth: depth + 1)
+                }
+            }
+        }
+        add(entries, depth: 0)
+        return out
+    }
+
+    /// Any row on show — in the folder or inside a revealed one.
+    private func entry(_ url: URL) -> FolderEntry? {
+        entries.first { $0.url == url } ?? inside.values.lazy.compactMap { $0.first { $0.url == url } }.first
+    }
+
+    private func toggleReveal(_ url: URL) {
+        let path = url.standardizedFileURL.path
+        if revealed.contains(path) {
+            revealed.remove(path)
+        } else {
+            revealed.insert(path)
+            if inside[path] == nil { Task { await readInside(path) } }
+        }
+        UserDefaults.standard.set(Array(revealed), forKey: "libraryRevealed")
+    }
+
+    private func readInside(_ path: String) async {
+        let items = await Task.detached { FolderListing.entries(in: URL(fileURLWithPath: path, isDirectory: true)) }.value
+        if inside[path] != items { inside[path] = items }
     }
 
     private var listView: some View {
         Table(rows, selection: $selection, sortOrder: $sortOrder, columnCustomization: $columns) {
             TableColumn("Name", value: \.name, comparator: .localizedStandard) { row in
                 HStack(spacing: 10) {
+                    // REM  Indent per level, and the same chevron width on every row so the names line up.
+                    Spacer().frame(width: CGFloat(row.depth) * 20)
+                    if row.entry.isFolder {
+                        let open = revealed.contains(row.entry.url.standardizedFileURL.path)
+                        Button { toggleReveal(row.entry.url) } label: {
+                            Image(systemName: "chevron.right")
+                                .rotationEffect(.degrees(open ? 90 : 0))
+                                .frame(width: 18)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .lyceumHelp(open ? "Hide what is inside" : "Show what is inside, without opening it")
+                    } else {
+                        Spacer().frame(width: 18)
+                    }
                     Thumbnail(entry: row.entry, width: 64)
                         .frame(width: 64, height: 36)
                     // REM  No "…" in the middle — his 2026-10-09 ruling (see CommanderView's nameCell).
@@ -222,7 +277,7 @@ struct FolderView: View {
             contextMenuActions(urls)
         } primaryAction: { urls in
             // Double-click (or Return): a folder opens, a video or song plays in Theater.
-            guard let url = urls.first, let entry = entries.first(where: { $0.url == url }) else { return }
+            guard let url = urls.first, let entry = entry(url) else { return }
             if entry.isFolder { open(url) } else if entry.isMedia { play(url) }
         }
     }
@@ -253,6 +308,7 @@ struct FolderView: View {
         let url = folder.url
         entries = await Task.detached { FolderListing.entries(in: url) }.value
         loading = false
+        for path in revealedHere() { await readInside(path) }
 
         // Stay current while this folder is on screen. A network share does not announce
         // changes made on the server, so re-read every 10 seconds and only redraw on a difference.
@@ -263,15 +319,22 @@ struct FolderView: View {
             let fresh = await Task.detached { FolderListing.entries(in: url) }.value
             if fresh != entries {
                 entries = fresh
-                selection = selection.filter { id in fresh.contains { $0.url == id } }
             }
+            for path in revealedHere() { await readInside(path) }
+            selection = selection.filter { entry($0) != nil }
         }
     }
 
+    /// Revealed folders under the folder on show.
+    private func revealedHere() -> [String] {
+        let base = folder.url.standardizedFileURL.path + "/"
+        return revealed.filter { $0.hasPrefix(base) }.sorted()
+    }
+
     /// Lengths one at a time, so a network share is not hit with hundreds of reads at once.
-    /// Only files that do not have one yet are read.
+    /// Only files that do not have one yet are read — revealed folders' files too.
     private func fillLengths() async {
-        for entry in entries where entry.isMedia && lengths[entry.url] == nil {
+        for entry in rows.map(\.entry) where entry.isMedia && lengths[entry.url] == nil {
             if Task.isCancelled { return }
             if let time = try? await AVURLAsset(url: entry.url).load(.duration), time.seconds.isFinite {
                 lengths[entry.url] = time.seconds
