@@ -65,6 +65,7 @@ final class LibraryCatalog {
         running = root
         self.store = store
         self.report = report
+        loadPlaylistFiles()
         announce()
         while !Task.isCancelled {
             let tree = await Task.detached { Self.walk(root) }.value
@@ -88,6 +89,8 @@ final class LibraryCatalog {
         func folder(_ url: URL) -> CachedFolder {
             var node = CachedFolder(name: url.lastPathComponent)
             for entry in FolderListing.entries(in: url) {
+                // REM  The Playlists folder holds .m3u8 files, not media — the playlists show at the top instead.
+                if entry.isFolder, url == root, entry.name == LibraryCatalog.playlistsFolderName { continue }
                 if entry.isFolder {
                     node.folders.append(folder(entry.url))
                 } else {
@@ -226,12 +229,20 @@ final class LibraryCatalog {
     // REM  the marks (Marks.json), puts them in the cache, and every device sees them on its next look. Nothing is deleted.
     private func apply(_ request: CacheRequest) {
         guard let path = request.path, !path.isEmpty, ![.get, .file, .setTags, .trash].contains(request.op) else { return }
+        if request.op == .renamePlaylist {
+            // REM  A bad or taken name is refused before anything is recorded.
+            guard let newName = request.newName?.trimmingCharacters(in: .whitespaces), Self.validName(newName),
+                  playlists[path] != nil, playlists[newName] == nil else { return }
+        }
         // REM  A DEVICE'S CHANGE IS RECORDED WITH WHAT IT WAS BEFORE — his rule, 2026-10-10 (platforms 002e/f): "the change should
         // REM  need to be able to be reversed if the mac (user) disaproves." The Mac's own checkbox is not a device change.
         if let device = request.device {
-            deviceChanges.insert(DeviceChange(when: .now, device: device, op: request.op, path: path,
-                                              wasChecked: !unchecked.contains(path),
-                                              wasThumbedUp: playlists[LibraryCache.thumbsUp]?.contains(path) ?? false), at: 0)
+            var change = DeviceChange(when: .now, device: device, op: request.op, path: path,
+                                      wasChecked: !unchecked.contains(path),
+                                      wasThumbedUp: playlists[LibraryCache.thumbsUp]?.contains(path) ?? false)
+            if request.op == .renamePlaylist { change.newName = request.newName?.trimmingCharacters(in: .whitespaces) }
+            if request.op == .checkAll { change.wasUnchecked = (playlists[path] ?? []).filter { unchecked.contains($0) } }
+            deviceChanges.insert(change, at: 0)
             if deviceChanges.count > 1000 { deviceChanges.removeLast(deviceChanges.count - 1000) }
             saveChanges()
         }
@@ -249,8 +260,91 @@ final class LibraryCatalog {
             var list = playlists[LibraryCache.thumbsUp] ?? []
             list.removeAll { $0 == path }
             playlists[LibraryCache.thumbsUp] = list.isEmpty ? nil : list
+        case .renamePlaylist:
+            // REM  RENAMING IS SAVING — his rule, 2026-10-10 (PL2): "after renamed, its no longer a thumbs up playlist so the
+            // REM  next song thumbs upped needs to make a new thumbs up playlist." Thumbs Up renamed = gone; the next 👍 starts one.
+            guard let newName = request.newName?.trimmingCharacters(in: .whitespaces), let list = playlists[path] else { return }
+            playlists[newName] = list
+            playlists[path] = nil
+            renamePlaylistFile(path, to: newName)
+        case .checkAll:
+            for file in playlists[path] ?? [] { unchecked.remove(file) }
         }
         saveMarksAndPublish()
+    }
+
+    /// Renames or checks-all from the Mac's own Playlists window — the same as a device asking, but not recorded as one.
+    func playlistAction(_ op: CacheRequest.Op, _ name: String, newName: String? = nil) {
+        apply(CacheRequest(op: op, path: name, newName: newName))
+    }
+
+    /// The playlists, Thumbs Up first, then by name.
+    var playlistNames: [String] {
+        _ = marksVersion
+        return playlists.keys.sorted { a, b in
+            a == LibraryCache.thumbsUp ? true : b == LibraryCache.thumbsUp ? false : a.localizedStandardCompare(b) == .orderedAscending
+        }
+    }
+
+    func playlist(_ name: String) -> [String] { _ = marksVersion; return playlists[name] ?? [] }
+
+    static func validName(_ name: String) -> Bool {
+        !name.isEmpty && !name.contains("/") && !name.contains(":") && !name.hasPrefix(".")
+    }
+
+    // MARK: Playlists as portable files (platforms PL3)
+
+    // REM  HIS RULE, 2026-10-10: "the playlists should be saved and portable." Each playlist is <library>/Playlists/<name>.m3u8
+    // REM  — plain M3U, one "../<library path>" per line — so Infuse, VLC or any player reads it, and it travels with the
+    // REM  library. The FILES are the record; Marks.json keeps only the checkmarks. Files Lyceum did not write are read
+    // REM  (they become playlists) but never deleted.
+    static let playlistsFolderName = "Playlists"
+    @ObservationIgnored private var writtenPlaylists: Set<String> = []
+
+    private var playlistsFolder: URL? { running?.appending(path: Self.playlistsFolderName, directoryHint: .isDirectory) }
+
+    private func playlistFile(_ name: String) -> URL? { playlistsFolder?.appending(path: name + ".m3u8") }
+
+    private func loadPlaylistFiles() {
+        guard let folder = playlistsFolder else { return }
+        let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+        var found: [String: [String]] = [:]
+        for file in files where ["m3u8", "m3u"].contains(file.pathExtension.lowercased()) {
+            guard let text = try? String(contentsOf: file, encoding: .utf8) else { continue }
+            found[file.deletingPathExtension().lastPathComponent] = text.split(whereSeparator: \.isNewline).compactMap { line in
+                let line = line.trimmingCharacters(in: .whitespaces)
+                guard !line.isEmpty, !line.hasPrefix("#") else { return nil }
+                return line.hasPrefix("../") ? String(line.dropFirst(3)) : line
+            }
+        }
+        if found.isEmpty, !playlists.isEmpty {
+            // REM  First run with files: the playlists kept in Marks.json so far are written out as files.
+            writePlaylistFiles()
+        } else {
+            playlists = found
+            writtenPlaylists = Set(found.keys)
+        }
+    }
+
+    private func writePlaylistFiles() {
+        guard let folder = playlistsFolder else { return }
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        for (name, list) in playlists {
+            let text = "#EXTM3U\n" + list.map { "../" + $0 }.joined(separator: "\n") + "\n"
+            if let file = playlistFile(name) { try? text.write(to: file, atomically: true, encoding: .utf8) }
+        }
+        // Only files this Mac wrote are ever removed — an emptied Thumbs Up, a renamed playlist's old name.
+        for gone in writtenPlaylists.subtracting(playlists.keys) {
+            if let file = playlistFile(gone) { try? FileManager.default.removeItem(at: file) }
+        }
+        writtenPlaylists = Set(playlists.keys)
+    }
+
+    private func renamePlaylistFile(_ old: String, to new: String) {
+        guard let from = playlistFile(old), let to = playlistFile(new), FileManager.default.fileExists(atPath: from.path) else { return }
+        try? FileManager.default.moveItem(at: from, to: to)
+        writtenPlaylists.remove(old)
+        writtenPlaylists.insert(new)
     }
 
     /// Puts the file back the way it was before a device's change, and passes that to every device.
@@ -263,6 +357,23 @@ final class LibraryCatalog {
                     saveChanges()
                 }
             }
+            return
+        }
+        if change.op == .renamePlaylist, let newName = change.newName {
+            guard let list = playlists[newName], playlists[change.path] == nil else { return }
+            playlists[change.path] = list
+            playlists[newName] = nil
+            renamePlaylistFile(newName, to: change.path)
+            deviceChanges[index].undone = .now
+            saveChanges()
+            saveMarksAndPublish()
+            return
+        }
+        if change.op == .checkAll {
+            for file in change.wasUnchecked ?? [] { unchecked.insert(file) }
+            deviceChanges[index].undone = .now
+            saveChanges()
+            saveMarksAndPublish()
             return
         }
         if change.wasChecked { unchecked.remove(change.path) } else { unchecked.insert(change.path) }
@@ -383,6 +494,7 @@ final class LibraryCatalog {
 
     private func saveMarksAndPublish() {
         marksVersion += 1
+        writePlaylistFiles()
         if let data = try? LibraryCache.encoder.encode(Marks(unchecked: unchecked, playlists: playlists)) {
             try? data.write(to: Self.marksURL, options: .atomic)
         }
@@ -505,8 +617,11 @@ final class LibraryCatalog {
         guard parts.count >= 2, parts[1].hasPrefix("/media/"),
               let path = String(parts[1].dropFirst("/media/".count)).removingPercentEncoding,
               let url = libraryFile(path),
-              let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 0,
-              let handle = try? FileHandle(forReadingFrom: url) else { fail("404 Not Found"); return }
+              let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 0 else { fail("404 Not Found"); return }
+        // REM  UNCHECKED = NOT SYNCHRONIZED = NOT STREAMED — his rule, 2026-10-10 (PL9): "the apple tv does not physically
+        // REM  synchronize media only streaming and if you cant stream an unchecked file then it is 'not synchronized'."
+        guard !unchecked.contains(path) else { fail("403 Forbidden"); return }
+        guard let handle = try? FileHandle(forReadingFrom: url) else { fail("404 Not Found"); return }
         var start = 0, end = size - 1, partial = false
         if let range = lines.first(where: { $0.lowercased().hasPrefix("range:") }),
            let spec = range.split(separator: "=").last {

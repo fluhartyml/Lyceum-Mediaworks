@@ -86,9 +86,14 @@ final class PhonePlayer {
         player.seek(to: CMTime(seconds: max(0, now + seconds), preferredTimescale: 600))
     }
 
+    /// Asked before moving on — a file unchecked since the queue was made is skipped (PL9).
+    var isPlayable: (String) -> Bool = { _ in true }
+
     func next() {
-        guard index + 1 < queue.count else { stop(); return }
-        index += 1
+        var n = index + 1
+        while n < queue.count, !isPlayable(queue[n]) { n += 1 }
+        guard n < queue.count else { stop(); return }
+        index = n
         load()
     }
 
@@ -164,6 +169,7 @@ struct PhoneHome: View {
         .environment(library)
         .environment(remote)
         .task { await remote.keepWatching() }
+        .onAppear { player.isPlayable = { [library] in library.isPlayable($0) } }
         .fullScreenCover(isPresented: $player.fullScreen) {
             FullScreenPlayer()
                 .environment(player)

@@ -56,6 +56,7 @@ struct TVHome: View {
         .environment(theater)
         .task { await library.keepUpToDate() }
         .task { theater.announce() }
+        .onAppear { theater.isPlayable = { [library] in library.isPlayable($0) } }
         .fullScreenCover(isPresented: Binding(get: { theater.presented }, set: { theater.presented = $0 })) {
             TVPlayer().environment(theater).environment(library)
         }
@@ -101,7 +102,14 @@ final class TVTheater {
         }
     }
 
-    func next() { if index + 1 < queue.count { index += 1; load() } else { stop() } }
+    /// Asked before moving on — a file unchecked since the queue was made (a 👎) is skipped (PL9).
+    var isPlayable: (String) -> Bool = { _ in true }
+
+    func next() {
+        var n = index + 1
+        while n < queue.count, !isPlayable(queue[n]) { n += 1 }
+        if n < queue.count { index = n; load() } else { stop() }
+    }
     func previous() {
         if player.currentTime().seconds > 3 || index == 0 { player.seek(to: .zero) } else { index -= 1; load() }
     }

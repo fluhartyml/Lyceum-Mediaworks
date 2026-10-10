@@ -51,6 +51,8 @@ struct DeviceChangesView: View {
 
     private static func before(_ change: DeviceChange) -> String {
         if let trashedTo = change.trashedTo { return "Now in the Trash: \(trashedTo)" }
+        if let newName = change.newName { return "“\(change.path)” → “\(newName)”" }
+        if let was = change.wasUnchecked { return "\(was.count) file\(was.count == 1 ? " was" : "s were") unchecked before" }
         if let old = change.beforeTags, let new = change.tags {
             return old.keys.sorted().map { key in
                 let label = TagField(rawValue: key).map { "\($0.number) \($0.label)" } ?? key
@@ -71,6 +73,8 @@ struct DeviceChangesView: View {
         case .setTags: "Changed tags"
         case .trash: "Moved to Trash"
         case .unthumb: "Out of Thumbs Up"
+        case .renamePlaylist: "Renamed playlist"
+        case .checkAll: "Checked all in playlist"
         }
     }
 }

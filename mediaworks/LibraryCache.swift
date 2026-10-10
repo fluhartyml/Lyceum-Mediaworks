@@ -84,7 +84,9 @@ nonisolated struct CacheRequest: Codable, Sendable, Hashable {
     /// `file` asks for one file's bytes, for a device's synced copy (platforms 002c).
     /// `setTags` and `trash` come from an iPad (platforms 003a/003b) — the Mac carries them out.
     /// `unthumb` takes a file out of Thumbs Up (the TV's playlist upkeep, 004c).
-    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash, unthumb }
+    /// `renamePlaylist` (path = the playlist's name, newName = its new one) and `checkAll` (path = the playlist's name) —
+    /// his rating rounds, platforms PL1–PL9.
+    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash, unthumb, renamePlaylist, checkAll }
     var op: Op
     /// The file, relative to the library root ("Music Videos/Rock/1990s/Queensryche - Silent Lucidity.mp4").
     var path: String?
@@ -94,6 +96,8 @@ nonisolated struct CacheRequest: Codable, Sendable, Hashable {
     var tags: [String: String]?
     /// For `setTags`: a new picture for 012, if one was chosen.
     var picture: Data?
+    /// For `renamePlaylist`: the playlist's new name.
+    var newName: String?
 }
 
 /// One change a phone or iPad made, as the Mac recorded it — with what it was before, so it can be undone (platforms 002e/f).
@@ -116,6 +120,10 @@ nonisolated struct DeviceChange: Codable, Sendable, Hashable, Identifiable {
     var beforePicture: String?
     /// A Trash move: where the file went, inside the library.
     var trashedTo: String?
+    /// A playlist rename: the new name (`path` holds the old one).
+    var newName: String?
+    /// A Check all: the files that were unchecked before it, to put back on Undo.
+    var wasUnchecked: [String]?
 }
 
 nonisolated enum LibraryCache {

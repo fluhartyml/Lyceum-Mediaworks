@@ -55,6 +55,13 @@ struct mediaworksApp: App {
                 .environment(library)
         }
 
+        // REM  PLAYLISTS — rename (renaming Thumbs Up saves it), Check all, Play on Apple TV (platforms PL1–PL9). Window menu.
+        Window("Playlists", id: "playlists") {
+            MacPlaylistsView()
+        }
+        .defaultSize(width: 980, height: 620)
+        .restorationBehavior(.disabled)
+
         // REM  THE APPLE TV REMOTE — his "press play from my mac ... to control the apple tv". In the Window menu.
         Window("Apple TV Remote", id: "tvremote") {
             MacTVRemoteView()

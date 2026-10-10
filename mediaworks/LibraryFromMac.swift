@@ -87,6 +87,20 @@ final class MacLibrary {
         Task { await fetch() }
     }
 
+    /// The playlists, Thumbs Up first, then by name.
+    var playlistNames: [String] {
+        (snapshot?.playlists?.keys.map { $0 } ?? []).sorted { a, b in
+            a == LibraryCache.thumbsUp ? true : b == LibraryCache.thumbsUp ? false : a.localizedStandardCompare(b) == .orderedAscending
+        }
+    }
+
+    /// Only the checked files — PL9: "an unchecked song … is not synchronized or is not available to play."
+    func playable(_ paths: [String]) -> [String] {
+        paths.filter { snapshot?.file(at: $0)?.isChecked ?? true }
+    }
+
+    func isPlayable(_ path: String) -> Bool { snapshot?.file(at: path)?.isChecked ?? true }
+
     /// This device as the Mac's change list shows it.
     static var deviceName: String {
         let idiom = UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone"
@@ -328,14 +342,18 @@ private struct CachedFolderList: View {
     var body: some View {
         List {
             // REM  THE THUMBS UP PLAYLIST at the top of the library — every file 👍'd on any device (platforms 001c).
-            if isTop, let list = library.snapshot?.playlists?[LibraryCache.thumbsUp], !list.isEmpty {
-                NavigationLink {
-                    PlaylistList(name: LibraryCache.thumbsUp, paths: list)
-                } label: {
-                    HStack {
-                        Label(LibraryCache.thumbsUp, systemImage: "hand.thumbsup.fill")
-                        Spacer()
-                        Text("\(list.count)").foregroundStyle(.secondary).monospacedDigit()
+            // REM  EVERY PLAYLIST at the top — Thumbs Up first, then by name (platforms PL5).
+            if isTop {
+                ForEach(library.playlistNames, id: \.self) { name in
+                    let list = library.snapshot?.playlists?[name] ?? []
+                    NavigationLink {
+                        PlaylistList(name: name)
+                    } label: {
+                        HStack {
+                            Label(name, systemImage: name == LibraryCache.thumbsUp ? "hand.thumbsup.fill" : "music.note.list")
+                            Spacer()
+                            Text("\(list.count)").foregroundStyle(.secondary).monospacedDigit()
+                        }
                     }
                 }
             }
@@ -367,19 +385,49 @@ private struct CachedFolderList: View {
 /// A playlist: the files it points to, wherever they live in the library.
 private struct PlaylistList: View {
     let name: String
-    let paths: [String]
     @Environment(MacLibrary.self) private var library
+    @State private var renaming = false
+    @State private var newName = ""
+    @Environment(\.dismiss) private var dismiss
+
+    private var paths: [String] { library.snapshot?.playlists?[name] ?? [] }
 
     var body: some View {
-        List(paths, id: \.self) { path in
-            if let file = library.snapshot?.file(at: path) {
-                FileLink(path: path, fallback: file)
-            } else {
-                Text(path).foregroundStyle(.secondary)
+        List {
+            // REM  RENAME and CHECK ALL — his rating rounds (PL2, PL6, PL8): renaming Thumbs Up saves it as its own playlist,
+            // REM  and the next 👍 starts a new one. Sent to the Mac, which renames the .m3u8 file too.
+            Section {
+                Button { newName = name; renaming = true } label: { Label("Rename…", systemImage: "pencil") }
+                Button { library.send(CacheRequest(op: .checkAll, path: name)) } label: {
+                    Label("Check All — back in rotation", systemImage: "checkmark.square")
+                }
+            }
+            Section {
+                ForEach(paths, id: \.self) { path in
+                    if let file = library.snapshot?.file(at: path) {
+                        FileLink(path: path, fallback: file, queue: paths)
+                    } else {
+                        Text(path).foregroundStyle(.secondary)
+                    }
+                }
             }
         }
         .font(.lyceumBody)
         .navigationTitle(name)
+        .alert("Rename “\(name)”", isPresented: $renaming) {
+            TextField("New name", text: $newName)
+            Button("Rename") {
+                let trimmed = newName.trimmingCharacters(in: .whitespaces)
+                guard !trimmed.isEmpty, trimmed != name else { return }
+                library.send(CacheRequest(op: .renamePlaylist, path: name, newName: trimmed))
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(name == LibraryCache.thumbsUp
+                 ? "Renaming Thumbs Up saves it as its own playlist. The next 👍 starts a new Thumbs Up."
+                 : "Your Mac renames the playlist and its file.")
+        }
     }
 }
 
@@ -387,6 +435,8 @@ private struct PlaylistList: View {
 private struct FileLink: View {
     let path: String
     let fallback: CachedFile
+    /// What Next / Previous step through — the playlist this row is in, or else the file's folder.
+    var queue: [String]? = nil
     @Environment(MacLibrary.self) private var library
 
     private var file: CachedFile { library.snapshot?.file(at: path) ?? fallback }
@@ -419,6 +469,8 @@ private struct FileLink: View {
                 CachedFileRow(file: file)
                 Spacer()
             }
+            // REM  UNCHECKED = NOT SYNCHRONIZED = NOT PLAYABLE (PL9) — dimmed, and play() refuses it.
+            .opacity(file.isMedia && !file.isChecked ? 0.45 : 1)
         }
         .onPlayPauseCommand { play() }
         .contextMenu {
@@ -434,7 +486,8 @@ private struct FileLink: View {
 
     private func play() {
         guard file.isMedia else { showInfo = true; return }
-        theater.play(path, in: library.snapshot?.siblings(of: path) ?? [path])
+        guard file.isChecked else { return }   // PL9: unchecked is not synchronized — it does not play
+        theater.play(path, in: library.playable(queue ?? library.snapshot?.siblings(of: path) ?? [path]))
     }
     #endif
 
@@ -454,10 +507,11 @@ private struct FileLink: View {
                 .accessibilityLabel(file.isChecked ? "Checked — tap to uncheck" : "Unchecked — tap to check")
             }
             NavigationLink {
-                CachedFileView(path: path, fallback: fallback)
+                CachedFileView(path: path, fallback: fallback, queue: queue)
             } label: {
                 HStack {
                     CachedFileRow(file: file)
+                        .opacity(file.isMedia && !file.isChecked ? 0.45 : 1)
                     Spacer()
                     if library.sync.hasCopy(path, size: file.size) {
                         Image(systemName: "iphone").foregroundStyle(.secondary)
@@ -491,6 +545,7 @@ private struct CachedFileRow: View {
 private struct CachedFileView: View {
     let path: String
     let fallback: CachedFile
+    var queue: [String]? = nil
     @Environment(MacLibrary.self) private var library
 
     private var file: CachedFile { library.snapshot?.file(at: path) ?? fallback }
@@ -522,11 +577,16 @@ private struct CachedFileView: View {
                 Text(file.name).font(.lyceumHeadline).lyceumSelectable()
                 #if os(iOS)
                 // REM  PLAY — this device's copy (platforms 002c, P02). Next / Previous step through the copies in the same folder.
-                if file.isMedia, let phone {
+                if file.isMedia, let phone, !file.isChecked {
+                    // REM  PL9: unchecked = not synchronized = not playable, on every device.
+                    Text("Unchecked — not synchronized, so it does not play. Check it, or 👍 it, to put it back in rotation.")
+                        .foregroundStyle(.secondary)
+                } else if file.isMedia, let phone {
                     // REM  Plays this device's copy when it has one; otherwise streams from the Mac (N05).
+                    let around = library.playable(queue ?? library.snapshot?.siblings(of: path) ?? [path])
                     HStack(spacing: 12) {
                         Button {
-                            phone.play(path, in: library.snapshot?.siblings(of: path) ?? [path])
+                            phone.play(path, in: around)
                         } label: {
                             Label(library.sync.hasCopy(path, size: file.size) ? "Play" : "Play from Your Mac", systemImage: "play.fill")
                         }
@@ -534,7 +594,7 @@ private struct CachedFileView: View {
                         // REM  PLAY ON APPLE TV — the TV streams it from the Mac; this phone becomes its remote (platforms 001).
                         if let tv = remote?.state {
                             Button {
-                                remote?.playOnTV(path, queue: library.snapshot?.siblings(of: path) ?? [path])
+                                remote?.playOnTV(path, queue: around)
                             } label: { Label("Play on \(tv.tvName)", systemImage: "appletv") }
                             .buttonStyle(.bordered)
                         }
@@ -544,7 +604,8 @@ private struct CachedFileView: View {
                 #if os(tvOS)
                 // REM  APPLE TV: Play streams from the Mac into Apple's own TV player (Siri Remote controls) — 004a, 004d.
                 if file.isMedia {
-                    Button { theater.play(path, in: library.snapshot?.siblings(of: path) ?? [path]) } label: { Label("Play", systemImage: "play.fill") }
+                    Button { theater.play(path, in: library.playable(queue ?? library.snapshot?.siblings(of: path) ?? [path])) } label: { Label("Play", systemImage: "play.fill") }
+                        .disabled(!file.isChecked)
                     Button { tvEditing = true } label: { Label("Genre, Kind, Title & Playlist…", systemImage: "slider.horizontal.3") }
                 }
                 #endif
