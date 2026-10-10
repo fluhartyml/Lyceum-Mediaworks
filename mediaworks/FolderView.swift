@@ -188,6 +188,26 @@ struct FolderView: View {
         return out
     }
 
+    // REM  THE SYNC CHECKBOX before each media file — his ask, 2026-10-10 (screen, build 117): "i want a check box before the
+    // REM  media file". The same mark the phones' checkbox and 👍/👎 set (platforms 001c / 002d); the Mac keeps it.
+    @ViewBuilder
+    private func checkbox(_ url: URL) -> some View {
+        #if os(macOS)
+        let catalog = LibraryCatalog.shared
+        let checked = catalog.isChecked(url)
+        Button { catalog.setChecked(url, !checked) } label: {
+            Image(systemName: checked ? "checkmark.square.fill" : "square")
+                .foregroundStyle(checked ? Color.accentColor : .secondary)
+                .frame(width: 18)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .lyceumHelp(checked ? "Checked — in sync rotation. Click to uncheck" : "Unchecked — out of sync rotation. Click to check")
+        #else
+        Spacer().frame(width: 18)
+        #endif
+    }
+
     /// Any row on show — in the folder or inside a revealed one.
     private func entry(_ url: URL) -> FolderEntry? {
         entries.first { $0.url == url } ?? inside.values.lazy.compactMap { $0.first { $0.url == url } }.first
@@ -225,6 +245,8 @@ struct FolderView: View {
                         }
                         .buttonStyle(.plain)
                         .lyceumHelp(open ? "Hide what is inside" : "Show what is inside, without opening it")
+                    } else if row.entry.isMedia {
+                        checkbox(row.entry.url)
                     } else {
                         Spacer().frame(width: 18)
                     }

@@ -152,6 +152,29 @@ final class LibraryCatalog {
         try? data.write(to: LibraryCache.fileURL, options: .atomic)
     }
 
+    // MARK: The checkmark on the Mac itself
+
+    /// Goes up on every mark change, so the Mac's lists redraw their checkboxes.
+    private(set) var marksVersion = 0
+
+    /// The file's path inside the library, the key the marks use.
+    private func relative(_ url: URL) -> String? {
+        guard let base = running?.standardizedFileURL.path else { return nil }
+        let path = url.standardizedFileURL.path
+        return path.hasPrefix(base + "/") ? String(path.dropFirst(base.count + 1)) : nil
+    }
+
+    func isChecked(_ url: URL) -> Bool {
+        _ = marksVersion
+        return relative(url).map { !unchecked.contains($0) } ?? true
+    }
+
+    /// Checks or unchecks a file from the Mac's own Library list — the same mark a phone's checkbox or 👍/👎 sets.
+    func setChecked(_ url: URL, _ checked: Bool) {
+        guard let path = relative(url) else { return }
+        apply(CacheRequest(op: checked ? .check : .uncheck, path: path))
+    }
+
     // MARK: Changes from the phones and iPads — the Mac is the gatekeeper (platforms 002b)
 
     // REM  HIS DESIGN, 2026-10-10 (platforms 001c / 002d): "it checks or unchecks the media file and a thumbs up also adds to
@@ -170,6 +193,7 @@ final class LibraryCatalog {
             playlists[LibraryCache.thumbsUp] = list
         case .thumbsDown: unchecked.insert(path)
         }
+        marksVersion += 1
         if let data = try? LibraryCache.encoder.encode(Marks(unchecked: unchecked, playlists: playlists)) {
             try? data.write(to: Self.marksURL, options: .atomic)
         }
