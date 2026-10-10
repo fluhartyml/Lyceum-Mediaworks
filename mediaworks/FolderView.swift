@@ -12,6 +12,7 @@
 import SwiftUI
 import AVFoundation
 import QuickLookThumbnailing
+import QuickLook
 
 enum FolderViewMode: String, CaseIterable, Identifiable {
     case list, icons
@@ -59,6 +60,11 @@ struct FolderView: View {
     @State private var renaming: RenameTarget?
     @State private var newName = ""
     @State private var problem: String?
+    // REM  THE INSPECTOR AND ⌘Y IN THE LIBRARY TOO — his ask, 2026-10-10 13:0x: "the inspector is the entrypoint to get the
+    // REM  scraper then the inspector should be on the library too and command y so i can preview without opening in the
+    // REM  theater". The same InspectorPane and Quick Look Commander uses; shown or hidden here, remembered.
+    @AppStorage("libraryInspector") private var showInspector = false
+    @State private var quickLookURL: URL?
     // REM  FOLDER REVEALS — his ask, 2026-10-10 (screen, build 113): "these should have folder >reveals so the folder contents
     // REM  show below a revealed folder or if opened it only shows folder contents." The chevron shows a folder's contents
     // REM  indented under it; double-click still OPENS the folder and shows only its contents. Same as Commander.
@@ -83,7 +89,30 @@ struct FolderView: View {
             }
         }
         .navigationTitle(folder.name)
+        #if os(macOS)
+        .inspector(isPresented: $showInspector) {
+            InspectorPane(item: inspected, many: inspectedMany, size: .small, saved: { reloadToken += 1 })
+                .inspectorColumnWidth(min: 320, ideal: 420, max: 700)
+        }
+        .quickLookPreview($quickLookURL, in: quickLookList)
+        .onChange(of: selection) {
+            // Quick Look follows the highlight while it is open.
+            if quickLookURL != nil, let first = quickLookList.first, !quickLookList.contains(quickLookURL!) { quickLookURL = first }
+        }
+        #endif
         .toolbar {
+            #if os(macOS)
+            ToolbarItem {
+                Button { toggleQuickLook() } label: { Label("Quick Look", systemImage: "eye") }
+                    .keyboardShortcut("y", modifiers: .command)
+                    .lyceumHelp("Quick Look (⌘Y) — preview the highlighted file without opening it in the Theater")
+            }
+            ToolbarItem {
+                Button { showInspector.toggle() } label: { Label("Inspector", systemImage: "sidebar.right") }
+                    .keyboardShortcut("i", modifiers: .command)
+                    .lyceumHelp("Inspector (⌘I) — the highlighted file's tags, and the Web Metadata Scraper")
+            }
+            #endif
             ToolbarItem {
                 Picker("View", selection: $viewMode) {
                     ForEach(FolderViewMode.allCases) { mode in
@@ -209,6 +238,24 @@ struct FolderView: View {
         Spacer().frame(width: 18)
         #endif
     }
+
+    #if os(macOS)
+    /// The one highlighted file or folder the Inspector shows; several highlighted = the "apply to all" view.
+    private var inspected: FolderEntry? { selection.count == 1 ? selection.first.flatMap { entry($0) } : nil }
+    private var inspectedMany: [FolderEntry] { selection.count > 1 ? rows.map(\.entry).filter { selection.contains($0.url) } : [] }
+
+    /// The highlighted files, in the order on screen — folders have nothing for Quick Look but an icon.
+    private var quickLookList: [URL] { rows.map(\.entry).filter { selection.contains($0.url) && !$0.isFolder }.map(\.url) }
+
+    private func toggleQuickLook() {
+        if quickLookURL != nil { quickLookURL = nil; return }
+        guard let first = quickLookList.first else {
+            library.report("Highlight a file first — then ⌘Y shows it in Quick Look")
+            return
+        }
+        quickLookURL = first
+    }
+    #endif
 
     /// Any row on show — in the folder or inside a revealed one.
     private func entry(_ url: URL) -> FolderEntry? {
