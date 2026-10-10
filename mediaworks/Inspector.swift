@@ -916,22 +916,27 @@ struct InspectorPane: View {
             var done = 0
             var skipped: [String] = []
             var failed: [String] = []
-            for (index, entry) in files.enumerated() {
-                library.report("Saving \(index + 1) of \(files.count)…", working: true)
-                if mini.current?.standardizedFileURL == entry.url.standardizedFileURL, mini.isPlaying {
-                    skipped.append("\(entry.name) — playing"); continue
+            // REM  THREE AT A TIME — his yes, 2026-10-10. One after another, each file took 2–4 s on Nineveh
+            // REM  (new index written over the network, then read back); 42 files was two minutes. Every
+            // REM  file still gets its own read-back check. Three, not more: it is one SMB share.
+            var waiting = files.makeIterator()
+            var started = 0
+            await withTaskGroup(of: SaveOutcome.self) { group in
+                func startNext() {
+                    guard let entry = waiting.next() else { return }
+                    started += 1
+                    library.report("Saving \(started) of \(files.count)…", working: true)
+                    group.addTask { @MainActor in await saveOne(entry, edit) }
                 }
-                let before = await TagReader.read(entry)
-                guard before.writeType != nil else { skipped.append(entry.name); continue }
-                let releasedFrom = mini.release(entry.url)
-                do {
-                    try await TagWriter.save(entry.url, edits: [:], picture: edit, before: before,
-                                             instantDelete: instantDelete, library: library)
-                    done += 1
-                } catch {
-                    failed.append("\(entry.name): \(error.localizedDescription)")
+                for _ in 0..<3 { startNext() }
+                for await outcome in group {
+                    switch outcome {
+                    case .saved: done += 1
+                    case .skipped(let note): skipped.append(note)
+                    case .failed(let note): failed.append(note)
+                    }
+                    startNext()
                 }
-                if let releasedFrom { mini.recue(entry.url, from: releasedFrom) }
             }
             library.report("Saved \(done) of \(files.count)")
             var notes: [String] = []
@@ -942,6 +947,26 @@ struct InspectorPane: View {
             pendingPicture = nil
             applying = false
             saved()
+        }
+    }
+
+    private enum SaveOutcome { case saved, skipped(String), failed(String) }
+
+    /// One file of Apply to Many: skips a playing or untaggable file, releases a cued one around the save.
+    private func saveOne(_ entry: FolderEntry, _ edit: PictureEdit?) async -> SaveOutcome {
+        if mini.current?.standardizedFileURL == entry.url.standardizedFileURL, mini.isPlaying {
+            return .skipped("\(entry.name) — playing")
+        }
+        let before = await TagReader.read(entry)
+        guard before.writeType != nil else { return .skipped(entry.name) }
+        let releasedFrom = mini.release(entry.url)
+        defer { if let releasedFrom { mini.recue(entry.url, from: releasedFrom) } }
+        do {
+            try await TagWriter.save(entry.url, edits: [:], picture: edit, before: before,
+                                     instantDelete: instantDelete, library: library)
+            return .saved
+        } catch {
+            return .failed("\(entry.name): \(error.localizedDescription)")
         }
     }
 
