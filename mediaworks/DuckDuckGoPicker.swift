@@ -101,76 +101,105 @@ enum DuckDuckGo {
     """
 
     /// Remembers which grid thumbnail he clicked (a small picture, as the grid shows them).
+    // REM  Also notes WHEN any picture was clicked: a click on a picture that leads off DuckDuckGo collects that
+    // REM  picture AND opens its page (his line 010a, 2026-10-10) — a click on plain link text only opens the page.
     static let clickScript = """
     document.addEventListener('click', e => {
       const img = e.target && e.target.closest ? e.target.closest('img') : null;
       if (img && img.getBoundingClientRect().width < 200) window.__lyceumClicked = img.currentSrc || img.src;
+      if (img) window.__lyceumPictureClickAt = Date.now();
     }, true);
     """
 
+    /// True when the click that is leaving the page was on a picture.
+    static let pictureClickedScript = "(Date.now() - (window.__lyceumPictureClickAt || 0)) < 2000"
+
     /// Double-click a picture to use it. The double-click's first click has already asked DuckDuckGo to show it
     /// large; Lyceum waits a moment, then takes the large one (not the small grid thumbnail).
+    // REM  OFF DUCKDUCKGO (a band's page, a fan wiki) there is no large view to wait for: the double-clicked
+    // REM  picture's own address is sent, so exactly that picture is collected.
     static let doubleClickScript = """
     document.addEventListener('dblclick', e => {
       const img = e.target && e.target.closest ? e.target.closest('img') : null;
-      if (img) { e.preventDefault(); window.webkit.messageHandlers.lyceumPick.postMessage('__open__'); }
+      if (!img) return;
+      e.preventDefault();
+      const onDuck = location.hostname.endsWith('duckduckgo.com');
+      window.webkit.messageHandlers.lyceumPick.postMessage(onDuck ? '__open__' : 'src:' + (img.currentSrc || img.src));
     }, true);
     """
 }
 
 /// Talks to the page: carries a double-clicked picture's address out, and runs "Use This Picture".
 @MainActor
-final class DuckDuckGoBridge: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationDelegate {
+final class DuckDuckGoBridge: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigationDelegate, ScraperBridge {
     weak var webView: WKWebView?
+    let page = PageAddress()
     var picked: (URL) -> Void = { _ in }
+    /// Right-click → Open Image in New Window (Mac).
+    var openInWindow: (URL) -> Void = { _ in }
+    /// 012's name for the file on show — "Poster" or "Album Art".
+    var pictureWord = "Poster"
     /// "View File" — a picture's own file, to be shown full size in Lyceum's viewer.
     var opened: (URL) -> Void = { _ in }
 
     // REM  VIEW FILE OPENS LYCEUM'S VIEWER — his ask, 2026-10-08: "can view file do something like open a new tab
     // REM  to view the picture? and then if you like it is there a choose image button?" DuckDuckGo's View File asks
-    // REM  for a NEW TAB; this window has none, so the request is caught here and the address goes to the viewer
-    // REM  (full size, zoomable, Use This Picture / Back to Results). Any other trip off DuckDuckGo is caught too,
-    // REM  so the results page is never lost with no Back button.
+    // REM  for a NEW TAB; this window has none, so a picture's address goes to the viewer (full size, zoomable,
+    // REM  Use This Picture / Back to Results).
+    // REM  THE WALL IS GONE — his line 010a, 2026-10-10: "dont block links fromm the duck duck go, it fills the shelf
+    // REM  but opens the web page". Any other new-window link opens HERE, in this window (line 011: links open in
+    // REM  the same window), and the 10-09 swap of every site address for "show the picture" is retired.
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if let url = action.request.url { show(url, in: webView) }
+        guard let url = action.request.url else { return nil }
+        if Self.isPicture(url) {
+            opened(url)
+        } else {
+            collectIfPictureClicked(in: webView) { webView.load(action.request) }
+        }
         return nil
     }
 
-    /// Opens the viewer on a PICTURE — never on a web page.
-    // REM  HIS CATCH, 2026-10-09: "sometimes if i touch the picture it tries to view the original file but it opens
-    // REM  to a blank screen, why doesnt it scrape the picture i double clicked". A click on DuckDuckGo's large
-    // REM  picture follows its link to the WEBSITE it came from; that page address went to the picture viewer,
-    // REM  which cannot draw a web page — blank. Now an address that is a picture opens as before; any other
-    // REM  address is swapped for the picture he clicked (the same choice Use This Picture makes).
-    private func show(_ url: URL, in webView: WKWebView) {
+    private static func isPicture(_ url: URL) -> Bool {
         let pictureTypes: Set<String> = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "tif", "tiff", "heic", "avif"]
-        if pictureTypes.contains(url.pathExtension.lowercased()) || DuckDuckGo.original(of: url) != nil {
-            opened(url)
-            return
-        }
-        webView.evaluateJavaScript(DuckDuckGo.largestShownImage) { [weak self] result, _ in
+        return pictureTypes.contains(url.pathExtension.lowercased()) || DuckDuckGo.original(of: url) != nil
+    }
+
+    /// When the click that is leaving DuckDuckGo was on a picture, that picture goes onto the shelf too.
+    // REM  HIS CATCH, 2026-10-09, still honoured: a click on DuckDuckGo's large picture follows its link to the
+    // REM  site it came from — "why doesnt it scrape the picture i double clicked". Now it does both: the picture
+    // REM  he clicked is collected (the same choice Use This Picture makes) AND the site opens.
+    private func collectIfPictureClicked(in webView: WKWebView, then go: @escaping @MainActor () -> Void) {
+        guard webView.url?.host?.hasSuffix("duckduckgo.com") == true else { go(); return }
+        webView.evaluateJavaScript(DuckDuckGo.pictureClickedScript) { [weak self] result, _ in
             Task { @MainActor in
-                if let text = result as? String, let picture = URL(string: text) { self?.opened(picture) }
+                if (result as? Bool) == true { self?.pickLargest() }
+                go()
             }
         }
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
-        if action.targetFrame?.isMainFrame == true, let url = action.request.url,
-           let host = url.host, !host.hasSuffix("duckduckgo.com"), url.scheme?.hasPrefix("http") == true {
-            show(url, in: webView)
-            decisionHandler(.cancel)
+        if action.targetFrame?.isMainFrame == true, action.navigationType == .linkActivated,
+           let host = action.request.url?.host, !host.hasSuffix("duckduckgo.com") {
+            collectIfPictureClicked(in: webView) { decisionHandler(.allow) }
             return
         }
         decisionHandler(.allow)
     }
 
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) { page.follow(webView) }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { page.follow(webView) }
+
     nonisolated func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         // WebKit calls this on the main thread; the message's body may only be read there.
         let text = MainActor.assumeIsolated { message.body as? String }
         Task { @MainActor in
+            if let text, text.hasPrefix("src:"), let url = URL(string: String(text.dropFirst(4))) {
+                self.picked(url)
+                return
+            }
             guard text == "__open__" else { return }
             try? await Task.sleep(for: .seconds(1.5))   // let DuckDuckGo open it large
             self.pickLargest()
@@ -204,20 +233,25 @@ final class DuckDuckGoBridge: NSObject, WKScriptMessageHandler, WKUIDelegate, WK
 struct DuckDuckGoView: NSViewRepresentable {
     let address: URL?
     let bridge: DuckDuckGoBridge
-    func makeNSView(context: Context) -> WKWebView { DuckDuckGoView.make(bridge, address) }
-    func updateNSView(_ view: WKWebView, context: Context) { DuckDuckGoView.update(view, address) }
+    func makeNSView(context: Context) -> WKWebView { DuckDuckGoView.make(bridge, address, context.coordinator) }
+    func updateNSView(_ view: WKWebView, context: Context) { DuckDuckGoView.update(view, address, context.coordinator) }
+    func makeCoordinator() -> Loaded { Loaded() }
 }
 #else
 struct DuckDuckGoView: UIViewRepresentable {
     let address: URL?
     let bridge: DuckDuckGoBridge
-    func makeUIView(context: Context) -> WKWebView { DuckDuckGoView.make(bridge, address) }
-    func updateUIView(_ view: WKWebView, context: Context) { DuckDuckGoView.update(view, address) }
+    func makeUIView(context: Context) -> WKWebView { DuckDuckGoView.make(bridge, address, context.coordinator) }
+    func updateUIView(_ view: WKWebView, context: Context) { DuckDuckGoView.update(view, address, context.coordinator) }
+    func makeCoordinator() -> Loaded { Loaded() }
 }
 #endif
 
 extension DuckDuckGoView {
-    @MainActor static func make(_ bridge: DuckDuckGoBridge, _ address: URL?) -> WKWebView {
+    /// The search last loaded — so a site he walked to is never undone by SwiftUI redrawing the view.
+    final class Loaded { var address: URL? }
+
+    @MainActor static func make(_ bridge: DuckDuckGoBridge, _ address: URL?, _ loaded: Loaded) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         // REM  A private, throwaway session: nothing he searches here is kept on disk.
         configuration.websiteDataStore = .nonPersistent()
@@ -226,32 +260,29 @@ extension DuckDuckGoView {
             WKUserScript(source: DuckDuckGo.doubleClickScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         configuration.userContentController.addUserScript(
             WKUserScript(source: DuckDuckGo.clickScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
-        let view = WKWebView(frame: .zero, configuration: configuration)
+        let view = WKWebView.scraper(configuration)
         view.uiDelegate = bridge
         view.navigationDelegate = bridge
         #if os(macOS)
         view.allowsMagnification = true   // pinch to zoom on the trackpad
+        if let scraper = view as? ScraperWebView {
+            scraper.pictureWord = { [weak bridge] in bridge?.pictureWord ?? "Poster" }
+            scraper.usePicture = { [weak bridge] in bridge?.picked($0) }
+            scraper.openPicture = { [weak bridge] in bridge?.openInWindow($0) }
+        }
         #endif
+        view.allowsBackForwardNavigationGestures = true
         bridge.webView = view
-        if let address { view.load(URLRequest(url: address)) }
+        update(view, address, loaded)
         return view
     }
 
-    @MainActor static func update(_ view: WKWebView, _ address: URL?) {
-        guard let address, view.url?.absoluteString != address.absoluteString,
-              (view.url.map { DuckDuckGo.sameSearch($0, address) } ?? false) == false else { return }
+    // REM  ONLY A NEW SEARCH RELOADS — the old check compared against the page on show, so once he followed a link to
+    // REM  a band's site any redraw would have yanked him back to DuckDuckGo.
+    @MainActor static func update(_ view: WKWebView, _ address: URL?, _ loaded: Loaded) {
+        guard let address, address != loaded.address else { return }
+        loaded.address = address
         view.load(URLRequest(url: address))
-    }
-}
-
-extension DuckDuckGo {
-    /// True when the page is still on the search we asked for (DuckDuckGo adds its own fields to the address).
-    static func sameSearch(_ a: URL, _ b: URL) -> Bool {
-        func key(_ u: URL) -> String {
-            let items = URLComponents(url: u, resolvingAgainstBaseURL: false)?.queryItems ?? []
-            return ["q", "iaf"].map { name in items.first { $0.name == name }?.value ?? "" }.joined(separator: "|")
-        }
-        return key(a) == key(b)
     }
 }
 
@@ -260,6 +291,8 @@ extension DuckDuckGo {
 /// One picture at its true size: zoom it, then use it or go back to the results.
 struct PictureViewer: View {
     let address: URL
+    var useTitle = "Use This Picture"
+    var backTitle = "Back to Results"
     let use: (Data) -> Void
     let back: () -> Void
 
@@ -274,7 +307,7 @@ struct PictureViewer: View {
     var body: some View {
         VStack(spacing: 10) {
             HStack(spacing: 12) {
-                Button { back() } label: { Label("Back to Results", systemImage: "chevron.left") }
+                Button { back() } label: { Label(backTitle, systemImage: "chevron.left") }
                     .lyceumHelp("Back to Results — return to DuckDuckGo's pictures")
                 if let image { Text("\(image.width) × \(image.height)").foregroundStyle(.secondary).monospacedDigit() }
                 Spacer()
@@ -286,7 +319,7 @@ struct PictureViewer: View {
                     .lyceumHelp("Fit — the whole picture in the window")
                 Button("Actual Size") { fit = false; zoom = 1 }
                     .lyceumHelp("Actual Size — one picture pixel per screen pixel")
-                Button("Use This Picture") { if let data { use(data) } }
+                Button(useTitle) { if let data { use(data) } }
                     .disabled(data == nil)
                     .keyboardShortcut(.defaultAction)
                     .lyceumHelp("Use This Picture — put this picture in 012, ready for Save Tags")

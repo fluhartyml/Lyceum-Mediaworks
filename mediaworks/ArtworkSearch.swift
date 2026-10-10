@@ -218,6 +218,8 @@ struct ArtworkSearchSheet: View {
     let initial: String
     /// Which tab it opens on: DuckDuckGo for Find Picture…, Wikipedia for Find Info & Picture….
     var startOn: ArtworkSource = .duckduckgo
+    /// A video's picture is a Poster, audio's is Album Art — the right-click item says which.
+    var isVideo = true
     /// The picture (if any) and the facts (Wikipedia only) he picked.
     let pick: (Data?, [TagField: String]) -> Void
 
@@ -254,7 +256,8 @@ struct ArtworkSearchSheet: View {
         VStack(alignment: .leading, spacing: 14) {
             // REM  ONE NAME FOR WHAT IT DOES — his catch, 2026-10-09: opened by Find Info & Picture… it still said
             // REM  "Find Picture". Since the tray (build 97) every tab can bring both, so it is named for both.
-            Text("Find Info & Picture").font(.lyceumHeadline)
+            // REM  RENAMED 2026-10-10, his line 008: "we will refere to that page or sheet as 'the web metadata scraper'".
+            Text("Web Metadata Scraper").font(.lyceumHeadline)
             HStack(spacing: 10) {
                 TextField("Search", text: $text)
                     .textFieldStyle(.roundedBorder)
@@ -307,7 +310,7 @@ struct ArtworkSearchSheet: View {
                             : "Open in Browser — the same DuckDuckGo image search in your own browser. Drag the picture you like onto Lyceum's picture area.")
             }
             Text(source == .duckduckgo
-                 ? "Double-click a picture to collect it — or click one to see it large, then Use This Picture."
+                 ? "Double-click a picture to collect it. Click a result to open its site here — highlight words, then Select Text. Right-click a picture to use it as the \(isVideo ? "poster" : "album art")."
                  : source == .imdb
                  ? "Highlight words on the page, then Select Text and choose the tag. They are collected below."
                  : source == .wikipedia
@@ -316,8 +319,9 @@ struct ArtworkSearchSheet: View {
                 .font(.lyceumDetail)
                 .foregroundStyle(.secondary)
             if source == .imdb {
-                IMDbPane(address: imdbAddress, bridge: imdbBridge, picks: $collectedInfo)
+                IMDbPane(address: imdbAddress, bridge: imdbBridge, picks: $collectedInfo, isVideo: isVideo)
             } else if source == .duckduckgo {
+                if viewing == nil { ScraperBar(bridge: bridge, picks: $collectedInfo, isVideo: isVideo) }
                 DuckDuckGoView(address: duckAddress, bridge: bridge)
                     .frame(maxWidth: .infinity, minHeight: 420, maxHeight: .infinity)
                     .layoutPriority(1)
@@ -398,6 +402,17 @@ struct ArtworkSearchSheet: View {
             text = initial
             bridge.picked = { useShown($0) }
             bridge.opened = { viewing = $0 }
+            imdbBridge.picked = { useShown($0) }
+            #if os(macOS)
+            // REM  Line 016: a right-clicked picture opens in its own WINDOW, not a tab; Use as … there collects it.
+            let pages = bridge
+            bridge.openInWindow = { url in
+                PictureWindow.show(url, pictureWord: pages.pictureWord) { collect(picture: $0, from: url.host ?? "Web") }
+            }
+            imdbBridge.openInWindow = bridge.openInWindow
+            #endif
+            bridge.pictureWord = isVideo ? "Poster" : "Album Art"
+            imdbBridge.pictureWord = bridge.pictureWord
             if !initial.isEmpty { run() }
         }
         // REM  The window stays open between uses (Mac); a new Find Picture… brings a new file's words.
@@ -405,6 +420,8 @@ struct ArtworkSearchSheet: View {
         // REM  Planets" opened on top of the Assignment Outer Space viewer left open from the last file; Use This
         // REM  Picture there would have put the WRONG poster on the new file.
         .onChange(of: initial) {
+            bridge.pictureWord = isVideo ? "Poster" : "Album Art"
+            imdbBridge.pictureWord = bridge.pictureWord
             viewing = nil; source = startOn; text = initial
             collectedInfo = [:]; collectedPicture = nil; collectedFrom = ""   // a new file starts an empty collection
             if !initial.isEmpty { run() }
@@ -604,6 +621,8 @@ final class PicturePick {
     var info: [TagField: String] = [:]
     /// The tab the window opens on.
     var startSource: ArtworkSource = .duckduckgo
+    /// Whether the file is a video (its picture is a Poster) or audio (Album Art).
+    var isVideo = true
     /// Changes on every pick, so the Inspector notices the same picture picked twice.
     var resultToken = UUID()
 
@@ -617,7 +636,7 @@ final class PicturePick {
 struct FindPictureWindow: View {
     @Environment(PicturePick.self) private var pick
     var body: some View {
-        ArtworkSearchSheet(initial: pick.initial, startOn: pick.startSource) { pick.deliver($0, info: $1) }
+        ArtworkSearchSheet(initial: pick.initial, startOn: pick.startSource, isVideo: pick.isVideo) { pick.deliver($0, info: $1) }
     }
 }
 

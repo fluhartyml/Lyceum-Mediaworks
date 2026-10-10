@@ -600,6 +600,8 @@ struct InspectorPane: View {
     #endif
 
     private var canSave: Bool { file.writeType != nil && !saving }
+    /// For the scraper's picture wording: Poster for a video, Album Art for audio.
+    private var findIsVideo: Bool { (many.count > 1 ? many.first : item)?.isVideo ?? true }
     private var changed: [TagField: String] {
         edits.filter { field, text in text.trimmingCharacters(in: .whitespacesAndNewlines) != (file.tags[field] ?? "") }
     }
@@ -648,6 +650,7 @@ struct InspectorPane: View {
             guard findingPicture else { return }
             findingPicture = false
             pickWindow.startSource = findOn
+            pickWindow.isVideo = findIsVideo
             pickWindow.initial = searchWords
             openWindow(id: "findpicture")
         }
@@ -659,7 +662,7 @@ struct InspectorPane: View {
         }
         #else
         .sheet(isPresented: $findingPicture) {
-            ArtworkSearchSheet(initial: searchWords, startOn: findOn) { take($0, $1) }
+            ArtworkSearchSheet(initial: searchWords, startOn: findOn, isVideo: findIsVideo) { take($0, $1) }
         }
         #endif
         // REM  DROP A PICTURE ANYWHERE ON THE INSPECTOR — the web fallback's other half (his "fall back on a general

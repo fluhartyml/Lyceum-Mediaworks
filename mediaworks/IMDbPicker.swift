@@ -25,54 +25,20 @@ enum IMDb {
         return parts.url
     }
 
-    /// The fields Select Text can fill, in the Inspector's order. Director goes to 002 Artist, as Wikipedia's does.
-    static let fields: [TagField] = [.title, .artist, .genre, .year, .description, .longDescription, .comment]
-
-    /// The words as they go into the field. Nil when the selection has nothing that field can use.
-    static func clean(_ selected: String, for field: TagField) -> String? {
-        let trimmed = selected.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        switch field {
-        case .year:
-            // REM  IMDb writes years inside other text ("1959", "(1959)", "1959–1962", "Released March 4, 1959").
-            // REM  The first four-digit year in the highlight is taken; he sees it in the list before it is used.
-            guard let range = trimmed.range(of: #"(18|19|20)\d{2}"#, options: .regularExpression) else { return nil }
-            return String(trimmed[range])
-        case .description, .longDescription, .comment:
-            return trimmed
-        default:
-            return trimmed.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        }
-    }
-
-    /// What is highlighted on the page right now.
-    static let selectionScript = "window.getSelection ? window.getSelection().toString() : ''"
-
-    // REM  A DRAG SELECTS, IT NEVER FOLLOWS — his yes, 2026-10-10. The release date is a link, and letting go after
-    // REM  dragging across it opened IMDb's release calendar every time ("everytime i highlight the release date and
-    // REM  let go it opens this page"). Links stop being draggable objects, and a mouse-up that MOVED more than a few
-    // REM  points is not a click. A plain click on a link still follows it.
-    static let dragSelectsScript = """
-    (function () {
-      var style = document.createElement('style');
-      style.textContent = 'a { -webkit-user-drag: none !important; }';
-      (document.head || document.documentElement).appendChild(style);
-      var downX = 0, downY = 0;
-      window.addEventListener('mousedown', function (e) { downX = e.clientX; downY = e.clientY; }, true);
-      window.addEventListener('click', function (e) {
-        if (Math.abs(e.clientX - downX) > 4 || Math.abs(e.clientY - downY) > 4) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-      }, true);
-    })();
-    """
+    // REM  Select Text's fields, cleaning and the drag rule moved to WebScraper.swift (2026-10-10): every page in
+    // REM  the Web Metadata Scraper shares them now, not just IMDb.
 }
 
 /// Talks to the IMDb page: Back, Forward, zoom, and reading the highlighted text.
 @MainActor
-final class IMDbBridge: NSObject, WKUIDelegate {
+final class IMDbBridge: NSObject, WKUIDelegate, WKNavigationDelegate, ScraperBridge {
     weak var webView: WKWebView?
+    let page = PageAddress()
+    /// Right-click → Use as Poster / Album Art (Mac).
+    var picked: (URL) -> Void = { _ in }
+    /// Right-click → Open Image in New Window (Mac).
+    var openInWindow: (URL) -> Void = { _ in }
+    var pictureWord = "Poster"
 
     // REM  A link that asks for a NEW window opens in this one instead — this window has no tabs.
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
@@ -81,8 +47,8 @@ final class IMDbBridge: NSObject, WKUIDelegate {
         return nil
     }
 
-    func back() { webView?.goBack() }
-    func forward() { webView?.goForward() }
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) { page.follow(webView) }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { page.follow(webView) }
 
     func zoom(by step: Double) {
         guard let webView else { return }
@@ -96,11 +62,6 @@ final class IMDbBridge: NSObject, WKUIDelegate {
         #endif
     }
 
-    func selectedText(_ done: @escaping (String) -> Void) {
-        webView?.evaluateJavaScript(IMDb.selectionScript) { result, _ in
-            Task { @MainActor in done((result as? String) ?? "") }
-        }
-    }
 }
 
 #if os(macOS)
@@ -129,12 +90,16 @@ extension IMDbView {
         let configuration = WKWebViewConfiguration()
         // REM  A private, throwaway session, like DuckDuckGo's: nothing he looks up is kept on disk.
         configuration.websiteDataStore = .nonPersistent()
-        configuration.userContentController.addUserScript(
-            WKUserScript(source: IMDb.dragSelectsScript, injectionTime: .atDocumentEnd, forMainFrameOnly: false))
-        let view = WKWebView(frame: .zero, configuration: configuration)
+        let view = WKWebView.scraper(configuration)
         view.uiDelegate = bridge
+        view.navigationDelegate = bridge
         #if os(macOS)
         view.allowsMagnification = true
+        if let scraper = view as? ScraperWebView {
+            scraper.pictureWord = { [weak bridge] in bridge?.pictureWord ?? "Poster" }
+            scraper.usePicture = { [weak bridge] in bridge?.picked($0) }
+            scraper.openPicture = { [weak bridge] in bridge?.openInWindow($0) }
+        }
         #endif
         view.allowsBackForwardNavigationGestures = true
         bridge.webView = view
@@ -148,51 +113,26 @@ extension IMDbView {
     }
 }
 
-/// The IMDb tab of Find Picture…: the page, its controls, and the text he has picked so far.
+/// The IMDb tab of the Web Metadata Scraper: the page, its controls, and Select Text.
 struct IMDbPane: View {
     let address: URL?
     let bridge: IMDbBridge
     /// The window's collection — Select Text adds to it directly.
     @Binding var picks: [TagField: String]
-    @State private var message: String?
+    let isVideo: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                Button { bridge.back() } label: { Image(systemName: "chevron.left") }
-                    .lyceumHelp("Back — the IMDb page before this one")
-                Button { bridge.forward() } label: { Image(systemName: "chevron.right") }
-                    .lyceumHelp("Forward — the IMDb page after this one")
+            HStack(alignment: .top, spacing: 10) {
+                ScraperBar(bridge: bridge, picks: $picks, isVideo: isVideo)
                 Button { bridge.zoom(by: -0.25) } label: { Image(systemName: "minus.magnifyingglass") }
                     .lyceumHelp("Zoom Out — make the page smaller")
                 Button { bridge.zoom(by: 0.25) } label: { Image(systemName: "plus.magnifyingglass") }
                     .lyceumHelp("Zoom In — make the page bigger")
-                Spacer()
-                Menu("Select Text") {
-                    ForEach(IMDb.fields) { field in
-                        Button("\(field.number)  \(field == .artist ? "Director (Artist)" : field.label)") { select(into: field) }
-                    }
-                }
-                .fixedSize()
-                .lyceumHelp("Select Text — highlight words on the IMDb page, then choose which tag they go in")
             }
             IMDbView(address: address, bridge: bridge)
                 .frame(maxWidth: .infinity, minHeight: 360, maxHeight: .infinity)
                 .layoutPriority(1)
-            if let message { Text(message).foregroundStyle(.secondary) }
-        }
-    }
-
-    private func select(into field: TagField) {
-        bridge.selectedText { text in
-            if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                message = "Highlight some words on the IMDb page first, then Select Text."
-            } else if let value = IMDb.clean(text, for: field) {
-                picks[field] = value
-                message = nil
-            } else {
-                message = "There is no year in the highlighted words."
-            }
         }
     }
 }
