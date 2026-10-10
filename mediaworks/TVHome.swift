@@ -13,6 +13,7 @@
 #if os(tvOS)
 import SwiftUI
 import AVKit
+import MediaPlayer
 import Network
 
 struct TVHome: View {
@@ -79,6 +80,8 @@ final class TVTheater {
             problem = nil
             let item = AVPlayerItem(url: url)
             player.replaceCurrentItem(with: item)
+            readyMediaCommands()
+            publishNowPlaying((path as NSString).deletingPathExtension.components(separatedBy: "/").last ?? path)
             if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
             endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { _ in
                 MainActor.assumeIsolated { self.next() }
@@ -95,6 +98,52 @@ final class TVTheater {
         player.seek(to: CMTime(seconds: max(0, player.currentTime().seconds + seconds), preferredTimescale: 600))
     }
     func stop() { player.pause(); player.replaceCurrentItem(with: nil); queue = []; presented = false }
+
+    // MARK: Forward / reverse buttons — TV remotes over HDMI, Control Center's Apple TV Remote (platforms 004e)
+
+    // REM  HIS ADDITION, 2026-10-10: "forgot press forward or reverse next video or previous video". Those buttons are not
+    // REM  clickpad presses; they arrive as the system's media commands. Forward / skip forward = next video, reverse /
+    // REM  skip back = previous; a held fast-forward / rewind (remotes that send one) scrubs. The title goes to the system
+    // REM  so those remotes show what is playing.
+    @ObservationIgnored private var commandsReady = false
+    @ObservationIgnored private var scrubTimer: Timer?
+
+    private func readyMediaCommands() {
+        guard !commandsReady else { return }
+        commandsReady = true
+        let center = MPRemoteCommandCenter.shared()
+        for command in [center.nextTrackCommand, center.skipForwardCommand] {
+            command.isEnabled = true
+            command.addTarget { _ in MainActor.assumeIsolated { self.next() }; return .success }
+        }
+        for command in [center.previousTrackCommand, center.skipBackwardCommand] {
+            command.isEnabled = true
+            command.addTarget { _ in MainActor.assumeIsolated { self.previous() }; return .success }
+        }
+        center.togglePlayPauseCommand.addTarget { _ in
+            MainActor.assumeIsolated { if self.isPlaying { self.player.pause() } else { self.player.play() } }; return .success
+        }
+        center.playCommand.addTarget { _ in MainActor.assumeIsolated { self.player.play() }; return .success }
+        center.pauseCommand.addTarget { _ in MainActor.assumeIsolated { self.player.pause() }; return .success }
+        for (command, step) in [(center.seekForwardCommand, 10.0), (center.seekBackwardCommand, -10.0)] {
+            command.addTarget { event in
+                MainActor.assumeIsolated {
+                    self.scrubTimer?.invalidate()
+                    if (event as? MPSeekCommandEvent)?.type == .beginSeeking {
+                        self.scrubTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in
+                            MainActor.assumeIsolated { self.skip(step) }
+                        }
+                    }
+                }
+                return .success
+            }
+        }
+    }
+
+    /// Tells the system what is playing — the title shows on remotes and in Control Center.
+    private func publishNowPlaying(_ title: String) {
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = [MPMediaItemPropertyTitle: title]
+    }
 
     // MARK: The iPhone remote (platforms 001)
 
