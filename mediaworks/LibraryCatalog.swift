@@ -162,6 +162,30 @@ final class LibraryCatalog {
         guard let data = try? LibraryCache.encoder.encode(snapshot) else { return }
         payload = data
         try? data.write(to: LibraryCache.fileURL, options: .atomic)
+        saveToCloudSoon()
+    }
+
+    // MARK: The iCloud copy (platforms 002a)
+
+    @ObservationIgnored private var cloudTask: Task<Void, Never>?
+    @ObservationIgnored private var lastCloudSave: Date = .distantPast
+    @ObservationIgnored private var cloudProblem: String?
+
+    /// Saves the current cache to iCloud — at most every ten minutes, always the newest copy.
+    private func saveToCloudSoon() {
+        guard cloudTask == nil else { return }
+        cloudTask = Task {
+            let wait = 600 - Date.now.timeIntervalSince(lastCloudSave)
+            if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+            let problem = await LibraryCloud.upload(payload, made: snapshot?.made ?? .now)
+            lastCloudSave = .now
+            // REM  One line per new problem, not one every ten minutes — a Mac with no iCloud account is a fact, not news.
+            if problem != cloudProblem {
+                report(problem.map { "Library copy to iCloud failed: \($0)" } ?? "Library copy saved to iCloud")
+            }
+            cloudProblem = problem
+            cloudTask = nil
+        }
     }
 
     // MARK: The checkmark on the Mac itself

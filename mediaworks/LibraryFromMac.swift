@@ -23,6 +23,8 @@ final class MacLibrary {
     private(set) var looking = false
     /// When this device last heard from the Mac.
     private(set) var heard: Date?
+    /// True when the copy on show came from iCloud because the Mac was out of reach (platforms 002a).
+    private(set) var fromCloud = false
     @ObservationIgnored private var browser: NWBrowser?
     /// This device's copies of the files — Off, Automatic or Manual (DeviceSync.swift).
     let sync = DeviceSync()
@@ -113,13 +115,21 @@ final class MacLibrary {
             take(fresh, data)
         }
         guard let data = await Self.ask(CacheRequest(op: .get)),
-              let fresh = try? LibraryCache.decoder.decode(LibrarySnapshot.self, from: data) else { return }
+              let fresh = try? LibraryCache.decoder.decode(LibrarySnapshot.self, from: data) else {
+            // REM  THE MAC IS OUT OF REACH → the copy it last saved to iCloud, if that is newer than the one on hand.
+            if let cloud = await LibraryCloud.download(), cloud.made > (snapshot?.made ?? .distantPast),
+               let fresh = try? LibraryCache.decoder.decode(LibrarySnapshot.self, from: cloud.data) {
+                take(fresh, cloud.data, fromCloud: true)
+            }
+            return
+        }
         take(fresh, data)
     }
 
-    private func take(_ fresh: LibrarySnapshot, _ data: Data) {
+    private func take(_ fresh: LibrarySnapshot, _ data: Data, fromCloud: Bool = false) {
         snapshot = fresh
-        heard = .now
+        self.fromCloud = fromCloud
+        if !fromCloud { heard = .now }
         try? data.write(to: LibraryCache.fileURL, options: .atomic)
         syncNow()
     }
@@ -289,7 +299,7 @@ struct MacLibraryView: View {
                 CachedFolderList(folder: snapshot.root, path: "", isTop: true)
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         VStack(spacing: 2) {
-                            Text("From \(snapshot.macName) · \(snapshot.made.formatted(date: .abbreviated, time: .shortened))\(library.heard == nil ? " · saved copy" : "")")
+                            Text("From \(snapshot.macName) · \(snapshot.made.formatted(date: .abbreviated, time: .shortened))\(library.fromCloud ? " · from iCloud" : library.heard == nil ? " · saved copy" : "")")
                             if !library.pending.isEmpty {
                                 Text("\(library.pending.count) change\(library.pending.count == 1 ? "" : "s") waiting for your Mac")
                             }
