@@ -195,6 +195,19 @@ extension LibrarySnapshot {
         }
         return folder.files.first { $0.name == name }
     }
+
+    /// The media files in the folder holding `path`, as library-relative paths, in the folder's order.
+    func siblings(of path: String) -> [String] {
+        var parts = path.split(separator: "/").map(String.init)
+        parts.removeLast()
+        var folder = root
+        for part in parts {
+            guard let next = folder.folders.first(where: { $0.name == part }) else { return [path] }
+            folder = next
+        }
+        let prefix = parts.isEmpty ? "" : parts.joined(separator: "/") + "/"
+        return folder.files.filter(\.isMedia).map { prefix + $0.name }
+    }
 }
 
 /// The Library on iPhone and iPad: the Mac's folders and files, read from the cache.
@@ -373,6 +386,9 @@ private struct CachedFileView: View {
 
     private var file: CachedFile { library.snapshot?.file(at: path) ?? fallback }
     private var thumbedUp: Bool { library.snapshot?.playlists?[LibraryCache.thumbsUp]?.contains(path) ?? false }
+    #if os(iOS)
+    @Environment(PhonePlayer.self) private var phone: PhonePlayer?
+    #endif
 
     var body: some View {
         ScrollView {
@@ -380,6 +396,23 @@ private struct CachedFileView: View {
                 CachedPicture(data: file.info?.thumbnail, isVideo: file.isVideo)
                     .frame(maxWidth: .infinity, maxHeight: 260)
                 Text(file.name).font(.lyceumHeadline).textSelection(.enabled)
+                #if os(iOS)
+                // REM  PLAY — this device's copy (platforms 002c, P02). Next / Previous step through the copies in the same folder.
+                if file.isMedia, let phone {
+                    if library.sync.hasCopy(path, size: file.size) {
+                        Button {
+                            let around = (library.snapshot?.siblings(of: path) ?? [path]).filter { sibling in
+                                library.sync.hasCopy(sibling, size: library.snapshot?.file(at: sibling)?.size)
+                            }
+                            phone.play(path, in: around)
+                        } label: { Label("Play", systemImage: "play.fill") }
+                        .buttonStyle(.borderedProminent)
+                    } else {
+                        Text("Not on this device yet — set Sync to Automatic, or to Manual with this file checked.")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                #endif
                 if file.isMedia {
                     // REM  👍 checks the file and adds it to "Thumbs Up"; 👎 unchecks it — "thats the point of thumbs downing it
                     // REM  to take it out of synch rotation." Nothing is ever deleted (platforms 001c).

@@ -28,7 +28,12 @@ struct ContentView: View {
             // REM  ONLY THE MAC ASKS FOR THE LIBRARY FOLDER — his ruling, 2026-10-10 (FromYourMacView.swift).
             // REM  The Mac's cache once one has arrived (LibraryFromMac.swift); until then, where it comes from.
             if fromMac.snapshot != nil {
+                #if os(iOS)
+                // REM  Library and Theater as two swipeable pages, and the full-screen player (PhonePlayer.swift, P01–P09).
+                PhoneHome(library: fromMac)
+                #else
                 MacLibraryView(library: fromMac)
+                #endif
             } else {
                 FromYourMacView()
             }
