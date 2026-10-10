@@ -83,7 +83,8 @@ nonisolated struct LibrarySnapshot: Codable, Sendable {
 nonisolated struct CacheRequest: Codable, Sendable, Hashable {
     /// `file` asks for one file's bytes, for a device's synced copy (platforms 002c).
     /// `setTags` and `trash` come from an iPad (platforms 003a/003b) — the Mac carries them out.
-    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash }
+    /// `unthumb` takes a file out of Thumbs Up (the TV's playlist upkeep, 004c).
+    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash, unthumb }
     var op: Op
     /// The file, relative to the library root ("Music Videos/Rock/1990s/Queensryche - Silent Lucidity.mp4").
     var path: String?

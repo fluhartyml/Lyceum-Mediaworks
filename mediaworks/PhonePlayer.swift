@@ -113,6 +113,7 @@ final class PhonePlayer {
 struct PhoneHome: View {
     let library: MacLibrary
     @State private var player = PhonePlayer()
+    @State private var remote = TVRemote()
 
     var body: some View {
         @Bindable var player = player
@@ -161,6 +162,8 @@ struct PhoneHome: View {
         }
         .environment(player)
         .environment(library)
+        .environment(remote)
+        .task { await remote.keepWatching() }
         .fullScreenCover(isPresented: $player.fullScreen) {
             FullScreenPlayer()
                 .environment(player)
@@ -169,12 +172,22 @@ struct PhoneHome: View {
     }
 }
 
-/// The Theater page when no video is full screen: what is playing, and a way back into it.
+/// The Theater page when no video is full screen: what is playing, and a way back into it — and, when an Apple TV
+/// running Lyceum is on the network, the remote for it.
 private struct TheaterPage: View {
     @Environment(PhonePlayer.self) private var player
     @Environment(MacLibrary.self) private var library
+    @Environment(TVRemote.self) private var remote
 
     var body: some View {
+        if let tv = remote.state {
+            RemotePanel(tv: tv)
+        } else {
+            phoneTheater
+        }
+    }
+
+    private var phoneTheater: some View {
         VStack(spacing: 18) {
             Image(systemName: "play.rectangle").font(.system(size: 64)).foregroundStyle(.tint)
             Text("Theater").font(.lyceumTitle)
@@ -194,6 +207,78 @@ private struct TheaterPage: View {
         .fixedSize(horizontal: false, vertical: true)
         .padding(30)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - The Apple TV remote (platforms 001 / 001a / 001c)
+
+/// The Squeezebox-style remote: what the TV is playing — poster or album art and tags, from the Mac's library — six
+/// buttons that act on the TV in real time, and 👍/👎 (which go to the Mac, the gatekeeper). No picture, no scrubber.
+private struct RemotePanel: View {
+    let tv: RemoteState
+    @Environment(TVRemote.self) private var remote
+    @Environment(MacLibrary.self) private var library
+    @State private var flash: String?
+
+    var body: some View {
+        let file = tv.path.flatMap { library.snapshot?.file(at: $0) }
+        VStack(spacing: 20) {
+            Label(tv.tvName, systemImage: "appletv").font(.lyceumHeadline)
+            Group {
+                if let data = file?.info?.thumbnail, let image = UIImage(data: data) {
+                    Image(uiImage: image).resizable().scaledToFit()
+                } else {
+                    Image(systemName: "play.rectangle").font(.system(size: 80)).foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxHeight: 220)
+            .overlay { if let flash { Text(flash).font(.system(size: 90)) } }
+            if let file {
+                VStack(spacing: 4) {
+                    Text(file.info?.title ?? file.name).font(.lyceumHeadline).multilineTextAlignment(.center)
+                    if let line = [file.info?.artist ?? file.info?.show, file.info?.album, file.info?.year.map(String.init)]
+                        .compactMap({ $0 }).joined(separator: " · ") as String?, !line.isEmpty {
+                        Text(line).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    }
+                    if let genre = file.info?.genre { Text(genre).foregroundStyle(.secondary) }
+                }
+                .font(.lyceumBody)
+            } else {
+                Text("Nothing playing on the TV — open a file in the Library and press Play on \(tv.tvName).")
+                    .font(.lyceumBody).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            }
+            HStack(spacing: 26) {
+                button("backward.end.fill", "Previous", .previous)
+                button("backward.fill", "Rewind", .rewind)
+                button("stop.fill", "Stop", .stop)
+                button(tv.isPlaying ? "pause.fill" : "play.fill", tv.isPlaying ? "Pause" : "Play", .playPause)
+                button("forward.fill", "Fast forward", .forward)
+                button("forward.end.fill", "Next", .next)
+            }
+            .font(.system(size: 30))
+            if let path = tv.path {
+                HStack(spacing: 40) {
+                    Button { library.change(.thumbsUp, path); show("👍") } label: { Image(systemName: "hand.thumbsup") }
+                        .accessibilityLabel("Thumbs up")
+                    Button { library.change(.thumbsDown, path); show("👎") } label: { Image(systemName: "hand.thumbsdown") }
+                        .accessibilityLabel("Thumbs down")
+                }
+                .font(.system(size: 30))
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(30)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func button(_ symbol: String, _ name: String, _ action: RemoteCommand.Action) -> some View {
+        Button { remote.act(action) } label: { Image(systemName: symbol) }
+            .accessibilityLabel(name)
+    }
+
+    private func show(_ symbol: String) {
+        withAnimation { flash = symbol }
+        Task { try? await Task.sleep(for: .seconds(0.8)); withAnimation { flash = nil } }
     }
 }
 

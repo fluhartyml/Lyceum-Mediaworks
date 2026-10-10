@@ -237,6 +237,10 @@ final class LibraryCatalog {
             if !list.contains(path) { list.append(path) }
             playlists[LibraryCache.thumbsUp] = list
         case .thumbsDown: unchecked.insert(path)
+        case .unthumb:
+            var list = playlists[LibraryCache.thumbsUp] ?? []
+            list.removeAll { $0 == path }
+            playlists[LibraryCache.thumbsUp] = list.isEmpty ? nil : list
         }
         saveMarksAndPublish()
     }
@@ -256,6 +260,7 @@ final class LibraryCatalog {
         if change.wasChecked { unchecked.remove(change.path) } else { unchecked.insert(change.path) }
         var list = playlists[LibraryCache.thumbsUp] ?? []
         if !change.wasThumbedUp { list.removeAll { $0 == change.path } }
+        else if !list.contains(change.path) { list.append(change.path) }
         playlists[LibraryCache.thumbsUp] = list.isEmpty ? nil : list
         deviceChanges[index].undone = .now
         saveChanges()

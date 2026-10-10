@@ -71,7 +71,12 @@ final class MacLibrary {
     func change(_ op: CacheRequest.Op, _ path: String) {
         pending.append(CacheRequest(op: op, path: path, device: Self.deviceName))
         if var copy = snapshot {
-            copy.root = Self.marking(copy.root, path.split(separator: "/").map(String.init), op)
+            if op != .unthumb { copy.root = Self.marking(copy.root, path.split(separator: "/").map(String.init), op) }
+            if op == .unthumb {
+                var list = copy.playlists?[LibraryCache.thumbsUp] ?? []
+                list.removeAll { $0 == path }
+                copy.playlists = (copy.playlists ?? [:]).merging([LibraryCache.thumbsUp: list]) { $1 }
+            }
             if op == .thumbsUp {
                 var list = copy.playlists?[LibraryCache.thumbsUp] ?? []
                 if !list.contains(path) { list.append(path) }
@@ -469,9 +474,11 @@ private struct CachedFileView: View {
     private var thumbedUp: Bool { library.snapshot?.playlists?[LibraryCache.thumbsUp]?.contains(path) ?? false }
     #if os(iOS)
     @Environment(PhonePlayer.self) private var phone: PhonePlayer?
+    @Environment(TVRemote.self) private var remote: TVRemote?
     #endif
     #if os(tvOS)
-    @State private var tvPlaying = false
+    @Environment(TVTheater.self) private var theater
+    @State private var tvEditing = false
     #endif
     #if os(iOS)
     @State private var editing = false
@@ -494,18 +501,28 @@ private struct CachedFileView: View {
                 // REM  PLAY — this device's copy (platforms 002c, P02). Next / Previous step through the copies in the same folder.
                 if file.isMedia, let phone {
                     // REM  Plays this device's copy when it has one; otherwise streams from the Mac (N05).
-                    Button {
-                        phone.play(path, in: library.snapshot?.siblings(of: path) ?? [path])
-                    } label: {
-                        Label(library.sync.hasCopy(path, size: file.size) ? "Play" : "Play from Your Mac", systemImage: "play.fill")
+                    HStack(spacing: 12) {
+                        Button {
+                            phone.play(path, in: library.snapshot?.siblings(of: path) ?? [path])
+                        } label: {
+                            Label(library.sync.hasCopy(path, size: file.size) ? "Play" : "Play from Your Mac", systemImage: "play.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        // REM  PLAY ON APPLE TV — the TV streams it from the Mac; this phone becomes its remote (platforms 001).
+                        if let tv = remote?.state {
+                            Button {
+                                remote?.playOnTV(path, queue: library.snapshot?.siblings(of: path) ?? [path])
+                            } label: { Label("Play on \(tv.tvName)", systemImage: "appletv") }
+                            .buttonStyle(.bordered)
+                        }
                     }
-                    .buttonStyle(.borderedProminent)
                 }
                 #endif
                 #if os(tvOS)
                 // REM  APPLE TV: Play streams from the Mac into Apple's own TV player (Siri Remote controls) — 004a, 004d.
                 if file.isMedia {
-                    Button { tvPlaying = true } label: { Label("Play", systemImage: "play.fill") }
+                    Button { theater.play(path, in: library.snapshot?.siblings(of: path) ?? [path]) } label: { Label("Play", systemImage: "play.fill") }
+                    Button { tvEditing = true } label: { Label("Genre, Kind, Title & Playlist…", systemImage: "slider.horizontal.3") }
                 }
                 #endif
                 #if os(iOS)
@@ -559,7 +576,7 @@ private struct CachedFileView: View {
         }
         .navigationTitle(file.info?.title ?? file.name)
         #if os(tvOS)
-        .fullScreenCover(isPresented: $tvPlaying) { TVPlayer(path: path, queue: library.snapshot?.siblings(of: path) ?? [path]) }
+        .sheet(isPresented: $tvEditing) { TVEditSheet(path: path, file: file).environment(library) }
         #endif
         #if os(iOS)
         .sheet(isPresented: $editing) {

@@ -70,6 +70,7 @@ struct DeviceChangesView: View {
         case .file: "Copied"
         case .setTags: "Changed tags"
         case .trash: "Moved to Trash"
+        case .unthumb: "Out of Thumbs Up"
         }
     }
 }

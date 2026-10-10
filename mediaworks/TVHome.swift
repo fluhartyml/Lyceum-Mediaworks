@@ -13,9 +13,11 @@
 #if os(tvOS)
 import SwiftUI
 import AVKit
+import Network
 
 struct TVHome: View {
     @State private var library = MacLibrary()
+    @State private var theater = TVTheater()
 
     var body: some View {
         Group {
@@ -25,36 +27,173 @@ struct TVHome: View {
                 FromYourMacView()
             }
         }
+        .environment(theater)
         .task { await library.keepUpToDate() }
+        .task { theater.announce() }
+        .fullScreenCover(isPresented: Binding(get: { theater.presented }, set: { theater.presented = $0 })) {
+            TVPlayer().environment(theater)
+        }
     }
 }
 
-/// Apple's own TV player, streaming from the Mac; when one ends, the next in the folder starts.
+/// The TV's one player — the Siri Remote and the iPhone remote (platforms 001) drive the same thing.
+@MainActor
+@Observable
+final class TVTheater {
+    let player = AVPlayer()
+    private(set) var queue: [String] = []
+    private(set) var index = 0
+    private(set) var problem: String?
+    var presented = false
+    @ObservationIgnored private var listener: NWListener?
+    @ObservationIgnored private var endObserver: NSObjectProtocol?
+
+    var current: String? { queue.indices.contains(index) ? queue[index] : nil }
+    var isPlaying: Bool { player.timeControlStatus != .paused }
+
+    func play(_ path: String, in queue: [String]) {
+        self.queue = queue.contains(path) ? queue : [path]
+        index = self.queue.firstIndex(of: path) ?? 0
+        presented = true
+        load()
+    }
+
+    private func load() {
+        guard let path = current else { return }
+        Task {
+            guard let url = await MacLibrary.streamURL(path) else { problem = "Your Mac is out of reach."; return }
+            problem = nil
+            let item = AVPlayerItem(url: url)
+            player.replaceCurrentItem(with: item)
+            if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+            endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { _ in
+                MainActor.assumeIsolated { self.next() }
+            }
+            player.play()
+        }
+    }
+
+    func next() { if index + 1 < queue.count { index += 1; load() } else { stop() } }
+    func previous() {
+        if player.currentTime().seconds > 3 || index == 0 { player.seek(to: .zero) } else { index -= 1; load() }
+    }
+    func skip(_ seconds: Double) {
+        player.seek(to: CMTime(seconds: max(0, player.currentTime().seconds + seconds), preferredTimescale: 600))
+    }
+    func stop() { player.pause(); player.replaceCurrentItem(with: nil); queue = []; presented = false }
+
+    // MARK: The iPhone remote (platforms 001)
+
+    /// Announces this TV on the home network for the iPhone remote; each connection is one command and one answer.
+    func announce() {
+        guard listener == nil, let listener = try? NWListener(using: .tcp) else { return }
+        listener.service = NWListener.Service(name: UIDevice.current.name, type: TVRemoteService.type)
+        listener.newConnectionHandler = { connection in
+            connection.start(queue: .main)
+            Framing.read(connection) { data in
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        if let data, let command = try? JSONDecoder().decode(RemoteCommand.self, from: data) { self.handle(command) }
+                        let state = RemoteState(tvName: UIDevice.current.name, path: self.current, isPlaying: self.isPlaying)
+                        let reply = (try? JSONEncoder().encode(state)) ?? Data()
+                        connection.send(content: Framing.frame(reply), completion: .contentProcessed { _ in connection.cancel() })
+                    }
+                }
+            }
+        }
+        listener.start(queue: .main)
+        self.listener = listener
+    }
+
+    private func handle(_ command: RemoteCommand) {
+        switch command.action {
+        case .status: break
+        case .play: if let path = command.path { play(path, in: command.queue ?? [path]) }
+        case .playPause: if isPlaying { player.pause() } else { player.play() }
+        case .previous: previous()
+        case .rewind: skip(-10)
+        case .stop: stop()
+        case .forward: skip(10)
+        case .next: next()
+        }
+    }
+}
+
+/// Apple's own TV player — Siri Remote controls — on the TV's one player.
 struct TVPlayer: View {
-    let path: String
-    let queue: [String]
-    @State private var player = AVQueuePlayer()
-    @State private var problem: String?
+    @Environment(TVTheater.self) private var theater
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            VideoPlayer(player: player).ignoresSafeArea()
-            if let problem { Text(problem).font(.lyceumBody).foregroundStyle(.white) }
+            VideoPlayer(player: theater.player).ignoresSafeArea()
+            if let problem = theater.problem { Text(problem).font(.lyceumBody).foregroundStyle(.white) }
         }
-        .task {
-            let start = queue.firstIndex(of: path) ?? 0
-            for (n, item) in queue[start...].enumerated() {
-                guard let url = await MacLibrary.streamURL(item) else {
-                    if n == 0 { problem = "Your Mac is out of reach." }
-                    break
+        .onDisappear { if theater.presented == false { theater.player.pause() } }
+    }
+}
+
+// MARK: - Light upkeep on the TV (platforms 004c)
+
+/// A pick list for Genre and Media Kind, a title fix, and Thumbs Up on or off — each sent to the Mac.
+// REM  HIS WORDS, 2026-10-10: "i dont think the apple tv would neccesarily write to the library, no meta tags, maybe an
+// REM  ocasional edit or spell correction but not a primary driver. just mantenance and upkeep. moving from one playlist to
+// REM  another" · "maybe a field like genre or media type is a drop down where the user changes the selection type and
+// REM  doesnt have to type anything." Nothing here is typed except the title fix.
+struct TVEditSheet: View {
+    let path: String
+    let file: CachedFile
+    @Environment(MacLibrary.self) private var library
+    @Environment(\.dismiss) private var dismiss
+    @State private var title = ""
+
+    /// Media Kind codes as the MP4 tag stores them.
+    private static let kinds: [(name: String, code: String)] = [("Music", "1"), ("Music Video", "6"), ("Movie", "9"), ("TV Show", "10")]
+
+    private var genres: [String] {
+        var all = Set<String>()
+        func walk(_ folder: CachedFolder) {
+            folder.files.compactMap(\.info?.genre).forEach { all.insert($0) }
+            folder.folders.forEach(walk)
+        }
+        if let root = library.snapshot?.root { walk(root) }
+        return all.sorted()
+    }
+
+    private var thumbedUp: Bool { library.snapshot?.playlists?[LibraryCache.thumbsUp]?.contains(path) ?? false }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("005 Genre — now: \(file.info?.genre ?? "none")") {
+                    Picker("Genre", selection: Binding(get: { file.info?.genre ?? "" }, set: { send(["genre": $0]) })) {
+                        ForEach(genres, id: \.self) { Text($0).tag($0) }
+                    }
                 }
-                player.insert(AVPlayerItem(url: url), after: nil)
-                if n == 0 { player.play() }
-                if n >= 20 { break }   // the next twenty in the folder are plenty to keep going
+                Section("024 Media Kind — now: \(file.info?.mediaKind ?? "none")") {
+                    Picker("Media Kind", selection: Binding(get: { Self.kinds.first { $0.name == file.info?.mediaKind }?.code ?? "" },
+                                                            set: { send(["mediaKind": $0]) })) {
+                        ForEach(Self.kinds, id: \.code) { Text($0.name).tag($0.code) }
+                    }
+                }
+                Section("001 Title — spelling fix") {
+                    TextField("Title", text: $title)
+                    Button("Send the Corrected Title") { send(["title": title]) }
+                        .disabled(title.isEmpty || title == file.info?.title)
+                }
+                Section("Playlist") {
+                    Button(thumbedUp ? "Remove from Thumbs Up" : "Add to Thumbs Up") {
+                        library.change(thumbedUp ? .unthumb : .thumbsUp, path)
+                    }
+                }
             }
+            .navigationTitle(file.info?.title ?? file.name)
         }
-        .onDisappear { player.pause() }
+        .onAppear { title = file.info?.title ?? "" }
+    }
+
+    private func send(_ tags: [String: String]) {
+        library.send(CacheRequest(op: .setTags, path: path, tags: tags))
     }
 }
 #endif
