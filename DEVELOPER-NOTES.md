@@ -19,6 +19,12 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-10 — WEB METADATA SCRAPER BUILT (106–107) · PLATFORMS DECIDED (see PLATFORMS below)
+- **Answered from the 10-09 offers** (amber page `Open-Questions-DRAFT-2026-10-10.html`, his Desktop, every line LOCKED): permission warning before the Open panel (103) · Apply-to-many saves 3 files at a time (104) · IMDb drag selects, never follows a link (105) · Wikipedia retry — **no**, he edits the search himself · Web tab — folded into the scraper.
+- **Web Metadata Scraper** (106 `226e35d`): `WebScraper.swift` — address bar on every web page, Select Text on ANY site with five submenus (Names · Dates & Numbers · TV Show · Words · Sorting & Category), DuckDuckGo no longer walls off the web (a picture click collects it AND opens its site), right-click a picture (Mac): Use as Poster / Album Art, Open Image in New Window (a window, not a tab). 107 `ab44c21`: all three Inspector buttons renamed **Web Metadata Scraper…**. Mac + iOS build; `Scraper.clean` and the address logic tested on 13 samples. **Not yet tried on real pages** (he is running 107 — seen on his screen 09:27).
+- **Nineveh:** 18 decomposed-accent names fixed, then every accent made a plain letter at his word ("i dont care about accents im american"); 3 BTS videos deleted at his word. Undo list: multitronic5 `~/accent-rename-undo-2026-10-10.tsv`. ⬜ Not coded: 006b (tell the user when a stuck-accent file can't open) · 006c (names Mediaworks writes use the standard spelling).
+- ⬜ **Not coded yet, from PLATFORMS:** remove the iPhone/iPad "select a folder for your media library" prompt (he hit it on his iPhone this morning) · the library cache · the Apple TV target.
+
 ### 2026-10-09 ~13:1x — FIND SEARCHES FROM THE FILE NAME, ALWAYS (his: "the transformers alone is too vague")
 - `Inspector.searchWords` no longer prefers the TV Show / Title tag. Dropping season/episode numbers was tried in build 100 and REVERTED at his word ("that exclusion makes the search not as effective") — S/E numbers stay in the search words.
 - File-name advice given: `Show (Year) - S02E46-E49 - Story Title.mp4` — show, year and story title are what web searches match. He is normalising names himself.
@@ -333,6 +339,20 @@ The server runs on the **Mac mini** (the MacBook during development); the **Terr
 - **Content:** curates what the user owns; ships no content of its own.
 - **Folder tree mirrors the IDs** — trunk `Lyceum.mediaworks/`, one folder per app.
 - **Storage:** none yet. The files are the data; add SwiftData only if the library needs its own index.
+
+---
+
+## PLATFORMS — Mac · iPad · iPhone · Apple TV · LOCKED by Michael 2026-10-10
+
+Every line agreed on the amber page `CLI Claude.Apartment/Workshop/Lyceum-Mediaworks-iOS-AppleTV-DRAFT-2026-10-10.html`.
+
+- **The Mac app is the source of truth for the library.** Only the Mac app asks for the library folder. It keeps a **cached copy** of the library (folder tree, names, tags, pictures); the iPhone, iPad and Apple TV apps read that cache and never pick folders themselves. *"i dont want any other app besides the mac app to ask that, i want the mac app to be the source of truth for the library."*
+- **The cache travels both ways — a hybrid.** Straight from the Mac over the home network when it is reachable (freshest); otherwise the last copy the Mac saved to iCloud, in **end-to-end encrypted CloudKit fields**. *"icloud can be considered as secure if not more secure than the users home network."* The cache is only the listing — playing still needs the Mac or mini serving.
+- **Which views where:** **Mac — Library · Commander · Theater.** **iPad — Library · Theater** (no Commander). **Apple TV — one combined Library-Theater screen, not tabbed like the Mac.**
+- **iPhone = a companion remote, modelled on the Squeezebox remote** (*"what i liked about it and miss was the remote control"*). It does not play or show the video (no picture-in-picture, no scrubber bar — *"the user can see on the tv"*). It shows the poster or album art and the file's tags, jumps chapters, manages Next Up, and has six real-time buttons: **|< previous · << rewind · ■ stop · ▶︎/❚❚ play-pause · >> fast-forward · >| next**. **A thumbs up** (no thumbs down) adds the file to a "Thumbs Up" playlist that only points to it.
+- **iPad = a quasi-full app** — more screen room, but **no persistent presence: never the media server or transcoder.** It **edits tags and uses the Web Metadata Scraper**, each change sent to the Mac to write. **It can delete, but only into the 30-day Trash**; deleting instantly is Mac only. Moving and renaming files is Mac only.
+- **Apple TV:** the Theater, **definitely no Commander**, and **not a primary writer**: light upkeep only — an occasional edit or spelling fix, and moving a file from one playlist to another, each sent to the Mac. **Fields like Genre or Media Kind are pick lists** — no typing with the remote.
+- **The Apple TV app starts inside this project, for now** — *"keep it in this project for now"*; the Theater spin-off (Phase 6) comes later.
 
 ---
 
