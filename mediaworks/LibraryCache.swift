@@ -151,18 +151,25 @@ nonisolated enum Framing {
     static func read(_ connection: NWConnection, _ done: @escaping @Sendable (Data?) -> Void) {
         connection.receive(minimumIncompleteLength: 8, maximumLength: 8) { header, _, _, _ in
             guard let header, header.count == 8 else { done(nil); return }
-            let length = header.reduce(0) { ($0 << 8) | Int($1) }
-            let body = Body()
-            func more() {
-                connection.receive(minimumIncompleteLength: 1, maximumLength: 1 << 20) { chunk, _, complete, error in
-                    if let chunk { body.data.append(chunk) }
-                    if body.data.count >= length { done(body.data.prefix(length)) }
-                    else if complete || error != nil { done(nil) }
-                    else { more() }
-                }
-            }
-            if length == 0 { done(Data()) } else { more() }
+            readBody(connection, length: length(header), done)
         }
+    }
+
+    /// The length an 8-byte header announces.
+    static func length(_ header: Data) -> Int { header.reduce(0) { ($0 << 8) | Int($1) } }
+
+    /// Reads exactly `length` more bytes — the body after a header already read.
+    static func readBody(_ connection: NWConnection, length: Int, _ done: @escaping @Sendable (Data?) -> Void) {
+        let body = Body()
+        func more() {
+            connection.receive(minimumIncompleteLength: 1, maximumLength: 1 << 20) { chunk, _, complete, error in
+                if let chunk { body.data.append(chunk) }
+                if body.data.count >= length { done(body.data.prefix(length)) }
+                else if complete || error != nil { done(nil) }
+                else { more() }
+            }
+        }
+        if length == 0 { done(Data()) } else { more() }
     }
 
     private final class Body: @unchecked Sendable { var data = Data() }

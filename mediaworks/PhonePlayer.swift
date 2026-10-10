@@ -36,7 +36,10 @@ final class PhonePlayer {
 
     var current: String? { queue.indices.contains(index) ? queue[index] : nil }
 
-    /// Plays `path`, with `queue` (the files around it that are on this device) for Next and Previous.
+    /// Why the last Play did not start — shown on the Theater page.
+    private(set) var problem: String?
+
+    /// Plays `path`, with `queue` (the files around it) for Next and Previous.
     func play(_ path: String, in queue: [String]) {
         self.queue = queue.contains(path) ? queue : [path]
         index = self.queue.firstIndex(of: path) ?? 0
@@ -45,11 +48,25 @@ final class PhonePlayer {
         fullScreen = true
     }
 
+    // REM  THIS DEVICE'S COPY FIRST, OTHERWISE STREAMED FROM THE MAC (platforms 002c, N05).
     private func load() {
         guard let path = current else { return }
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
-        let item = AVPlayerItem(url: DeviceSync.localURL(path))
+        let local = DeviceSync.localURL(path)
+        if FileManager.default.fileExists(atPath: local.path) {
+            start(local)
+        } else {
+            Task {
+                if let url = await MacLibrary.streamURL(path) { start(url) }
+                else { problem = "Your Mac is out of reach, and this file has no copy on this device."; stop() }
+            }
+        }
+    }
+
+    private func start(_ url: URL) {
+        problem = nil
+        let item = AVPlayerItem(url: url)
         player.replaceCurrentItem(with: item)
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { _ in
@@ -167,8 +184,10 @@ private struct TheaterPage: View {
                     .font(.lyceumBody).multilineTextAlignment(.center)
                 Button("Back to the Video") { player.fullScreen = true }
                     .buttonStyle(.borderedProminent)
+            } else if let problem = player.problem {
+                Text(problem).font(.lyceumBody).foregroundStyle(.secondary).multilineTextAlignment(.center)
             } else {
-                Text("Open a file in the Library and press Play. Only files with a copy on this device play here.")
+                Text("Open a file in the Library and press Play — from this device's copy, or streamed from your Mac.")
                     .font(.lyceumBody).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
         }

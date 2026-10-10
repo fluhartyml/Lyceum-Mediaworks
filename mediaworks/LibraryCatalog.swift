@@ -397,25 +397,114 @@ final class LibraryCatalog {
 
     private func serve(_ connection: NWConnection) {
         connection.start(queue: .main)
-        Framing.read(connection) { data in
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated {
-                    let catalog = LibraryCatalog.shared
-                    if let data, let request = try? LibraryCache.decoder.decode(CacheRequest.self, from: data) {
-                        if request.op == .file { catalog.sendFile(request.path, on: connection); return }
-                        if request.op == .setTags || request.op == .trash {
-                            Task { @MainActor in
-                                await catalog.carryOut(request)
-                                connection.send(content: Framing.frame(catalog.payload), completion: .contentProcessed { _ in connection.cancel() })
-                            }
-                            return
-                        }
-                        catalog.apply(request)
+        // REM  ONE PORT, TWO KINDS OF CALLER: a request starting "GET " / "HEAD" is a video player streaming a file (platforms
+        // REM  N05, MediaStreaming below); anything else is the library exchange — an 8-byte length, then a request.
+        connection.receive(minimumIncompleteLength: 8, maximumLength: 8) { first, _, _, _ in
+            guard let first, first.count == 8 else { connection.cancel(); return }
+            if first.starts(with: Data("GET ".utf8)) || first.starts(with: Data("HEAD".utf8)) {
+                DispatchQueue.main.async { MainActor.assumeIsolated { LibraryCatalog.shared.streamHTTP(connection, first: first) } }
+                return
+            }
+            Framing.readBody(connection, length: Framing.length(first)) { data in
+                LibraryCatalog.shared.answer(connection, data)
+            }
+        }
+    }
+
+    nonisolated private func answer(_ connection: NWConnection, _ data: Data?) {
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                LibraryCatalog.shared.answerOnMain(connection, data)
+            }
+        }
+    }
+
+    private func answerOnMain(_ connection: NWConnection, _ data: Data?) {
+        if let data, let request = try? LibraryCache.decoder.decode(CacheRequest.self, from: data) {
+            if request.op == .file { sendFile(request.path, on: connection); return }
+            if request.op == .setTags || request.op == .trash {
+                Task { @MainActor in
+                    await carryOut(request)
+                    connection.send(content: Framing.frame(payload), completion: .contentProcessed { _ in connection.cancel() })
+                }
+                return
+            }
+            apply(request)
+        }
+        connection.send(content: Framing.frame(payload), completion: .contentProcessed { _ in connection.cancel() })
+    }
+
+    // MARK: Streaming a file to a video player (platforms N05)
+
+    // REM  The iPad Theater, the iPhone player and the Apple TV play straight from the Mac: AVPlayer asks for
+    // REM  http://<mac>:<port>/media/<library path> with "Range" headers, and gets just those bytes back (206) — that is
+    // REM  how it starts quickly and skips around. Only files inside the library; one response per connection.
+    private func streamHTTP(_ connection: NWConnection, first: Data) {
+        var header = first
+        func readHeader() {
+            connection.receive(minimumIncompleteLength: 1, maximumLength: 16384) { chunk, _, complete, _ in
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        if let chunk { header.append(chunk) }
+                        if let end = header.range(of: Data("\r\n\r\n".utf8)) {
+                            LibraryCatalog.shared.respond(connection, String(decoding: header[..<end.lowerBound], as: UTF8.self))
+                        } else if complete || header.count > 65536 {
+                            connection.cancel()
+                        } else { readHeader() }
                     }
-                    connection.send(content: Framing.frame(catalog.payload), completion: .contentProcessed { _ in connection.cancel() })
                 }
             }
         }
+        readHeader()
+    }
+
+    private func respond(_ connection: NWConnection, _ request: String) {
+        let lines = request.components(separatedBy: "\r\n")
+        let parts = (lines.first ?? "").split(separator: " ")
+        func fail(_ status: String) {
+            let reply = "HTTP/1.1 \(status)\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            connection.send(content: Data(reply.utf8), completion: .contentProcessed { _ in connection.cancel() })
+        }
+        guard parts.count >= 2, parts[1].hasPrefix("/media/"),
+              let path = String(parts[1].dropFirst("/media/".count)).removingPercentEncoding,
+              let url = libraryFile(path),
+              let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 0,
+              let handle = try? FileHandle(forReadingFrom: url) else { fail("404 Not Found"); return }
+        var start = 0, end = size - 1, partial = false
+        if let range = lines.first(where: { $0.lowercased().hasPrefix("range:") }),
+           let spec = range.split(separator: "=").last {
+            let bounds = spec.split(separator: "-", omittingEmptySubsequences: false)
+            if let a = Int(bounds.first ?? "") { start = a }
+            if bounds.count > 1, let b = Int(bounds[1]) { end = min(b, size - 1) }
+            partial = true
+        }
+        guard start <= end, start < size else { try? handle.close(); fail("416 Range Not Satisfiable"); return }
+        let type = url.pathExtension.lowercased() == "m4a" ? "audio/mp4" : (url.pathExtension.lowercased() == "mov" ? "video/quicktime" : "video/mp4")
+        var head = partial ? "HTTP/1.1 206 Partial Content\r\n" : "HTTP/1.1 200 OK\r\n"
+        head += "Content-Type: \(type)\r\nAccept-Ranges: bytes\r\nContent-Length: \(end - start + 1)\r\n"
+        if partial { head += "Content-Range: bytes \(start)-\(end)/\(size)\r\n" }
+        head += "Connection: close\r\n\r\n"
+        let isHead = parts[0] == "HEAD"
+        connection.send(content: Data(head.utf8), completion: .contentProcessed { _ in })
+        guard !isHead else {
+            try? handle.close()
+            connection.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { _ in connection.cancel() })
+            return
+        }
+        try? handle.seek(toOffset: UInt64(start))
+        var left = end - start + 1
+        func next() {
+            guard left > 0, let chunk = try? handle.read(upToCount: min(1 << 20, left)), !chunk.isEmpty else {
+                try? handle.close()
+                connection.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { _ in connection.cancel() })
+                return
+            }
+            left -= chunk.count
+            connection.send(content: chunk, completion: .contentProcessed { error in
+                if error != nil { try? handle.close(); connection.cancel() } else { next() }
+            })
+        }
+        next()
     }
 }
 #endif

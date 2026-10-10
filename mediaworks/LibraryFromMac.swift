@@ -151,6 +151,54 @@ final class MacLibrary {
         }
     }
 
+    /// The web address a video player can stream `path` from — straight from the Mac (platforms N05).
+    // REM  The Mac answers ordinary "GET /media/<path>" requests on the same port as the library exchange. Its address is
+    // REM  looked up through Bonjour once and kept for a minute; IPv4 is asked for, so the address is a plain one.
+    static func streamURL(_ path: String) async -> URL? {
+        if let base = streamBase, Date.now.timeIntervalSince(base.when) < 60 { return make(base.url, path) }
+        let found: URL? = await withCheckedContinuation { (done: CheckedContinuation<URL?, Never>) in
+            let browser = NWBrowser(for: .bonjour(type: LibraryCache.serviceType, domain: nil), using: .tcp)
+            var finished = false
+            func finish(_ url: URL?) {
+                guard !finished else { return }
+                finished = true
+                browser.cancel()
+                done.resume(returning: url)
+            }
+            browser.browseResultsChangedHandler = { results, _ in
+                MainActor.assumeIsolated {
+                    guard !finished, let mac = results.first else { return }
+                    let parameters = NWParameters.tcp
+                    (parameters.defaultProtocolStack.internetProtocol as? NWProtocolIP.Options)?.version = .v4
+                    let probe = NWConnection(to: mac.endpoint, using: parameters)
+                    probe.stateUpdateHandler = { state in
+                        guard case .ready = state else { return }
+                        MainActor.assumeIsolated {
+                            if case let .hostPort(host, port) = probe.currentPath?.remoteEndpoint {
+                                var text = "\(host)"
+                                if let cut = text.firstIndex(of: "%") { text = String(text[..<cut]) }
+                                finish(URL(string: "http://\(text):\(port.rawValue)"))
+                            }
+                            probe.cancel()
+                        }
+                    }
+                    probe.start(queue: .main)
+                }
+            }
+            browser.start(queue: .main)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 8) { MainActor.assumeIsolated { finish(nil) } }
+        }
+        guard let found else { return nil }
+        streamBase = (found, .now)
+        return make(found, path)
+    }
+
+    private static var streamBase: (url: URL, when: Date)?
+
+    private static func make(_ base: URL, _ path: String) -> URL? {
+        URL(string: base.absoluteString + "/media/" + (path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path))
+    }
+
     /// Sends one request and reads the cache the Mac answers with.
     private static func ask(_ request: CacheRequest) async -> Data? {
         guard let connection = await open(sending: request) else { return nil }
@@ -412,6 +460,9 @@ private struct CachedFileView: View {
     #if os(iOS)
     @Environment(PhonePlayer.self) private var phone: PhonePlayer?
     #endif
+    #if os(tvOS)
+    @State private var tvPlaying = false
+    #endif
     #if os(iOS)
     @State private var editing = false
     @State private var scraping = false
@@ -432,18 +483,19 @@ private struct CachedFileView: View {
                 #if os(iOS)
                 // REM  PLAY — this device's copy (platforms 002c, P02). Next / Previous step through the copies in the same folder.
                 if file.isMedia, let phone {
-                    if library.sync.hasCopy(path, size: file.size) {
-                        Button {
-                            let around = (library.snapshot?.siblings(of: path) ?? [path]).filter { sibling in
-                                library.sync.hasCopy(sibling, size: library.snapshot?.file(at: sibling)?.size)
-                            }
-                            phone.play(path, in: around)
-                        } label: { Label("Play", systemImage: "play.fill") }
-                        .buttonStyle(.borderedProminent)
-                    } else {
-                        Text("Not on this device yet — set Sync to Automatic, or to Manual with this file checked.")
-                            .foregroundStyle(.secondary)
+                    // REM  Plays this device's copy when it has one; otherwise streams from the Mac (N05).
+                    Button {
+                        phone.play(path, in: library.snapshot?.siblings(of: path) ?? [path])
+                    } label: {
+                        Label(library.sync.hasCopy(path, size: file.size) ? "Play" : "Play from Your Mac", systemImage: "play.fill")
                     }
+                    .buttonStyle(.borderedProminent)
+                }
+                #endif
+                #if os(tvOS)
+                // REM  APPLE TV: Play streams from the Mac into Apple's own TV player (Siri Remote controls) — 004a, 004d.
+                if file.isMedia {
+                    Button { tvPlaying = true } label: { Label("Play", systemImage: "play.fill") }
                 }
                 #endif
                 #if os(iOS)
@@ -496,6 +548,9 @@ private struct CachedFileView: View {
             .padding(16)
         }
         .navigationTitle(file.info?.title ?? file.name)
+        #if os(tvOS)
+        .fullScreenCover(isPresented: $tvPlaying) { TVPlayer(path: path, queue: library.snapshot?.siblings(of: path) ?? [path]) }
+        #endif
         #if os(iOS)
         .sheet(isPresented: $editing) {
             TagEditSheet(file: file, scraped: scraped) { tags, picture in
