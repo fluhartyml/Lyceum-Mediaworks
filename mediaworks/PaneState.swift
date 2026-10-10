@@ -1,3 +1,5 @@
+// REM  Not on Apple TV (no web pages, Quick Look or file panes there) — the TV has its own screen (TVHome).
+#if !os(tvOS)
 //
 //  PaneState.swift
 //  mediaworks
@@ -508,3 +510,4 @@ final class PaneState {
     }
     #endif
 }
+#endif

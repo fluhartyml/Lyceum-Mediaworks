@@ -33,7 +33,7 @@ struct FromYourMacView: View {
             Text(BuildStamp.summary)
                 .font(.lyceumBody)
                 .foregroundStyle(.secondary)
-                .textSelection(.enabled)
+                .lyceumSelectable()
                 .padding(.top, 24)
         }
         // REM  EVERY LINE WRAPS — the first simulator run cut the title, the sentence and the build line to one line

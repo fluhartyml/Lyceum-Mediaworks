@@ -1,3 +1,5 @@
+// REM  Not on Apple TV (no web pages, Quick Look or file panes there) — the TV has its own screen (TVHome).
+#if !os(tvOS)
 //
 //  TheaterView.swift
 //  mediaworks
@@ -97,3 +99,4 @@ struct TheaterView: View {
         (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType?.conforms(to: .audio)) ?? false
     }
 }
+#endif

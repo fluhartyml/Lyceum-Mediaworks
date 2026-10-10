@@ -1,3 +1,5 @@
+// REM  Not on Apple TV (no web pages, Quick Look or file panes there) — the TV has its own screen (TVHome).
+#if !os(tvOS)
 //
 //  MP4Tags.swift
 //  mediaworks
@@ -264,3 +266,4 @@ nonisolated enum MP4Tags {
     private static func be32(_ v: UInt32) -> Data { Data([UInt8(v >> 24), UInt8(v >> 16 & 255), UInt8(v >> 8 & 255), UInt8(v & 255)]) }
     private static func be16(_ v: UInt16) -> Data { Data([UInt8(v >> 8), UInt8(v & 255)]) }
 }
+#endif

@@ -33,11 +33,13 @@ nonisolated struct CachedInfo: Codable, Hashable, Sendable {
     /// The embedded picture, shrunk to a row icon (PNG).
     var thumbnail: Data?
 
+    #if !os(tvOS)
     init(_ info: MediaInfo) {
         length = info.length; resolution = info.resolution; title = info.title; artist = info.artist
         album = info.album; year = info.year; genre = info.genre; summary = info.summary; show = info.show
         season = info.season; episode = info.episode; mediaKind = info.mediaKind; thumbnail = info.thumbnail
     }
+    #endif
 }
 
 nonisolated struct CachedFile: Codable, Hashable, Sendable, Identifiable {

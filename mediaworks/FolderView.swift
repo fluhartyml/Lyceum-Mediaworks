@@ -1,3 +1,5 @@
+// REM  Not on Apple TV (no web pages, Quick Look or file panes there) — the TV has its own screen (TVHome).
+#if !os(tvOS)
 //
 //  FolderView.swift
 //  mediaworks
@@ -470,3 +472,4 @@ private struct EntryTile: View {
         return [len, size].compactMap { $0 }.joined(separator: "  ·  ")
     }
 }
+#endif

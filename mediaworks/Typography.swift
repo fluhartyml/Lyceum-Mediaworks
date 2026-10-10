@@ -22,3 +22,15 @@ extension Font {
     /// Large titles (empty states, About).
     static let lyceumTitle = Font.system(size: 28, weight: .semibold)
 }
+
+extension View {
+    /// Selectable text where the platform has it — Apple TV has no text selection.
+    @ViewBuilder
+    func lyceumSelectable() -> some View {
+        #if os(tvOS)
+        self
+        #else
+        self.textSelection(.enabled)
+        #endif
+    }
+}

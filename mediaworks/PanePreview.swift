@@ -1,3 +1,5 @@
+// REM  Not on Apple TV (no web pages, Quick Look or file panes there) — the TV has its own screen (TVHome).
+#if !os(tvOS)
 //
 //  PanePreview.swift
 //  mediaworks
@@ -294,3 +296,4 @@ struct PreviewPicture: View {
         return CGImageSourceCreateImageAtIndex(source, 0, nil)
     }
 }
+#endif

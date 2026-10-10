@@ -7,6 +7,15 @@
 
 import SwiftUI
 
+#if os(tvOS)
+// REM  APPLE TV (platforms 004a–004c): one combined Library-Theater screen, read from the Mac's cache (TVHome.swift).
+@main
+struct mediaworksTVApp: App {
+    var body: some Scene {
+        WindowGroup { TVHome() }
+    }
+}
+#else
 @main
 struct mediaworksApp: App {
     @State private var library = LibraryStore()
@@ -95,3 +104,4 @@ extension View {
         #endif
     }
 }
+#endif

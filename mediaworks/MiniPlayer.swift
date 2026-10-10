@@ -1,3 +1,5 @@
+// REM  Not on Apple TV (no web pages, Quick Look or file panes there) — the TV has its own screen (TVHome).
+#if !os(tvOS)
 //
 //  MiniPlayer.swift
 //  mediaworks
@@ -358,3 +360,4 @@ struct MiniPlayerBar: View {
         .lyceumHelp("Theater — open what is playing full size in the Theater view")
     }
 }
+#endif

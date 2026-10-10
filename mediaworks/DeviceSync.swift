@@ -95,8 +95,12 @@ final class DeviceSync {
             return
         }
         let need = missing.reduce(Int64(0)) { $0 + $1.size }
+        #if os(tvOS)
+        let free = Int64((try? Self.folder.resourceValues(forKeys: [.volumeAvailableCapacityKey]).volumeAvailableCapacity) ?? 0)
+        #else
         let free = (try? Self.folder.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
             .volumeAvailableCapacityForImportantUsage) ?? 0
+        #endif
         guard need < free - 2_000_000_000 else {
             // REM  Leaves 2 GB free for the phone itself.
             status = "Not enough room: \(ByteCountFormatter.string(fromByteCount: need, countStyle: .file)) to copy, \(ByteCountFormatter.string(fromByteCount: free, countStyle: .file)) free. Switch to Manual and check fewer files."

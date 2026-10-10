@@ -1,3 +1,5 @@
+// REM  Not on Apple TV (no web pages, Quick Look or file panes there) — the TV has its own screen (TVHome).
+#if !os(tvOS)
 //
 //  ColumnFit.swift
 //  mediaworks
@@ -76,4 +78,5 @@ struct ColumnFit: NSViewRepresentable {
 #else
 import UIKit
 typealias PlatformFont = UIFont
+#endif
 #endif

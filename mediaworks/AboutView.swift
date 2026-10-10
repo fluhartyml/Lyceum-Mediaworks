@@ -19,7 +19,7 @@ struct AboutView: View {
             Text(BuildStamp.summary)
                 .font(.lyceumBody)
                 .multilineTextAlignment(.center)
-                .textSelection(.enabled)
+                .lyceumSelectable()
             Text("Your folders, playlists and tags as the front door of your media library.")
                 .font(.lyceumBody)
                 .foregroundStyle(.secondary)

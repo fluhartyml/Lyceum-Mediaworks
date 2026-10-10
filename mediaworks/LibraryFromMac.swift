@@ -224,6 +224,12 @@ extension LibrarySnapshot {
 struct MacLibraryView: View {
     let library: MacLibrary
 
+    #if os(tvOS)
+    static let barMaterial = Material.thin
+    #else
+    static let barMaterial = Material.bar
+    #endif
+
     var body: some View {
         if let snapshot = library.snapshot {
             NavigationStack {
@@ -242,7 +248,7 @@ struct MacLibraryView: View {
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity)
                         .padding(8)
-                        .background(.bar)
+                        .background(Self.barMaterial)
                     }
             }
             .environment(library)
@@ -399,19 +405,23 @@ private struct CachedFileView: View {
     #if os(iOS)
     @Environment(PhonePlayer.self) private var phone: PhonePlayer?
     #endif
+    #if os(iOS)
     @State private var editing = false
     @State private var scraping = false
     @State private var confirmTrash = false
     @State private var scraped: (Data?, [TagField: String])?
+    #endif
 
+    #if os(iOS)
     private static var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+    #endif
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 CachedPicture(data: file.info?.thumbnail, isVideo: file.isVideo)
                     .frame(maxWidth: .infinity, maxHeight: 260)
-                Text(file.name).font(.lyceumHeadline).textSelection(.enabled)
+                Text(file.name).font(.lyceumHeadline).lyceumSelectable()
                 #if os(iOS)
                 // REM  PLAY — this device's copy (platforms 002c, P02). Next / Previous step through the copies in the same folder.
                 if file.isMedia, let phone {
@@ -429,6 +439,7 @@ private struct CachedFileView: View {
                     }
                 }
                 #endif
+                #if os(iOS)
                 if Self.isPad, file.isMedia {
                     // REM  THE iPAD EDITS (platforms 003a / 003b): tags and the Web Metadata Scraper, sent to the Mac to write;
                     // REM  delete goes to the 30-day Trash only — "only the mac can instantly delete."
@@ -439,6 +450,7 @@ private struct CachedFileView: View {
                     }
                     .buttonStyle(.bordered)
                 }
+                #endif
                 if file.isMedia {
                     // REM  👍 checks the file and adds it to "Thumbs Up"; 👎 unchecks it — "thats the point of thumbs downing it
                     // REM  to take it out of synch rotation." Nothing is ever deleted (platforms 001c).
@@ -477,6 +489,7 @@ private struct CachedFileView: View {
             .padding(16)
         }
         .navigationTitle(file.info?.title ?? file.name)
+        #if os(iOS)
         .sheet(isPresented: $editing) {
             TagEditSheet(file: file, scraped: scraped) { tags, picture in
                 library.send(CacheRequest(op: .setTags, path: path, tags: tags, picture: picture))
@@ -495,6 +508,7 @@ private struct CachedFileView: View {
         } message: {
             Text("Your Mac moves it to the Lyceum Trash, where it stays for 30 days. You can undo it on the Mac.")
         }
+        #endif
     }
 
     @ViewBuilder
@@ -502,7 +516,7 @@ private struct CachedFileView: View {
         if let value, !value.isEmpty {
             VStack(alignment: .leading, spacing: 2) {
                 Text(label).foregroundStyle(.secondary)
-                Text(value).textSelection(.enabled)
+                Text(value).lyceumSelectable()
             }
         }
     }
@@ -526,7 +540,7 @@ private extension String {
 }
 #endif
 
-#if !os(macOS)
+#if os(iOS)
 /// The iPad's tag editor: the main text tags, prefilled with what the Mac last read. Only fields that changed are sent.
 private struct TagEditSheet: View {
     let file: CachedFile

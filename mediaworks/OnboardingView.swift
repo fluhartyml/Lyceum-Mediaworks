@@ -1,3 +1,5 @@
+// REM  Not on Apple TV (no web pages, Quick Look or file panes there) — the TV has its own screen (TVHome).
+#if !os(tvOS)
 //
 //  OnboardingView.swift
 //  mediaworks
@@ -54,3 +56,4 @@ struct OnboardingView: View {
     OnboardingView()
         .environment(LibraryStore())
 }
+#endif

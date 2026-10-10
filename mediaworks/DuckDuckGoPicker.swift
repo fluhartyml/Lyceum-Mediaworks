@@ -1,3 +1,5 @@
+// REM  Not on Apple TV (no web pages, Quick Look or file panes there) — the TV has its own screen (TVHome).
+#if !os(tvOS)
 //
 //  DuckDuckGoPicker.swift
 //  mediaworks
@@ -369,3 +371,4 @@ struct PictureViewer: View {
         }
     }
 }
+#endif
