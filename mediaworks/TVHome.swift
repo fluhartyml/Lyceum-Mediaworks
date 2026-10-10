@@ -203,6 +203,8 @@ struct TVPlayer: View {
             if showInfo || theater.problem != nil { infoBar }
         }
         .onDisappear { if !theater.presented { theater.player.pause() } }
+        .onAppear { peek(for: 5) }
+        .onChange(of: theater.current) { peek(for: 5) }
     }
 
     private var infoBar: some View {
@@ -210,8 +212,10 @@ struct TVPlayer: View {
             Spacer()
             VStack(spacing: 8) {
                 if let problem = theater.problem { Text(problem) }
+                // REM  THE FILE NAME — his ask, 2026-10-10 13:25 watching #NSYNC on the Living Room TV: "can it show the file name
+                // REM  at the bottom of the screen?" Shown for 5 s when each video starts, and 3 s after any press.
                 if let path = theater.current {
-                    Text(library.snapshot?.file(at: path)?.info?.title ?? (path as NSString).lastPathComponent).font(.lyceumHeadline)
+                    Text((path as NSString).lastPathComponent).font(.lyceumHeadline)
                 }
                 Text("▲ 👍   ▼ 👎 + next   ◀︎ previous   ▶︎ next   hold ◀︎ ▶︎ to scrub").foregroundStyle(.secondary)
             }
@@ -245,10 +249,17 @@ struct TVPlayer: View {
         Task { try? await Task.sleep(for: .seconds(0.9)); withAnimation { flash = nil } }
     }
 
-    /// Shows the title and the key line for a few seconds after a press.
-    private func peek() {
+    @State private var peekID = 0
+
+    /// Shows the file name and the key line for a few seconds — a newer peek restarts the clock.
+    private func peek(for seconds: Double = 3) {
+        peekID += 1
+        let mine = peekID
         withAnimation { showInfo = true }
-        Task { try? await Task.sleep(for: .seconds(3)); withAnimation { showInfo = false } }
+        Task {
+            try? await Task.sleep(for: .seconds(seconds))
+            if mine == peekID { withAnimation { showInfo = false } }
+        }
     }
 }
 
