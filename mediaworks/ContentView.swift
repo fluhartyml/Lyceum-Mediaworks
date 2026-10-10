@@ -62,6 +62,8 @@ struct ContentView: View {
             guard let root = library.root?.url else { return }
             await LibraryCatalog.shared.keep(root, store: library) { library.report($0) }
         }
+        // REM  The Mac watches for an Apple TV running Lyceum, for Play on Apple TV and the remote window.
+        .task { await TVRemote.shared.keepWatching() }
         #else
         .task { await fromMac.keepUpToDate() }
         #endif

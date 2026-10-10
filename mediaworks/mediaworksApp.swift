@@ -55,6 +55,13 @@ struct mediaworksApp: App {
                 .environment(library)
         }
 
+        // REM  THE APPLE TV REMOTE — his "press play from my mac ... to control the apple tv". In the Window menu.
+        Window("Apple TV Remote", id: "tvremote") {
+            MacTVRemoteView()
+        }
+        .defaultSize(width: 560, height: 480)
+        .restorationBehavior(.disabled)
+
         // REM  CHANGES FROM DEVICES — every change a phone or iPad made, each with Undo (platforms 002e/f). In the Window menu.
         Window("Changes from Devices", id: "devicechanges") {
             DeviceChangesView()

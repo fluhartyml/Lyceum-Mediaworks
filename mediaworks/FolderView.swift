@@ -64,6 +64,9 @@ struct FolderView: View {
     // REM  scraper then the inspector should be on the library too and command y so i can preview without opening in the
     // REM  theater". The same InspectorPane and Quick Look Commander uses; shown or hidden here, remembered.
     @AppStorage("libraryInspector") private var showInspector = false
+    #if os(macOS)
+    @Environment(\.openWindow) private var openWindow
+    #endif
     @State private var quickLookURL: URL?
     // REM  FOLDER REVEALS — his ask, 2026-10-10 (screen, build 113): "these should have folder >reveals so the folder contents
     // REM  show below a revealed folder or if opened it only shows folder contents." The chevron shows a folder's contents
@@ -102,6 +105,13 @@ struct FolderView: View {
         #endif
         .toolbar {
             #if os(macOS)
+            ToolbarItem {
+                // REM  PLAY ON APPLE TV from the Mac — the TV streams it from this Mac; the remote window opens.
+                Button { playOnTV() } label: { Label("Play on Apple TV", systemImage: "appletv") }
+                    .disabled(TVRemote.shared.state == nil || quickLookList.first.flatMap { entry($0) }?.isMedia != true)
+                    .lyceumHelp(TVRemote.shared.state.map { "Play on \($0.tvName) — the highlighted video, then the rest of this folder" }
+                                ?? "Play on Apple TV — open Lyceum Mediaworks on the Apple TV first")
+            }
             ToolbarItem {
                 Button { toggleQuickLook() } label: { Label("Quick Look", systemImage: "eye") }
                     .keyboardShortcut("y", modifiers: .command)
@@ -246,6 +256,14 @@ struct FolderView: View {
 
     /// The highlighted files, in the order on screen — folders have nothing for Quick Look but an icon.
     private var quickLookList: [URL] { rows.map(\.entry).filter { selection.contains($0.url) && !$0.isFolder }.map(\.url) }
+
+    private func playOnTV() {
+        let catalog = LibraryCatalog.shared
+        guard let first = quickLookList.first, let path = catalog.libraryPath(first) else { return }
+        let queue = rows.map(\.entry).filter(\.isMedia).compactMap { catalog.libraryPath($0.url) }
+        TVRemote.shared.playOnTV(path, queue: queue)
+        openWindow(id: "tvremote")
+    }
 
     private func toggleQuickLook() {
         if quickLookURL != nil { quickLookURL = nil; return }

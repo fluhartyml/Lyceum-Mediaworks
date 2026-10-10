@@ -205,6 +205,14 @@ final class LibraryCatalog {
         return relative(url).map { !unchecked.contains($0) } ?? true
     }
 
+    /// 👍 / 👎 pressed on the Mac's Apple TV remote — the same marks a phone sets, but not a "device" change.
+    func thumbFromMac(_ up: Bool, _ path: String) {
+        apply(CacheRequest(op: up ? .thumbsUp : .thumbsDown, path: path))
+    }
+
+    /// A file's path inside the library — what the Apple TV is told to play.
+    func libraryPath(_ url: URL) -> String? { relative(url) }
+
     /// Checks or unchecks a file from the Mac's own Library list — the same mark a phone's checkbox or 👍/👎 sets.
     func setChecked(_ url: URL, _ checked: Bool) {
         guard let path = relative(url) else { return }

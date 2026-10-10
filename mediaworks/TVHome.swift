@@ -20,7 +20,21 @@ struct TVHome: View {
     @State private var theater = TVTheater()
 
     var body: some View {
-        Group {
+        VStack(spacing: 0) {
+            // REM  NOW PLAYING — so the TV works on its own with just the Siri Remote: back out of a video to browse, and
+            // REM  this row takes you straight back to it (his "make sure the apple tv works stand alone", 2026-10-10).
+            if let path = theater.current, !theater.presented {
+                let file = library.snapshot?.file(at: path)
+                Button {
+                    theater.presented = true
+                    theater.player.play()
+                } label: {
+                    Label("Now Playing — \(file?.info?.title ?? (path as NSString).lastPathComponent)", systemImage: "play.rectangle.fill")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, 80)
+                .padding(.top, 30)
+            }
             if library.snapshot != nil {
                 MacLibraryView(library: library)
             } else {

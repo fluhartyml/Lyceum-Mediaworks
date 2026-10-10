@@ -175,3 +175,30 @@ nonisolated enum Framing {
 
     private final class Body: @unchecked Sendable { var data = Data() }
 }
+
+nonisolated extension LibrarySnapshot {
+    /// The file at a library-relative path, as this copy has it now.
+    func file(at path: String) -> CachedFile? {
+        var parts = path.split(separator: "/").map(String.init)
+        guard let name = parts.popLast() else { return nil }
+        var folder = root
+        for part in parts {
+            guard let next = folder.folders.first(where: { $0.name == part }) else { return nil }
+            folder = next
+        }
+        return folder.files.first { $0.name == name }
+    }
+
+    /// The media files in the folder holding `path`, as library-relative paths, in the folder's order.
+    func siblings(of path: String) -> [String] {
+        var parts = path.split(separator: "/").map(String.init)
+        parts.removeLast()
+        var folder = root
+        for part in parts {
+            guard let next = folder.folders.first(where: { $0.name == part }) else { return [path] }
+            folder = next
+        }
+        let prefix = parts.isEmpty ? "" : parts.joined(separator: "/") + "/"
+        return folder.files.filter(\.isMedia).map { prefix + $0.name }
+    }
+}

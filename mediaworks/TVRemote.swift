@@ -35,11 +35,15 @@ nonisolated enum TVRemoteService {
     static let type = "_lyceum-tv._tcp"
 }
 
-#if os(iOS)
-/// The iPhone's side: finds an Apple TV running Lyceum, sends it commands, keeps what it is playing.
+#if os(iOS) || os(macOS)
+/// The iPhone's (and the Mac's) side: finds an Apple TV running Lyceum, sends it commands, keeps what it is playing.
+// REM  THE MAC TOO — his ask, 2026-10-10 13:1x: "i want to press play from my mac or iphone to control the apple tv."
 @MainActor
 @Observable
 final class TVRemote {
+    /// The Mac's one remote (the iPhone keeps its own in PhoneHome).
+    static let shared = TVRemote()
+
     /// What the TV last said; nil until one answers.
     private(set) var state: RemoteState?
     @ObservationIgnored private var endpoint: NWEndpoint?
