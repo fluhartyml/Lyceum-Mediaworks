@@ -27,7 +27,7 @@ struct mediaworksApp: App {
     #endif
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: "main") {
             ContentView()
                 .environment(library)
                 .environment(mini)
@@ -103,6 +103,13 @@ struct mediaworksApp: App {
             AboutView()
         }
         .windowResizability(.contentSize)
+
+        // REM  THE MENU-BAR STATUS — his ask, 2026-10-11: work in the background with the window closed, or a "waiting for
+        // REM  caller" screen. Both: serving carries on with no window (LibraryCatalog.start), and this says what it is doing.
+        MenuBarExtra("Lyceum Mediaworks", systemImage: "play.tv") {
+            ServingMenu()
+                .environment(library)
+        }
         #endif
     }
 }

@@ -29,6 +29,16 @@ final class LibraryCatalog {
     /// The open library — the iPad's tag edits are saved through it, exactly as the Mac's own Inspector saves.
     @ObservationIgnored private weak var store: LibraryStore?
     @ObservationIgnored private var listener: NWListener?
+    /// The keep-current loop, owned HERE and not by a window — his ask, 2026-10-11: "we need to have it minimize or work in
+    /// the background so the window can be closed". It ran from the main window's .task, so closing the window stopped it.
+    @ObservationIgnored private var keepTask: Task<Void, Never>?
+    @ObservationIgnored private var keepRoot: URL?
+    /// For the menu-bar status ("waiting for caller"): true once announced on the network.
+    private(set) var isServing = false
+    /// Video streams open right now, and the last device that called and when.
+    private(set) var activeStreams = 0
+    private(set) var lastCaller: String?
+    private(set) var lastCallAt: Date?
     @ObservationIgnored private var payload = Data()
     /// The last walk, so a checkmark or 👍 can republish at once without walking Nineveh again.
     @ObservationIgnored private var lastFound: Found?
@@ -60,7 +70,16 @@ final class LibraryCatalog {
         if let snapshot { payload = (try? LibraryCache.encoder.encode(snapshot)) ?? Data() }
     }
 
-    /// Keeps the cache current for this library while the app is open. Call from a `.task` — it runs until cancelled.
+    /// Start keeping `root` current, in the background, for as long as the app runs — windows may close. A second call
+    /// for the same folder does nothing; a different folder replaces the first.
+    func start(_ root: URL, store: LibraryStore, report: @escaping (String) -> Void) {
+        guard keepRoot != root else { return }
+        keepTask?.cancel()
+        keepRoot = root
+        keepTask = Task { await keep(root, store: store, report: report) }
+    }
+
+    /// Keeps the cache current for this library while the app is open. Runs until cancelled (see `start`).
     func keep(_ root: URL, store: LibraryStore, report: @escaping (String) -> Void) async {
         running = root
         self.store = store
@@ -542,10 +561,15 @@ final class LibraryCatalog {
         }
         listener.start(queue: .main)
         self.listener = listener
+        isServing = true
     }
 
     private func serve(_ connection: NWConnection) {
         connection.start(queue: .main)
+        if case .hostPort(let host, _) = connection.endpoint {
+            lastCaller = "\(host)".components(separatedBy: "%").first
+        }
+        lastCallAt = Date()
         // REM  ONE PORT, TWO KINDS OF CALLER: a request starting "GET " / "HEAD" is a video player streaming a file (platforms
         // REM  N05, MediaStreaming below); anything else is the library exchange — an 8-byte length, then a request.
         connection.receive(minimumIncompleteLength: 8, maximumLength: 8) { first, _, _, _ in
@@ -589,6 +613,17 @@ final class LibraryCatalog {
     // REM  http://<mac>:<port>/media/<library path> with "Range" headers, and gets just those bytes back (206) — that is
     // REM  how it starts quickly and skips around. Only files inside the library; one response per connection.
     private func streamHTTP(_ connection: NWConnection, first: Data) {
+        // Counted while open, for the menu-bar status.
+        activeStreams += 1
+        connection.stateUpdateHandler = { state in
+            switch state {
+            case .cancelled, .failed:
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated { LibraryCatalog.shared.activeStreams = max(0, LibraryCatalog.shared.activeStreams - 1) }
+                }
+            default: break
+            }
+        }
         var header = first
         func readHeader() {
             connection.receive(minimumIncompleteLength: 1, maximumLength: 16384) { chunk, _, complete, _ in

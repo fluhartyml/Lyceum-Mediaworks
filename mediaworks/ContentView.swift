@@ -58,9 +58,10 @@ struct ContentView: View {
         }
         #if os(macOS)
         // REM  THE MAC KEEPS THE CACHE CURRENT while a library is open — for the iPhone, iPad and Apple TV (LibraryCatalog.swift).
+        // REM  Started here, but it RUNS IN THE BACKGROUND (LibraryCatalog.start): closing this window no longer stops serving.
         .task(id: library.root?.path) {
             guard let root = library.root?.url else { return }
-            await LibraryCatalog.shared.keep(root, store: library) { library.report($0) }
+            LibraryCatalog.shared.start(root, store: library) { library.report($0) }
         }
         // REM  The Mac watches for an Apple TV running Lyceum, for Play on Apple TV and the remote window.
         .task { await TVRemote.shared.keepWatching() }
