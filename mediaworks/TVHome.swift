@@ -385,6 +385,7 @@ struct TVSettingsSheet: View {
                          : "The file name shows for 5 seconds when each video starts, and after a remote press.")
                         .foregroundStyle(.secondary)
                 }
+                MacPickerSection()
                 Section { Text("Build \(BuildStamp.number) · \(BuildStamp.commit)").foregroundStyle(.secondary) }
             }
             .navigationTitle("Settings")

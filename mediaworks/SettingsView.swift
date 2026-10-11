@@ -21,6 +21,10 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            #if !os(macOS)
+            // REM  WHICH MAC — his ask, 2026-10-11 (MacFinder.swift).
+            MacPickerSection()
+            #endif
             Section {
                 Toggle("Delete instantly (skip the 30-day Trash)", isOn: $instantDelete)
                     .font(.lyceumBody)

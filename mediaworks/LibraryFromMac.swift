@@ -41,7 +41,15 @@ final class MacLibrary {
     }
 
     /// Looks for the Mac now and every minute after. Call from a `.task`.
+    /// Choosing a different Mac (MacFinder) fetches from it at once, and forgets the old stream address.
     func keepUpToDate() async {
+        let watch = Task { @MainActor in
+            for await _ in NotificationCenter.default.notifications(named: MacFinder.changed) {
+                MacLibrary.streamBase = nil
+                await fetch()
+            }
+        }
+        defer { watch.cancel() }
         while !Task.isCancelled {
             await fetch()
             try? await Task.sleep(for: .seconds(60))
@@ -168,7 +176,7 @@ final class MacLibrary {
             browser.browseResultsChangedHandler = { results, _ in
                 MainActor.assumeIsolated {
                     // One connection per request — a second sighting of the same Mac must not send the change twice.
-                    guard !finished, let mac = results.first else { return }
+                    guard !finished, let mac = MacFinder.pick(results) else { return }
                     let connection = NWConnection(to: mac.endpoint, using: .tcp)
                     connection.start(queue: .main)
                     connection.send(content: message, completion: .contentProcessed { _ in })
@@ -196,7 +204,7 @@ final class MacLibrary {
             }
             browser.browseResultsChangedHandler = { results, _ in
                 MainActor.assumeIsolated {
-                    guard !finished, let mac = results.first else { return }
+                    guard !finished, let mac = MacFinder.pick(results) else { return }
                     let parameters = NWParameters.tcp
                     (parameters.defaultProtocolStack.internetProtocol as? NWProtocolIP.Options)?.version = .v4
                     let probe = NWConnection(to: mac.endpoint, using: parameters)
@@ -222,7 +230,7 @@ final class MacLibrary {
         return make(found, path)
     }
 
-    private static var streamBase: (url: URL, when: Date)?
+    fileprivate static var streamBase: (url: URL, when: Date)?
 
     private static func make(_ base: URL, _ path: String) -> URL? {
         URL(string: base.absoluteString + "/media/" + (path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path))
