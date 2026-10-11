@@ -372,6 +372,29 @@ Every line agreed on the amber page `CLI Claude.Apartment/Workshop/Lyceum-Mediaw
 
 ---
 
+## ROLES & SERVERS — PLAN, NOT CODED (talked through 2026-10-11)
+
+*His word: "no coding yet". Captured as decided so far; open items marked ⬜.*
+
+- **Why:** Mediaworks now runs on **Lab B and the MacBook**. Devices took whichever Mac Bonjour found first (build 144 added Settings ▸ Your Mac to pick one). He wants each machine to have a **role**.
+- **Roles, per machine, chosen in Settings** (his: *"a toggle in settings to turn on media server or turn on system operator per mediaworks machine"*):
+  - **Theater** (watch) → the **Theater tab**. Apple TV is Theater only, always. iPhone, iPad and Mac may turn it on.
+  - **System Operator** (manage) → the **Commander tab**. Mac, iPhone, iPad.
+  - **Media Server** (serve) → the **Library tab + the "waiting for caller" status**. **Mac only.**
+  - Roles combine (checkboxes); an iOS device can be **Theater + System Operator** (his words).
+- **Every non-server device reads the server's CACHED LIBRARY** — Theater browses it to play, System Operator browses it to edit. Never the "waiting for caller" screen (*"it should also need to be able to see the cached library, but not the waiting for caller"*).
+- **Lab B = Media Server** for video, library at **Nineveh ▸ Library ▸ Lyceum**. **MacBook = System Operator**, opening the same Nineveh folder directly, serving nothing.
+- **iOS System Operator = remote administrator** (his: *"they can edit the library but NOT serve the files they have to copy their media files to the mac server"*): edits (tags, checkmarks, rename, move, delete) are sent to the Media Server to carry out. ⚠️ Supersedes the older line above that moving and renaming are Mac only — to be confirmed when built.
+- **NEW ARRIVALS** — his name (*"New Arrivals? it has a video rental store vibe"*; considered Inbox, Quarantine, Staging, Processing). A folder in the library where new media lands: videos copied up from an iPhone/iPad, and batches downloaded on Lab B (e.g. Internet Archive). The System Operator processes it in Commander — Web Metadata Scraper for tags, then moves each file to its subfolder.
+  - ⬜ **Shown in Theater before filing, or held back?** Open ("lets go with New Arrivals for now").
+- **Upload to server** (iOS → Mac over the home network) into New Arrivals — big files need progress and must survive a dropped connection.
+- **Must move onto Nineveh** so every machine sees the same: per-file **checkmarks** and the **change history** (today kept on each Mac; playlists already live in the library as .m3u8).
+- **System Operator edits → tell the Media Server to re-read at once** (today it re-walks every 5 minutes).
+- **One library per server on each device** — separate cached copy, synced files, iCloud copy and offline changes per Mac (the iCloud copy is one shared record today — two servers would overwrite each other).
+- **PARKED — audio:** Lab A as an audio server beside Lab B for video. *"weve only worked video, im not ready to work on audio yet."*
+
+---
+
 ## ATTRIBUTION
 
 - Original work by Michael Fluharty, engineered with Claude.
@@ -387,4 +410,5 @@ Every line agreed on the amber page `CLI Claude.Apartment/Workshop/Lyceum-Mediaw
 - **Name:** Lyceum Mediaworks (reserved 2026-10-06; "USA" suffix held in reserve, not needed)
 - **Bundle ID:** `com.lyceum.mediaworks` · **Category:** Entertainment (changed from Video 2026-10-06 — audio and video)
 - **Uploaded:** macOS 1.0 (4), 2026-10-06 19:08 — validation passed, **not submitted for review**
+- **TestFlight:** macOS 1.0 (142), uploaded by him 2026-10-11 13:11, internal group **Lab B** (him) — Testing; build 4 expired by him. iOS and tvOS are **not** on the App Store Connect record (macOS only) — he runs iOS/tvOS from Xcode instead.
 - **Icon:** temporary (glowing knight); final icon pending
