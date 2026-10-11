@@ -239,7 +239,11 @@ struct TVPlayer: View {
                 }
                 // The key line only with a peek — "always" keeps just the file name on screen.
                 if showInfo {
+                    #if DEBUG
+                    Text("▲ 👍 + next   ▼ 👎 + next   ◀︎ previous   ▶︎ next   hold ◀︎ ▶︎ to scrub").foregroundStyle(.secondary)
+                    #else
                     Text("▲ 👍   ▼ 👎 + next   ◀︎ previous   ▶︎ next   hold ◀︎ ▶︎ to scrub").foregroundStyle(.secondary)
+                    #endif
                 }
             }
             .font(.lyceumBody)
@@ -255,6 +259,11 @@ struct TVPlayer: View {
         case .up:
             if let path = theater.current { library.change(.thumbsUp, path) }
             show("👍")
+            // DEBUG BUILDS ONLY — his ask, 2026-10-11: up = thumbs up AND next, like down, for fast rating rounds.
+            // Left out of every archive (TestFlight / App Store), where up only rates.
+            #if DEBUG
+            theater.next()
+            #endif
         case .down:
             if let path = theater.current { library.change(.thumbsDown, path) }
             show("👎")
