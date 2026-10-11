@@ -395,6 +395,7 @@ Every line agreed on the amber page `CLI Claude.Apartment/Workshop/Lyceum-Mediaw
 - **Upload to server** (iOS → Mac over the home network) into New Arrivals — big files need progress and must survive a dropped connection.
 - **Must move onto Nineveh** so every machine sees the same: per-file **checkmarks** and the **change history** (today kept on each Mac; playlists already live in the library as .m3u8).
 - **System Operator edits → tell the Media Server to re-read at once** (today it re-walks every 5 minutes).
+- **ASK "WHICH MAC?" when more than one is serving and none is chosen** — his catch, 2026-10-11: he opened the Apple TV app with Mediaworks running on two Macs *"and the apple tv didnt ask"*. Build 144 put the choice only in Settings ▸ Your Mac (default "Any Mac"); instead, the Apple TV, iPhone and iPad ask the first time, listing Macs by computer name, and remember the answer — Settings is just where to change it. **With the roles work** (his word).
 - **One library per server on each device** — separate cached copy, synced files, iCloud copy and offline changes per Mac (the iCloud copy is one shared record today — two servers would overwrite each other).
 - **PARKED — audio:** Lab A as an audio server beside Lab B for video. *"weve only worked video, im not ready to work on audio yet."*
 
