@@ -728,7 +728,11 @@ private struct CachedPicture: View {
         if let data, let image = UIImage(data: data) {
             Image(uiImage: image).resizable().scaledToFit()
         } else {
+            #if os(tvOS)
+            Image(systemName: isVideo ? "film" : "music.note").font(.system(size: 48)).foregroundStyle(.secondary)
+            #else
             Image(systemName: isVideo ? "film" : "music.note").font(.system(size: 28)).foregroundStyle(.secondary)
+            #endif
         }
     }
 }
