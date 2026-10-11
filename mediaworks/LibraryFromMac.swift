@@ -26,6 +26,9 @@ final class MacLibrary {
     /// True when the copy on show came from iCloud because the Mac was out of reach (platforms 002a).
     private(set) var fromCloud = false
     @ObservationIgnored private var browser: NWBrowser?
+    /// A fetch is running; another asked for meanwhile runs once it ends instead of beside it.
+    @ObservationIgnored private var fetching = false
+    @ObservationIgnored private var fetchAgain = false
     /// This device's copies of the files — Off, Automatic or Manual (DeviceSync.swift).
     let sync = DeviceSync()
 
@@ -132,7 +135,21 @@ final class MacLibrary {
         return folder
     }
 
+    // REM  ONE FETCH AT A TIME (crash 2026-10-11 15:19, Apple TV build 149). The minute timer, the Mac-changed watch and
+    // REM  every 👍/👎 each start a fetch; two at once sent the same change, the first crossed it off, and the second's
+    // REM  removeFirst() hit an empty list — or crossed off a later change that was never sent. A call that arrives
+    // REM  while one runs is folded into one more pass after it.
     private func fetch() async {
+        guard !fetching else { fetchAgain = true; return }
+        fetching = true
+        defer { fetching = false }
+        repeat {
+            fetchAgain = false
+            await fetchOnce()
+        } while fetchAgain
+    }
+
+    private func fetchOnce() async {
         looking = true
         defer { looking = false }
         // Waiting changes go first, one per connection; each answer is the whole cache with that change in it.
