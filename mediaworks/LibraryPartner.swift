@@ -46,6 +46,11 @@ nonisolated enum PartnerMerge {
         return out
     }
 
+    /// This Mac's slice with every server's slice, in order.
+    static func merge(_ own: LibrarySnapshot, _ slices: [(name: String, snapshot: LibrarySnapshot)]) -> LibrarySnapshot {
+        slices.reduce(own) { merge($0, $1.snapshot, partnerName: $1.name) }
+    }
+
     static func mergeFolder(_ a: CachedFolder, _ b: CachedFolder, host: String) -> CachedFolder {
         var out = a
         for sub in b.folders {
@@ -92,33 +97,62 @@ nonisolated enum BufferGuard {
     }
 }
 
-// MARK: - The partner
+// MARK: - The Mediaworks machines (N16, N20)
 
+// REM  CHOOSE MEDIAWORKS MACHINES — his design, 2026-10-13 (N20): "the choose library folder to be choose media works machines
+// REM  and then from there you can checkbox which ones are servers and the servers server their slices of the hybrid library so
+// REM  macbook would not have server checked". Every Mac running Mediaworks is listed; each ticked SERVER serves its own slice
+// REM  (Lab A audio, Lab B video); this Mac merges the ticked servers' slices into one hybrid library. A Mac that is not a
+// REM  server (the MacBook) is not offered to devices — it reads the hybrid library from the servers.
 @MainActor
 @Observable
 final class LibraryPartner {
     static let shared = LibraryPartner()
 
-    /// The other mini, as it names itself on the network. Nil = this Mac serves only its own library.
-    var partnerName: String? = UserDefaults.standard.string(forKey: "partnerName") {
+    /// The OTHER Macs ticked as servers, by the name they announce under.
+    var servers: [String] = {
+        if let list = UserDefaults.standard.stringArray(forKey: "serverNames") { return list }
+        return UserDefaults.standard.string(forKey: "partnerName").map { [$0] } ?? []      // build 169–176's single partner
+    }() {
         didSet {
-            UserDefaults.standard.set(partnerName, forKey: "partnerName")
-            partnerSnapshot = nil; heard = nil; base = nil
+            UserDefaults.standard.set(servers, forKey: "serverNames")
+            for gone in Set(oldValue).subtracting(servers) { snapshots[gone] = nil; heard[gone] = nil; bases[gone] = nil }
             LibraryCatalog.shared.republishMerged()
-            if partnerName != nil { start() }
+            if !servers.isEmpty { start() }
+            Task { await refresh() }
         }
     }
-    private(set) var partnerSnapshot: LibrarySnapshot?
-    private(set) var heard: Date?
-    private(set) var problem: String?
-    /// Macs announcing a Lyceum library, for the picker.
+
+    /// Whether THIS Mac is a server — offered to iPhones, iPads, TVs. A Mac that chose a library folder before N20 is one.
+    var thisMacServes: Bool = UserDefaults.standard.object(forKey: "thisMacServes") as? Bool
+        ?? (UserDefaults.standard.data(forKey: "libraryRootBookmark") != nil) {
+        didSet {
+            UserDefaults.standard.set(thisMacServes, forKey: "thisMacServes")
+            LibraryCatalog.shared.servingChanged()
+        }
+    }
+
+    /// The machines were chosen once (the welcome screen is done). A Mac with a library before N20 counts as chosen.
+    var machinesChosen: Bool = UserDefaults.standard.object(forKey: "machinesChosen") as? Bool
+        ?? (UserDefaults.standard.data(forKey: "libraryRootBookmark") != nil) {
+        didSet { UserDefaults.standard.set(machinesChosen, forKey: "machinesChosen") }
+    }
+
+    private(set) var snapshots: [String: LibrarySnapshot] = [:]
+    private(set) var heard: [String: Date] = [:]
+    private(set) var problems: [String: String] = [:]
+    /// Macs announcing Mediaworks on the network, for the list.
     private(set) var found: [String] = []
+
+    /// The first server — for one-line messages.
+    var partnerName: String? { servers.first }
 
     @ObservationIgnored private var browser: NWBrowser?
     @ObservationIgnored private var endpoints: [String: NWEndpoint] = [:]
     @ObservationIgnored private var loop: Task<Void, Never>?
-    /// The partner's address for streaming, looked up once and kept.
-    @ObservationIgnored private var base: (url: URL, when: Date)?
+    @ObservationIgnored private var bases: [String: (url: URL, when: Date)] = [:]
+
+    private init() { browse() }
 
     func start() {
         browse()
@@ -149,21 +183,36 @@ final class LibraryPartner {
         browser = b
     }
 
-    /// Asks the partner for its own listing; after a minute without an answer its half drops out (N16).
+    /// The ticked servers' slices, in name order — what gets merged.
+    var slices: [(name: String, snapshot: LibrarySnapshot)] {
+        servers.sorted().compactMap { name in snapshots[name].map { (name, $0) } }
+    }
+
+    /// Asks every server for its own slice; a server silent for a minute drops out until it answers again.
     func refresh() async {
-        guard let name = partnerName else { return }
-        if let data = await ask(CacheRequest(op: .getOwn)), let snap = try? LibraryCache.decoder.decode(LibrarySnapshot.self, from: data) {
-            partnerSnapshot = snap; heard = .now; problem = nil
-        } else {
-            problem = "\(name) did not answer."
-            if let heard, Date.now.timeIntervalSince(heard) > 60 { partnerSnapshot = nil }
+        for name in servers {
+            if let data = await ask(CacheRequest(op: .getOwn), to: name),
+               let snap = try? LibraryCache.decoder.decode(LibrarySnapshot.self, from: data) {
+                snapshots[name] = snap; heard[name] = .now; problems[name] = nil
+            } else {
+                problems[name] = "\(name) did not answer."
+                if let h = heard[name], Date.now.timeIntervalSince(h) > 60 { snapshots[name] = nil }
+                if heard[name] == nil { snapshots[name] = nil }
+            }
         }
         LibraryCatalog.shared.republishMerged()
     }
 
-    /// One request to the partner, its framed answer back. Nil when it does not answer in 10 s.
-    func ask(_ request: CacheRequest, timeout: Double = 10) async -> Data? {
-        guard let name = partnerName else { return nil }
+    /// Which server holds a file of the hybrid library.
+    func owner(of path: String) -> String? { LibraryCatalog.shared.snapshot?.file(at: path)?.host }
+
+    /// The server whose slice has this top folder (a trunk) — for the Import Drive (I01a).
+    func server(holding folder: String) -> String? {
+        slices.first { $0.snapshot.root.folders.contains { $0.name == folder } }?.name
+    }
+
+    /// One request to a server, its framed answer back. Nil when it does not answer in time.
+    func ask(_ request: CacheRequest, to name: String, timeout: Double = 10) async -> Data? {
         if endpoints[name] == nil { browse(); try? await Task.sleep(for: .seconds(2)) }
         guard let endpoint = endpoints[name] else { return nil }
         let message = Framing.frame((try? LibraryCache.encoder.encode(request)) ?? Data())
@@ -178,10 +227,10 @@ final class LibraryPartner {
         }
     }
 
-    /// The partner's streaming address — http://<ip>:<port> — found by connecting once to its Bonjour service.
-    func baseURL() async -> URL? {
-        if let base, Date.now.timeIntervalSince(base.when) < 120 { return base.url }
-        guard let name = partnerName, let endpoint = endpoints[name] else { return nil }
+    /// A server's streaming address — http://<ip>:<port> — found by connecting once to its Bonjour service.
+    func baseURL(_ name: String) async -> URL? {
+        if let b = bases[name], Date.now.timeIntervalSince(b.when) < 120 { return b.url }
+        guard let endpoint = endpoints[name] else { return nil }
         let found: URL? = await withCheckedContinuation { (done: CheckedContinuation<URL?, Never>) in
             let params = NWParameters.tcp
             if let ip = params.defaultProtocolStack.internetProtocol as? NWProtocolIP.Options { ip.version = .v4 }
@@ -201,33 +250,38 @@ final class LibraryPartner {
             c.start(queue: .main)
             DispatchQueue.main.asyncAfter(deadline: .now() + 8) { if once.first() { c.cancel(); done.resume(returning: nil) } }
         }
-        if let found { base = (found, .now) }
+        if let found { bases[name] = (found, .now) }
         return found
     }
 
-    /// I01a — hands a file to the partner for its trunk: it downloads it from this Mac into `relative` in its library.
-    /// Nil when the partner's own listing then shows the file there at the right size; otherwise why not.
-    func sendIntake(_ file: URL, to relative: String) async -> String? {
+    func mediaURL(_ path: String, on name: String) async -> URL? {
+        guard let base = await baseURL(name) else { return nil }
+        return URL(string: base.absoluteString + "/media/" + (path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path))
+    }
+
+    /// Whether an address belongs to one of the ticked servers — the only Macs whose files this Mac takes in.
+    func isServerAddress(_ host: String) async -> Bool {
+        for name in servers { if let b = await baseURL(name)?.host(), b == host || host.hasSuffix(b) { return true } }
+        return false
+    }
+
+    /// I01a — hands a file to a server for its trunk: it downloads it from this Mac into `relative` in its slice.
+    /// Nil when that server's own listing then shows the file there at the right size; otherwise why not.
+    func sendIntake(_ file: URL, to relative: String, server name: String) async -> String? {
         guard let base = LibraryCatalog.shared.ownBase else { return "This Mac's own address could not be found." }
         let token = LibraryCatalog.shared.offer(file)
         defer { LibraryCatalog.shared.withdraw(token) }
         var request = CacheRequest(op: .takeIn, path: relative)
         request.newName = base + "/outbox/" + token
-        guard let data = await ask(request, timeout: 3600),
-              let reply = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return "\(partnerName ?? "The partner") did not answer." }
-        guard reply["ok"] as? Bool == true else { return reply["problem"] as? String ?? "The partner refused it." }
-        // Checked, not assumed: the partner's own listing must show it, at least this size (a bigger same-named one counts).
+        guard let data = await ask(request, to: name, timeout: 3600),
+              let reply = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return "\(name) did not answer." }
+        guard reply["ok"] as? Bool == true else { return reply["problem"] as? String ?? "\(name) refused it." }
         await refresh()
         let size = Int64((try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
-        guard let there = partnerSnapshot?.file(at: relative), (there.size ?? 0) >= size else {
-            return "The partner said yes, but its library does not show the file yet — the drop copy was kept."
+        guard let there = snapshots[name]?.file(at: relative), (there.size ?? 0) >= size else {
+            return "\(name) said yes, but its library does not show the file yet — the drop copy was kept."
         }
         return nil
-    }
-
-    func mediaURL(_ path: String) async -> URL? {
-        guard let base = await baseURL() else { return nil }
-        return URL(string: base.absoluteString + "/media/" + (path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path))
     }
 }
 
@@ -302,7 +356,7 @@ final class PartnerBuffer {
     }
 
     /// The local copy of a partner file, started if need be. Nil = the guard says no room: stream straight from the partner.
-    func copy(_ path: String, size: Int64) async -> (url: URL, have: () -> Int64, complete: () -> Bool)? {
+    func copy(_ path: String, size: Int64, from host: String) async -> (url: URL, have: () -> Int64, complete: () -> Bool)? {
         if var e = entries[path], e.complete || downloads[path] != nil {
             e.lastPlayed = .now; entries[path] = e; save()
             let url = Self.folder.appending(path: e.file)
@@ -312,7 +366,7 @@ final class PartnerBuffer {
         let list = entries.map { (path: $0.key, size: $0.value.have, lastPlayed: $0.value.lastPlayed) }
         guard let out = BufferGuard.evictions(size: size, free: free, limit: limit, entries: list, busy: Set(downloads.keys)) else { return nil }
         for p in out { if let e = entries[p] { try? FileManager.default.removeItem(at: Self.folder.appending(path: e.file)) }; entries[p] = nil }
-        guard let source = await LibraryPartner.shared.mediaURL(path) else { return nil }
+        guard let source = await LibraryPartner.shared.mediaURL(path, on: host) else { return nil }
         let name = UUID().uuidString + "." + (path as NSString).pathExtension
         let url = Self.folder.appending(path: name)
         FileManager.default.createFile(atPath: url.path, contents: nil)
@@ -404,49 +458,4 @@ nonisolated final class RangeRelay: NSObject, URLSessionDataDelegate, @unchecked
     }
 }
 
-// MARK: - Settings
-
-/// Settings → General: the partner mini and the buffer.
-struct PartnerSettingsSection: View {
-    @State private var partner = LibraryPartner.shared
-    @State private var buffer = PartnerBuffer.shared
-    @State private var gb: Double = 50
-
-    private var top: Double { Double(max(buffer.maximum, BufferGuard.floor) / 1_000_000_000) }
-
-    var body: some View {
-        Section {
-            Picker("Share one library with", selection: Binding(get: { partner.partnerName ?? "" }, set: { partner.partnerName = $0.isEmpty ? nil : $0 })) {
-                Text("No other Mac — this library only").tag("")
-                ForEach(Array(Set(partner.found + [partner.partnerName].compactMap { $0 })).sorted(), id: \.self) { Text($0).tag($0) }
-            }
-            if let name = partner.partnerName {
-                Text(partner.heard.map { "\(name) answered at \($0.formatted(date: .omitted, time: .standard)) — its files are served from here too." }
-                     ?? (partner.problem ?? "Looking for \(name)…"))
-                    .foregroundStyle(.secondary)
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Buffer for \(name)'s files: \(Int(gb)) GB (on this Mac's own drive)")
-                    Slider(value: $gb, in: 25...max(top, 25.5), step: 1, onEditingChanged: { editing in
-                        if !editing { buffer.setLimit(gigabytes: gb) }
-                    })
-                    .disabled(buffer.maximum < BufferGuard.floor)
-                    Text("25 GB to \(Int(top)) GB — the drive always keeps 25 GB free. In use: \(ByteCountFormatter.string(fromByteCount: buffer.used, countStyle: .file)).")
-                        .foregroundStyle(.secondary)
-                    if let notice = buffer.notice { Text(notice).foregroundStyle(.orange) }
-                    Button("Empty Buffer Now") { buffer.emptyNow() }
-                }
-            }
-        } header: {
-            Text("Two Macs, One Library").font(.lyceumHeadline)
-        } footer: {
-            Text("With another Mac named here, every device connected to this Mac sees both libraries as one and plays every file. The other Mac's files are copied into a buffer here as they play, so they do not stutter; the oldest-played leave first when it is full.")
-                .foregroundStyle(.secondary)
-        }
-        .onAppear {
-            partner.start()
-            buffer.clampLimit()
-            gb = Double(buffer.limit / 1_000_000_000)
-        }
-    }
-}
 #endif

@@ -46,8 +46,15 @@ struct ContentView: View {
                 case .commander: NavigationStack { CommanderView(root: root.url).toolbar { modeSwitch } }
                 case .theater: NavigationStack { TheaterView().toolbar { modeSwitch } }
                 }
-            } else {
+            } else if library.needsWriteAccess {
                 OnboardingView()
+            } else if !LibraryPartner.shared.servers.isEmpty {
+                // REM  N20 — a Mac with no library folder of its own: the hybrid library from the servers.
+                HybridLibraryView()
+            } else {
+                // REM  N20 — "the choose library folder to be choose media works machines". Shown whenever this Mac has no
+                // REM  folder of its own AND no servers ticked — there is nothing to show until it has one or the other.
+                MachinesOnboardingView()
             }
             #endif
         }
@@ -72,7 +79,13 @@ struct ContentView: View {
         // REM  SMART TVs (DLNA, 017/018) — serves if the user turned it on in Settings.
         .task { DLNAServer.shared.startIfOn() }
         // REM  TWO MACS, ONE LIBRARY (N16) — keeps the partner's half current if one is named.
-        .task { if LibraryPartner.shared.partnerName != nil { LibraryPartner.shared.start() } }
+        .task { if !LibraryPartner.shared.servers.isEmpty { LibraryPartner.shared.start() } }
+        // REM  N20 — no library folder here: show (and, if ticked, serve) the servers' slices.
+        .task(id: "\(library.root == nil)-\(LibraryPartner.shared.servers.isEmpty)") {
+            if library.root == nil, !LibraryPartner.shared.servers.isEmpty {
+                LibraryCatalog.shared.startWithoutLibrary(store: library) { library.report($0) }
+            }
+        }
         // REM  The Mac watches for an Apple TV running Lyceum, for Play on Apple TV and the remote window.
         .task { await TVRemote.shared.keepWatching() }
         #else

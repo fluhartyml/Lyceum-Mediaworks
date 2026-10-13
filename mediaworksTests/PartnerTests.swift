@@ -32,6 +32,16 @@ struct PartnerTests {
         #expect(m.playlists?["Liked"] == ["Music Videos/clip.mp4"])
     }
 
+    @Test func manyServersMakeOneLibrary() {   // N20 — the MacBook with no slice of its own, two servers
+        let none = snap(CachedFolder(name: "Lyceum"))
+        let labA = snap(CachedFolder(name: "Lyceum", folders: [CachedFolder(name: "Audio", files: [CachedFile(name: "a.m4a", kind: "audio")])]))
+        let labB = snap(CachedFolder(name: "Lyceum", folders: [CachedFolder(name: "Video", files: [CachedFile(name: "v.mp4", kind: "video")])]))
+        let m = PartnerMerge.merge(none, [("HomeLAB A", labA), ("HomeLAB B", labB)])
+        #expect(m.root.folders.map(\.name) == ["Audio", "Video"])
+        #expect(m.file(at: "Audio/a.m4a")?.host == "HomeLAB A")
+        #expect(m.file(at: "Video/v.mp4")?.host == "HomeLAB B")
+    }
+
     @Test func withNoPartnerItIsJustThisMac() {
         let a = snap(CachedFolder(name: "Lyceum", files: [CachedFile(name: "a.mp4", kind: "video")]))
         #expect(PartnerMerge.merge(a, nil, partnerName: "Lab B").root == a.root)

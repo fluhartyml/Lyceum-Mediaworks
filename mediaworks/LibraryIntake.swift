@@ -188,20 +188,20 @@ final class LibraryIntake {
             // A trunk this Mac does not hold, that the partner mini does (N16), goes to the partner: it downloads the file
             // into place; the drop copy goes to the Trash only once the partner's own listing shows it there.
             if !FileManager.default.fileExists(atPath: trunkURL.path),
-               LibraryPartner.shared.partnerSnapshot?.root.folders.contains(where: { $0.name == trunk.title }) == true,
+               let holder = LibraryPartner.shared.server(holding: trunk.title),
                let mainPlace = places.first(where: { !$0.isCopy }) ?? places.first {
                 let relative = ([trunk.title] + mainPlace.folders + [url.lastPathComponent]).joined(separator: "/")
-                status = "Handing “\(url.lastPathComponent)” to \(LibraryPartner.shared.partnerName ?? "the partner")…"
-                if let problem = await LibraryPartner.shared.sendIntake(url, to: relative) {
+                status = "Handing “\(url.lastPathComponent)” to \(holder)…"
+                if let problem = await LibraryPartner.shared.sendIntake(url, to: relative, server: holder) {
                     failed.append("\(url.lastPathComponent): \(problem)"); continue
                 }
                 for place in places where place.isCopy {
                     let copy = ([trunk.title] + place.folders + [LibraryOrganizer.copyName(url.lastPathComponent)]).joined(separator: "/")
-                    _ = await LibraryPartner.shared.sendIntake(url, to: copy)
+                    _ = await LibraryPartner.shared.sendIntake(url, to: copy, server: holder)
                 }
                 do { try trash(url, from: drop, store: store) } catch { failed.append("\(url.lastPathComponent): handed over, but the drop copy stayed: \(error.localizedDescription)") }
                 handedOver += 1
-                taken.insert((url.lastPathComponent, "\(LibraryPartner.shared.partnerName ?? "partner"): \(relative)", .now), at: 0)
+                taken.insert((url.lastPathComponent, "\(holder): \(relative)", .now), at: 0)
                 intoTrunk.remove(url.path)
                 if let name = Self.playlistName(for: url, drop: drop, existing: Set(LibraryCatalog.shared.playlistNames)) {
                     partnerPlaylistAdds[name, default: []].append(relative)
@@ -266,7 +266,7 @@ final class LibraryIntake {
         if moved + trashed > 0 { store.refreshNow() }
 
         var line = "Took in \(moved) file\(moved == 1 ? "" : "s")"
-        if handedOver > 0 { line += " · \(handedOver) handed to \(LibraryPartner.shared.partnerName ?? "the partner")" }
+        if handedOver > 0 { line += " · \(handedOver) handed to another server" }
         if trashed > 0 { line += " · \(trashed) duplicate\(trashed == 1 ? "" : "s") to the Trash" }
         if asked > 0 { line += " · \(asked) waiting for your answer (Window → Import Drive)" }
         if !failed.isEmpty { line += " · \(failed.count) could not be moved: " + failed.prefix(3).joined(separator: "; ") }

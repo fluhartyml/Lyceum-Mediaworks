@@ -92,7 +92,7 @@ final class LibraryCatalog {
         self.store = store
         self.report = report
         loadPlaylistFiles()
-        announce()
+        if LibraryPartner.shared.thisMacServes { announce() }
         while !Task.isCancelled {
             let tree = await Task.detached { Self.walk(root) }.value
             guard !Task.isCancelled else { return }
@@ -199,7 +199,7 @@ final class LibraryCatalog {
     func republishMerged() {
         guard let own = ownSnapshot else { return }
         let partner = LibraryPartner.shared
-        let merged = PartnerMerge.merge(own, partner.partnerSnapshot, partnerName: partner.partnerName ?? "")
+        let merged = PartnerMerge.merge(own, partner.slices)
         snapshot = merged
         guard let data = try? LibraryCache.encoder.encode(merged) else { return }
         payload = data
@@ -684,6 +684,25 @@ final class LibraryCatalog {
 
     /// Announces "_lyceum._tcp". Each connection sends one request (framed JSON); the Mac applies it and answers with
     /// the whole cache, framed — so a phone that made a change sees the result at once.
+    /// This Mac ticked or unticked as a server (N20): offered to devices, or not.
+    func servingChanged() {
+        if LibraryPartner.shared.thisMacServes { announce() } else { listener?.cancel(); listener = nil; isServing = false }
+    }
+
+    /// A Mac with no library folder of its own (N20): it shows — and, if ticked as a server, serves — the servers' slices.
+    func startWithoutLibrary(store: LibraryStore, report: @escaping (String) -> Void) {
+        guard running == nil, ownSnapshot == nil || ownSnapshot?.root.fileCount == 0 else { return }
+        self.store = store
+        self.report = report
+        var own = LibrarySnapshot(made: .now, macName: Host.current().localizedName ?? "Mac", root: CachedFolder(name: "Lyceum"), playlists: nil)
+        own.serverBuild = "\(BuildStamp.number) · \(BuildStamp.commit)"
+        ownSnapshot = own
+        ownPayload = (try? LibraryCache.encoder.encode(own)) ?? Data()
+        LibraryPartner.shared.start()
+        republishMerged()
+        if LibraryPartner.shared.thisMacServes { announce() }
+    }
+
     private func announce() {
         guard listener == nil, let listener = try? NWListener(using: .tcp) else { return }
         listener.service = NWListener.Service(name: Host.current().localizedName, type: LibraryCache.serviceType)
@@ -864,7 +883,8 @@ extension LibraryCatalog {
     /// Returns true when it has answered the device itself.
     fileprivate func routeToPartner(_ request: CacheRequest, on connection: NWConnection) -> Bool {
         let partner = LibraryPartner.shared
-        guard partner.partnerName != nil, let path = request.path else { return false }
+        guard !partner.servers.isEmpty, let path = request.path else { return false }
+        let host = snapshot?.file(at: path)?.host
         let isPartnerFile: Bool = {
             let local = libraryFile(path).map { FileManager.default.fileExists(atPath: $0.path) } ?? false
             return !local && snapshot?.file(at: path)?.host != nil
@@ -875,17 +895,18 @@ extension LibraryCatalog {
             guard isPartnerFile else { return false }
             // Shown at once in the answer; the partner's own copy follows from its answer.
             if let current = snapshot { snapshot = current.applying(request) }
+            guard let host else { return false }
             Task {
-                _ = await partner.ask(request)
+                _ = await partner.ask(request, to: host)
                 await partner.refresh()
                 answer()
             }
             return true
         case .file:
-            guard isPartnerFile, let size = snapshot?.file(at: path)?.size else { return false }
+            guard isPartnerFile, let host, let size = snapshot?.file(at: path)?.size else { return false }
             // A device's synced copy of a partner file goes out of the buffer once the buffer copy is whole.
             Task {
-                guard let copy = await PartnerBuffer.shared.copy(path, size: size) else {
+                guard let copy = await PartnerBuffer.shared.copy(path, size: size, from: host) else {
                     report("A device asked for “\((path as NSString).lastPathComponent)” — no room in the buffer; it will ask again.")
                     connection.send(content: Framing.frame(Data()), completion: .contentProcessed { _ in connection.cancel() }); return
                 }
@@ -897,11 +918,12 @@ extension LibraryCatalog {
             return true
         case .renamePlaylist, .checkAll:
             // A playlist can hold files from both minis — each does its own part.
-            Task { _ = await partner.ask(request); await partner.refresh() }
+            Task { for name in partner.servers { _ = await partner.ask(request, to: name) }; await partner.refresh() }
             return false
         case .addToPlaylist, .removeFromPlaylist:
-            guard let name = request.playlist, playlists[name] == nil, partner.partnerSnapshot?.playlists?[name] != nil else { return false }
-            Task { _ = await partner.ask(request); await partner.refresh(); answer() }
+            guard let name = request.playlist, playlists[name] == nil,
+                  let holder = partner.slices.first(where: { $0.snapshot.playlists?[name] != nil })?.name else { return false }
+            Task { _ = await partner.ask(request, to: holder); await partner.refresh(); answer() }
             return true
         default:
             return false
@@ -931,7 +953,8 @@ extension LibraryCatalog {
         if dlna { head += "transferMode.dlna.org: Streaming\r\ncontentFeatures.dlna.org: DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000\r\n" }
         head += "Connection: close\r\n\r\n"
         Task {
-            let copy = isHead ? nil : await PartnerBuffer.shared.copy(path, size: total)
+            let host = file.host ?? ""
+            let copy = isHead ? nil : await PartnerBuffer.shared.copy(path, size: total, from: host)
             connection.send(content: Data(head.utf8), completion: .contentProcessed { _ in })
             if isHead {
                 connection.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { _ in connection.cancel() })
@@ -939,7 +962,7 @@ extension LibraryCatalog {
             }
             // No room (N19), or a jump well past what has arrived: straight from the partner.
             if copy == nil || (!copy!.complete() && start > copy!.have() + (8 << 20)) {
-                guard let source = await LibraryPartner.shared.mediaURL(path) else { connection.cancel(); return }
+                guard let source = await LibraryPartner.shared.mediaURL(path, on: host) else { connection.cancel(); return }
                 RangeRelay(connection).start(source, from: start, to: end)
                 return
             }
@@ -1027,10 +1050,9 @@ extension LibraryCatalog {
         var caller: String?
         if case .hostPort(let host, _) = connection.endpoint { caller = "\(host)".components(separatedBy: "%").first }
         Task {
-            guard LibraryPartner.shared.partnerName != nil, let partnerBase = await LibraryPartner.shared.baseURL(),
-                  let partnerHost = partnerBase.host(), source.host() == partnerHost,
-                  caller.map({ $0 == partnerHost || $0.hasSuffix(partnerHost) }) ?? false else {
-                reply("This Mac only takes files from its partner mini."); return
+            guard let sourceHost = source.host(), await LibraryPartner.shared.isServerAddress(sourceHost),
+                  let caller, await LibraryPartner.shared.isServerAddress(caller) else {
+                reply("This Mac only takes files from the Macs ticked as its servers."); return
             }
             do {
                 let (temp, response) = try await URLSession.shared.download(from: source)
