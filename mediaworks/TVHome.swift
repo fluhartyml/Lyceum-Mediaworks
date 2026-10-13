@@ -78,6 +78,25 @@ final class TVTheater {
     var current: String? { queue.indices.contains(index) ? queue[index] : nil }
     var isPlaying: Bool { player.timeControlStatus != .paused }
 
+    /// Where the video is and how long it runs, in seconds — for the time bar (N07). Kept up by a half-second watch.
+    private(set) var elapsed: Double = 0
+    private(set) var duration: Double = 0
+    private(set) var playing = false
+    @ObservationIgnored private var timeWatch: Any?
+
+    private func watchTime() {
+        guard timeWatch == nil else { return }
+        timeWatch = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self] time in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.elapsed = time.seconds.isFinite ? time.seconds : 0
+                let d = self.player.currentItem?.duration.seconds ?? 0
+                self.duration = d.isFinite ? d : 0
+                self.playing = self.isPlaying
+            }
+        }
+    }
+
     func play(_ path: String, in queue: [String]) {
         self.queue = queue.contains(path) ? queue : [path]
         index = self.queue.firstIndex(of: path) ?? 0
@@ -92,6 +111,8 @@ final class TVTheater {
             problem = nil
             let item = AVPlayerItem(url: url)
             player.replaceCurrentItem(with: item)
+            elapsed = 0; duration = 0
+            watchTime()
             readyMediaCommands()
             publishNowPlaying((path as NSString).deletingPathExtension.components(separatedBy: "/").last ?? path)
             if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
@@ -205,8 +226,9 @@ final class TVTheater {
 // REM  HIS LAYOUT, 2026-10-10 13:2x: "thumbs up you press up and thumbs down press down then it skips to the next song
 // REM  pressing forward once skips to the next video pressing back goes to the previous video long press forwars or back
 // REM  scrubs forward or reverse." Apple's own player keeps the arrows for itself (left/right = 10 s), so this one reads
-// REM  the remote's presses directly: a short press acts when it is let go; a press held past half a second scrubs until
-// REM  it is let go. Select / Play-Pause toggle; Back (Menu) leaves.
+// REM  the remote's presses directly: a short press acts when it is let go; a press held past half a second acts once, the
+// REM  moment the half second passes. Since N08 (2026-10-12): tap ◀︎ ▶︎ = 5 s back / ahead, hold = previous / next file.
+// REM  Select / Play-Pause toggle; Back (Menu) leaves.
 struct TVPlayer: View {
     @Environment(TVTheater.self) private var theater
     @Environment(MacLibrary.self) private var library
@@ -232,6 +254,29 @@ struct TVPlayer: View {
             Spacer()
             VStack(spacing: 8) {
                 if let problem = theater.problem { Text(problem) }
+                // REM  THE MEDIA BUTTONS AND THE TIME BAR (platforms N07) — his words, 2026-10-11: "i like the dark bar you have
+                // REM  ovrt the bottom where you have the file name showing, that area can be where the media controls can be";
+                // REM  2026-10-12: "put a status bar with time and time rremaining". The buttons are the remote's keys: each lights
+                // REM  when its key is pressed, and play / pause shows which the video is doing. Shown with every peek.
+                if showInfo, theater.current != nil {
+                    HStack(spacing: 70) {
+                        ForEach(TVControl.allCases, id: \.self) { control in
+                            Image(systemName: control == .playPause ? (theater.playing ? "pause.fill" : "play.fill") : control.symbol)
+                                .font(.system(size: 44))
+                                .foregroundStyle(lit == control ? Color.accentColor : .white)
+                                .scaleEffect(lit == control ? 1.3 : 1)
+                        }
+                    }
+                    .padding(.bottom, 6)
+                    HStack(spacing: 24) {
+                        Text(TVPlayer.clock(theater.elapsed)).monospacedDigit()
+                        ProgressView(value: theater.duration > 0 ? min(theater.elapsed, theater.duration) : 0,
+                                     total: max(theater.duration, 1))
+                            .tint(.white)
+                        Text(theater.duration > 0 ? "−" + TVPlayer.clock(theater.duration - theater.elapsed) : "−–:––").monospacedDigit()
+                    }
+                    .padding(.horizontal, 60)
+                }
                 // REM  THE FILE NAME — his ask, 2026-10-10 13:25 watching #NSYNC on the Living Room TV: "can it show the file name
                 // REM  at the bottom of the screen?" Shown for 5 s when each video starts, and 3 s after any press.
                 if let path = theater.current {
@@ -240,9 +285,9 @@ struct TVPlayer: View {
                 // The key line only with a peek — "always" keeps just the file name on screen.
                 if showInfo {
                     #if DEBUG
-                    Text("▲ 👍 + next   ▼ 👎 + next   ◀︎ previous   ▶︎ next   hold ◀︎ ▶︎ to scrub").foregroundStyle(.secondary)
+                    Text("▲ 👍 + next   ▼ 👎 + next   ◀︎ back 5 s   ▶︎ ahead 5 s   hold ◀︎ previous   hold ▶︎ next").foregroundStyle(.secondary)
                     #else
-                    Text("▲ 👍   ▼ 👎 + next   ◀︎ previous   ▶︎ next   hold ◀︎ ▶︎ to scrub").foregroundStyle(.secondary)
+                    Text("▲ 👍   ▼ 👎 + next   ◀︎ back 5 s   ▶︎ ahead 5 s   hold ◀︎ previous   hold ▶︎ next").foregroundStyle(.secondary)
                     #endif
                 }
             }
@@ -268,12 +313,38 @@ struct TVPlayer: View {
             if let path = theater.current { library.change(.thumbsDown, path) }
             show("👎")
             theater.next()
-        case .right: theater.next(); peek()
-        case .left: theater.previous(); peek()
-        case .scrub(let seconds): theater.skip(seconds); peek()
-        case .playPause: if theater.isPlaying { theater.player.pause() } else { theater.player.play() }; peek()
+        // REM  TAP vs HOLD (platforms N08) — his words, 2026-10-11: "fast forward is or should be right button and long press
+        // REM  right button is next file and left button is rewind and previous file if long pressed" · "5" · "keep the
+        // REM  iphone at 10". Replaces D004e's tap = next / previous and hold = scrub.
+        case .tapRight: theater.skip(5); light(.forward)
+        case .tapLeft: theater.skip(-5); light(.rewind)
+        case .holdRight: theater.next(); light(.next)
+        case .holdLeft: theater.previous(); light(.previous)
+        case .playPause: if theater.isPlaying { theater.player.pause() } else { theater.player.play() }; light(.playPause)
         case .back: theater.presented = false
         }
+    }
+
+    @State private var lit: TVControl?
+    @State private var litID = 0
+
+    /// Lights the button for the key just pressed, and peeks the bar.
+    private func light(_ control: TVControl) {
+        peek()
+        litID += 1
+        let mine = litID
+        withAnimation(.easeOut(duration: 0.15)) { lit = control }
+        Task {
+            try? await Task.sleep(for: .seconds(0.6))
+            if mine == litID { withAnimation { lit = nil } }
+        }
+    }
+
+    /// 75 → "1:15", 3_725 → "1:02:05".
+    static func clock(_ seconds: Double) -> String {
+        let t = max(0, Int(seconds.rounded(.down)))
+        let h = t / 3600, m = t / 60 % 60, s = t % 60
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
     }
 
     private func show(_ symbol: String) {
@@ -295,7 +366,21 @@ struct TVPlayer: View {
     }
 }
 
-enum RemotePress { case up, down, left, right, scrub(Double), playPause, back }
+enum RemotePress { case up, down, tapLeft, tapRight, holdLeft, holdRight, playPause, back }
+
+/// The media buttons in the dark bar, left to right (N07).
+enum TVControl: CaseIterable {
+    case previous, rewind, playPause, forward, next
+    var symbol: String {
+        switch self {
+        case .previous: "backward.end.fill"
+        case .rewind: "gobackward.5"
+        case .playPause: "play.fill"
+        case .forward: "goforward.5"
+        case .next: "forward.end.fill"
+        }
+    }
+}
 
 /// The video, and the Siri Remote's presses — read straight from UIKit, so short and held presses can be told apart.
 struct RemotePlayerView: UIViewControllerRepresentable {
@@ -317,8 +402,8 @@ struct RemotePlayerView: UIViewControllerRepresentable {
     final class Controller: UIViewController {
         let playerLayer = AVPlayerLayer()
         var handle: (RemotePress) -> Void = { _ in }
-        private var heldSince: Date?
-        private var scrubTimer: Timer?
+        private var holdTimer: Timer?
+        private var holdFired = false
 
         override func viewDidLoad() {
             super.viewDidLoad()
@@ -344,14 +429,15 @@ struct RemotePlayerView: UIViewControllerRepresentable {
             guard let type = presses.first?.type else { return super.pressesBegan(presses, with: event) }
             switch type {
             case .leftArrow, .rightArrow:
-                // REM  Held past half a second = scrub, 10 s every quarter second, until it is let go.
-                let step: Double = type == .rightArrow ? 10 : -10
-                heldSince = .now
-                scrubTimer?.invalidate()
-                scrubTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+                // REM  Held past half a second = the next / previous file, once, the moment the half second passes (N08).
+                let hold: RemotePress = type == .rightArrow ? .holdRight : .holdLeft
+                holdFired = false
+                holdTimer?.invalidate()
+                holdTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
                     MainActor.assumeIsolated {
-                        guard let self, let since = self.heldSince, Date.now.timeIntervalSince(since) > 0.5 else { return }
-                        self.handle(.scrub(step))
+                        guard let self else { return }
+                        self.holdFired = true
+                        self.handle(hold)
                     }
                 }
             case .upArrow, .downArrow, .select, .playPause: break
@@ -363,9 +449,9 @@ struct RemotePlayerView: UIViewControllerRepresentable {
             guard let type = presses.first?.type else { return super.pressesEnded(presses, with: event) }
             switch type {
             case .leftArrow, .rightArrow:
-                let held = heldSince.map { Date.now.timeIntervalSince($0) } ?? 0
-                scrubTimer?.invalidate(); scrubTimer = nil; heldSince = nil
-                if held <= 0.5 { handle(type == .rightArrow ? .right : .left) }
+                holdTimer?.invalidate(); holdTimer = nil
+                if !holdFired { handle(type == .rightArrow ? .tapRight : .tapLeft) }
+                holdFired = false
             case .upArrow: handle(.up)
             case .downArrow: handle(.down)
             case .select, .playPause: handle(.playPause)
