@@ -11,8 +11,8 @@
 //    · Apple's own encoder (AVAssetExportSession) — inside the app, no outside tool (001c).
 //    · Tags and picture are carried over; the new file must run the same length (within a second) or it is thrown away.
 //    · The original goes to the 30-day Lyceum Trash; checkmarks and playlists follow the new file.
-//  Measured 2026-10-13 on this Mac: Apple's frameworks read AVI but NOT MKV or WebM — those are listed as needing the
-//  MKV reader (MKVRemux.swift) rather than skipped in silence.
+//  Measured 2026-10-13 on this Mac: Apple's frameworks read AVI but NOT MKV or WebM — MKVs go through Mediaworks' own
+//  MKV reader (MKVRemux.swift); an MKV mix it cannot convert is listed by its codecs, never skipped in silence.
 //
 
 import SwiftUI
@@ -54,7 +54,12 @@ nonisolated enum MediaCheck {
     /// Why a file is not standard, or nil when it is.
     static func problem(_ url: URL) async -> (reason: String, readable: Bool)? {
         let ext = url.pathExtension.lowercased()
-        if ["mkv", "webm"].contains(ext) { return ("\(ext.uppercased()) — needs the MKV reader", false) }
+        if ["mkv", "webm"].contains(ext) {
+            // The MKV reader (MKVRemux.swift) converts VP9 + AAC — every MKV in his Lyceum on 2026-10-13.
+            let inside = MKVRemux.codecs(url) ?? "unreadable"
+            return MKVRemux.canConvert(url) ? ("MKV (\(inside)) — the MKV reader converts it", true)
+                                            : ("MKV (\(inside)) — not a mix the MKV reader converts yet", false)
+        }
         let asset = AVURLAsset(url: url)
         guard (try? await asset.load(.isReadable)) == true else { return ("Apple's frameworks cannot read it", false) }
         var reasons: [String] = []
@@ -82,6 +87,7 @@ final class Transcoder {
     @ObservationIgnored private var stop = false
 
     func cancel() { stop = true }
+    fileprivate func note(_ text: String) { phase = text }
 
     func scan(_ root: URL) async {
         guard !busy else { return }
@@ -129,6 +135,7 @@ final class Transcoder {
 
     /// One file. Nil when done; otherwise why not.
     private func convert(_ url: URL, library: LibraryStore) async -> String? {
+        if url.pathExtension.lowercased() == "mkv" { return await convertMKV(url, library: library) }
         let asset = AVURLAsset(url: url)
         guard let session = AVAssetExportSession(asset: asset, presetName: target.rawValue) else { return "This preset cannot convert it." }
         let isAudioOnly = ((try? await asset.loadTracks(withMediaType: .video)) ?? []).isEmpty
@@ -155,6 +162,45 @@ final class Transcoder {
             try FileManager.default.moveItem(at: temp, to: finalURL)
         } catch {
             return "Could not swap the files: \(error.localizedDescription) (the new one is the hidden “\(temp.lastPathComponent)”)"
+        }
+        library.journal("transcode", from: url, to: finalURL)
+        LibraryCatalog.shared.filesMoved([(url, finalURL)])
+        return nil
+    }
+}
+
+extension Transcoder {
+    /// An MKV through the MKV reader: VP9 decoded and encoded again, AAC carried over, then the same checks as any file.
+    fileprivate func convertMKV(_ url: URL, library: LibraryStore) async -> String? {
+        let finalURL = url.deletingPathExtension().appendingPathExtension("mp4")
+        let temp = url.deletingLastPathComponent().appendingPathComponent(".lyceum-transcoding-" + finalURL.lastPathComponent)
+        let hevc = target != .h264, maxWidth = target == .hevc4K ? 3840 : 1920
+        let label = phase
+        let expected: Double? = await Task.detached { (try? MKVDemuxer(url)).flatMap { d in (try? d.readHeader()).map { d.duration } } ?? nil }.value
+        do {
+            try await Task.detached {
+                try MKVRemux.convert(url, to: temp, hevc: hevc, maxWidth: maxWidth) { p in
+                    Task { @MainActor in Transcoder.shared.note("\(label) — \(Int(p * 100))%") }
+                }
+            }.value
+        } catch {
+            try? FileManager.default.removeItem(at: temp)
+            return error.localizedDescription
+        }
+        let after = (try? await AVURLAsset(url: temp).load(.duration).seconds) ?? -10
+        if let expected, abs(expected - after) > 1 {
+            try? FileManager.default.removeItem(at: temp)
+            return "The new file ran \(Int(after)) s, the MKV \(Int(expected)) s — not kept."
+        }
+        if FileManager.default.fileExists(atPath: finalURL.path) {
+            try? FileManager.default.removeItem(at: temp)
+            return "“\(finalURL.lastPathComponent)” already exists beside it — left alone."
+        }
+        do {
+            try await FileOperations.trash([url], instant: false, library: library, quiet: true)
+            try FileManager.default.moveItem(at: temp, to: finalURL)
+        } catch {
+            return "Could not swap the files: \(error.localizedDescription)"
         }
         library.journal("transcode", from: url, to: finalURL)
         LibraryCatalog.shared.filesMoved([(url, finalURL)])
