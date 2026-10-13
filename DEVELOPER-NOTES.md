@@ -24,6 +24,7 @@ entry once it is done, and move anything that became a decision into the section
 - **macOS:** reaches his Macs (and the minis) by TestFlight → Mac changes are batched and shaken down on a schedule. Builds 158–171 are mostly Mac-side and wait for that round.
 - **iOS / tvOS:** run from Xcode — try them as soon as they build.
 - The schedule is his to set; never upload or submit without his word.
+- He *can* run the Mac app from Xcode on his MacBook "if needed", but not as a habit: *"using teest flight forses a steady page and rolling out a steady build roll back point"* — a steady pace, and a steady build to roll back to.
 
 ### 2026-10-13 ~11:10–11:50 — TWO MACS, ONE LIBRARY (N16–N19) + IMPORT DRIVE TO THE PARTNER (I01a), builds 169–170
 His design, in his words on the sheet (N16–N19), then *"add it and code anything waiting to be coded"*. **Not on any device; the minis have never run 163+.**
