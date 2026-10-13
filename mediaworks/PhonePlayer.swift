@@ -392,7 +392,12 @@ private struct FullScreenPlayer: View {
                 .font(.system(size: 30))
             }
             .padding(24)
-            .background(.black.opacity(0.45))
+            // REM  LIQUID GLASS (roadmap 015, LOCKED: "Liquid Glass front end") — the control strip floats on glass, as
+            // REM  Apple's own player does, instead of a flat dark band; a light dark tint keeps white controls readable
+            // REM  over a bright picture.
+            .glassEffect(.regular.tint(.black.opacity(0.25)), in: .rect(cornerRadius: 28))
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
         }
         .foregroundStyle(.white)
         .buttonStyle(.plain)
