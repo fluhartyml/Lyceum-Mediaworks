@@ -21,7 +21,7 @@ private struct HybridFolder: Identifiable, Hashable {
     let children: [HybridFolder]?
 
     static func tree(_ folder: CachedFolder, _ prefix: String) -> [HybridFolder] {
-        folder.folders.filter { $0.fileCount > 0 }.map { sub in
+        folder.folders.map { sub in
             let path = prefix.isEmpty ? sub.name : prefix + "/" + sub.name
             let kids = tree(sub, path)
             return HybridFolder(path: path, name: sub.name, count: sub.fileCount, children: kids.isEmpty ? nil : kids)
@@ -89,9 +89,9 @@ struct HybridLibraryView: View {
                         Button("👍 Thumbs Up") { send(.thumbsUp, paths) }
                         Button("👎 Thumbs Down") { send(.thumbsDown, paths) }
                     } primaryAction: { paths in play(paths.first) }
+                    Divider()
+                    Text(serversLine).foregroundStyle(.secondary).padding(8).frame(maxWidth: .infinity, alignment: .leading)
                 }
-                Divider()
-                Text(serversLine).foregroundStyle(.secondary).padding(8).frame(maxWidth: .infinity, alignment: .leading)
             }
             .toolbar {
                 Button { openWindow(id: "remotejobs") } label: { Label("Remote Jobs", systemImage: "arrow.left.arrow.right") }
