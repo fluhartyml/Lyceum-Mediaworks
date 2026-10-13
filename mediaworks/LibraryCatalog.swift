@@ -308,6 +308,18 @@ final class LibraryCatalog {
         saveMarksAndPublish()
     }
 
+    /// Adds files to a playlist, making it if it is new — the Import Drive's folders become playlists (026b).
+    /// Each file is listed once; a file outside the library is skipped.
+    func addToPlaylist(_ name: String, _ urls: [URL]) {
+        let name = name.trimmingCharacters(in: .whitespaces)
+        guard Self.validName(name) else { return }
+        var list = playlists[name] ?? []
+        for url in urls { if let path = relative(url), !list.contains(path) { list.append(path) } }
+        guard list != (playlists[name] ?? []) else { return }
+        playlists[name] = list
+        saveMarksAndPublish()
+    }
+
     /// Renames or checks-all from the Mac's own Playlists window — the same as a device asking, but not recorded as one.
     func playlistAction(_ op: CacheRequest.Op, _ name: String, newName: String? = nil) {
         apply(CacheRequest(op: op, path: name, newName: newName))

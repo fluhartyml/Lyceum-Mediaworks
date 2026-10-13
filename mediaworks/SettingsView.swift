@@ -54,6 +54,10 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            #if os(macOS)
+            // REM  THE IMPORT DRIVE (I01 / I01a / 026b) — LibraryIntake.swift.
+            IntakeSettingsSection()
+            #endif
             Section {
                 LabeledContent("Library folder") {
                     Text(library.root?.path ?? "None chosen")

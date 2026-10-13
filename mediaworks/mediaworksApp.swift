@@ -114,6 +114,14 @@ struct mediaworksApp: App {
         .defaultSize(width: 1100, height: 760)
         .restorationBehavior(.disabled)
 
+        // REM  THE IMPORT DRIVE — what came in, and the files waiting for an answer (LibraryIntake.swift). Window menu.
+        Window("Import Drive", id: "intake") {
+            IntakeView()
+                .environment(library)
+        }
+        .defaultSize(width: 1000, height: 640)
+        .restorationBehavior(.disabled)
+
         Window("About Lyceum Mediaworks", id: "about") {
             AboutView()
         }

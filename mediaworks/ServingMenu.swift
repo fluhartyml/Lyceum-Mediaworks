@@ -22,6 +22,8 @@ struct ServingMenu: View {
             Text("No library chosen")
         }
         Text(status)
+        // The Import Drive's last word, while one is chosen (I01).
+        if LibraryIntake.shared.drop != nil { Text("Import: \(LibraryIntake.shared.status)") }
         if let caller = catalog.lastCaller, let at = catalog.lastCallAt {
             Text("Last call: \(caller) at \(at.formatted(date: .omitted, time: .shortened))")
         }

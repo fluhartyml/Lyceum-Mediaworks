@@ -62,6 +62,8 @@ struct ContentView: View {
         .task(id: library.root?.path) {
             guard let root = library.root?.url else { return }
             LibraryCatalog.shared.start(root, store: library) { library.report($0) }
+            // REM  THE IMPORT DRIVE watches in the background too — it runs by itself once chosen (001c, I01).
+            LibraryIntake.shared.start(store: library)
         }
         // REM  The Mac watches for an Apple TV running Lyceum, for Play on Apple TV and the remote window.
         .task { await TVRemote.shared.keepWatching() }
