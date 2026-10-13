@@ -158,6 +158,8 @@ final class LibraryIntake {
         var moved = 0, trashed = 0, asked = 0
         var failed: [String] = []
         var playlistAdds: [String: [URL]] = [:]
+        var partnerPlaylistAdds: [String: [String]] = [:]
+        var handedOver = 0
 
         for url in ready {
             let v = await SortValueReader.read(url)
@@ -180,6 +182,31 @@ final class LibraryIntake {
                 case .ask(let reason): ask(url, reason); asked += 1; continue
                 case .places(let p): places = p
                 }
+            }
+
+            // I01a — his words, 2026-10-13: "remember the lyceum is spread across two SSD's audio on a and video on b".
+            // A trunk this Mac does not hold, that the partner mini does (N16), goes to the partner: it downloads the file
+            // into place; the drop copy goes to the Trash only once the partner's own listing shows it there.
+            if !FileManager.default.fileExists(atPath: trunkURL.path),
+               LibraryPartner.shared.partnerSnapshot?.root.folders.contains(where: { $0.name == trunk.title }) == true,
+               let mainPlace = places.first(where: { !$0.isCopy }) ?? places.first {
+                let relative = ([trunk.title] + mainPlace.folders + [url.lastPathComponent]).joined(separator: "/")
+                status = "Handing “\(url.lastPathComponent)” to \(LibraryPartner.shared.partnerName ?? "the partner")…"
+                if let problem = await LibraryPartner.shared.sendIntake(url, to: relative) {
+                    failed.append("\(url.lastPathComponent): \(problem)"); continue
+                }
+                for place in places where place.isCopy {
+                    let copy = ([trunk.title] + place.folders + [LibraryOrganizer.copyName(url.lastPathComponent)]).joined(separator: "/")
+                    _ = await LibraryPartner.shared.sendIntake(url, to: copy)
+                }
+                do { try trash(url, from: drop, store: store) } catch { failed.append("\(url.lastPathComponent): handed over, but the drop copy stayed: \(error.localizedDescription)") }
+                handedOver += 1
+                taken.insert((url.lastPathComponent, "\(LibraryPartner.shared.partnerName ?? "partner"): \(relative)", .now), at: 0)
+                intoTrunk.remove(url.path)
+                if let name = Self.playlistName(for: url, drop: drop, existing: Set(LibraryCatalog.shared.playlistNames)) {
+                    partnerPlaylistAdds[name, default: []].append(relative)
+                }
+                continue
             }
 
             // The main place: move it in — unless the same file, or a same-named one, is already there (020).
@@ -234,10 +261,12 @@ final class LibraryIntake {
         }
 
         for (name, urls) in playlistAdds { LibraryCatalog.shared.addToPlaylist(name, urls) }
+        for (name, paths) in partnerPlaylistAdds { LibraryCatalog.shared.addToPlaylist(name, paths: paths) }
         Self.removeEmptyFolders(under: drop)
         if moved + trashed > 0 { store.refreshNow() }
 
         var line = "Took in \(moved) file\(moved == 1 ? "" : "s")"
+        if handedOver > 0 { line += " · \(handedOver) handed to \(LibraryPartner.shared.partnerName ?? "the partner")" }
         if trashed > 0 { line += " · \(trashed) duplicate\(trashed == 1 ? "" : "s") to the Trash" }
         if asked > 0 { line += " · \(asked) waiting for your answer (Window → Import Drive)" }
         if !failed.isEmpty { line += " · \(failed.count) could not be moved: " + failed.prefix(3).joined(separator: "; ") }

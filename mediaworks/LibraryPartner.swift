@@ -162,7 +162,7 @@ final class LibraryPartner {
     }
 
     /// One request to the partner, its framed answer back. Nil when it does not answer in 10 s.
-    func ask(_ request: CacheRequest) async -> Data? {
+    func ask(_ request: CacheRequest, timeout: Double = 10) async -> Data? {
         guard let name = partnerName else { return nil }
         if endpoints[name] == nil { browse(); try? await Task.sleep(for: .seconds(2)) }
         guard let endpoint = endpoints[name] else { return nil }
@@ -174,7 +174,7 @@ final class LibraryPartner {
             c.start(queue: .main)
             c.send(content: message, completion: .contentProcessed { _ in })
             Framing.read(c) { finish($0) }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 10) { finish(nil) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { finish(nil) }
         }
     }
 
@@ -203,6 +203,26 @@ final class LibraryPartner {
         }
         if let found { base = (found, .now) }
         return found
+    }
+
+    /// I01a — hands a file to the partner for its trunk: it downloads it from this Mac into `relative` in its library.
+    /// Nil when the partner's own listing then shows the file there at the right size; otherwise why not.
+    func sendIntake(_ file: URL, to relative: String) async -> String? {
+        guard let base = LibraryCatalog.shared.ownBase else { return "This Mac's own address could not be found." }
+        let token = LibraryCatalog.shared.offer(file)
+        defer { LibraryCatalog.shared.withdraw(token) }
+        var request = CacheRequest(op: .takeIn, path: relative)
+        request.newName = base + "/outbox/" + token
+        guard let data = await ask(request, timeout: 3600),
+              let reply = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return "\(partnerName ?? "The partner") did not answer." }
+        guard reply["ok"] as? Bool == true else { return reply["problem"] as? String ?? "The partner refused it." }
+        // Checked, not assumed: the partner's own listing must show it, at least this size (a bigger same-named one counts).
+        await refresh()
+        let size = Int64((try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        guard let there = partnerSnapshot?.file(at: relative), (there.size ?? 0) >= size else {
+            return "The partner said yes, but its library does not show the file yet — the drop copy was kept."
+        }
+        return nil
     }
 
     func mediaURL(_ path: String) async -> URL? {

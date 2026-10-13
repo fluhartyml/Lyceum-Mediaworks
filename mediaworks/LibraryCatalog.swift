@@ -33,6 +33,8 @@ final class LibraryCatalog {
     /// the background so the window can be closed". It ran from the main window's .task, so closing the window stopped it.
     @ObservationIgnored private var keepTask: Task<Void, Never>?
     @ObservationIgnored private var keepRoot: URL?
+    /// The port the library exchange and streaming answer on.
+    var listenerPort: UInt16? { listener?.port?.rawValue }
     /// For the menu-bar status ("waiting for caller"): true once announced on the network.
     private(set) var isServing = false
     /// Video streams open right now, and the last device that called and when.
@@ -43,6 +45,8 @@ final class LibraryCatalog {
     /// THIS Mac's own listing, before the partner mini's half is merged in (N16) — what `getOwn` answers.
     @ObservationIgnored private var ownSnapshot: LibrarySnapshot?
     @ObservationIgnored private var ownPayload = Data()
+    /// Files offered to the partner by the Import Drive, by one-time token (I01a).
+    @ObservationIgnored fileprivate var outbox: [String: URL] = [:]
     /// The last walk, so a checkmark or 👍 can republish at once without walking Nineveh again.
     @ObservationIgnored private var lastFound: Found?
     @ObservationIgnored private var report: (String) -> Void = { _ in }
@@ -260,7 +264,7 @@ final class LibraryCatalog {
     // REM  a thumbs up playlist" · "thats the point of thumbs downing it to take it out of synch rotation". The Mac keeps
     // REM  the marks (Marks.json), puts them in the cache, and every device sees them on its next look. Nothing is deleted.
     private func apply(_ request: CacheRequest) {
-        guard let path = request.path, !path.isEmpty, ![.get, .file, .setTags, .trash, .getOwn].contains(request.op) else { return }
+        guard let path = request.path, !path.isEmpty, ![.get, .file, .setTags, .trash, .getOwn, .takeIn].contains(request.op) else { return }
         if request.op == .renamePlaylist {
             // REM  A bad or taken name is refused before anything is recorded.
             guard let newName = request.newName?.trimmingCharacters(in: .whitespaces), Self.validName(newName),
@@ -285,7 +289,7 @@ final class LibraryCatalog {
             saveChanges()
         }
         switch request.op {
-        case .get, .file, .setTags, .trash, .getOwn: return
+        case .get, .file, .setTags, .trash, .getOwn, .takeIn: return
         case .check: unchecked.remove(path)
         case .uncheck: unchecked.insert(path)
         case .thumbsUp:
@@ -698,6 +702,7 @@ final class LibraryCatalog {
                 connection.send(content: Framing.frame(ownPayload), completion: .contentProcessed { _ in connection.cancel() })
                 return
             }
+            if request.op == .takeIn { takeIn(request, on: connection); return }
             if routeToPartner(request, on: connection) { return }
             if request.op == .file { sendFile(request.path, on: connection); return }
             if request.op == .setTags || request.op == .trash {
@@ -762,6 +767,11 @@ final class LibraryCatalog {
         func fail(_ status: String) {
             let reply = "HTTP/1.1 \(status)\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
             connection.send(content: Data(reply.utf8), completion: .contentProcessed { _ in connection.cancel() })
+        }
+        // I01a — a file this Mac's Import Drive is handing to the partner, at its one-time address.
+        if parts.count >= 2, parts[1].hasPrefix("/outbox/"), let url = outbox[String(parts[1].dropFirst("/outbox/".count))] {
+            serveOutbox(connection, url: url, lines: lines)
+            return
         }
         // N16 — a file the partner mini holds: served here through the buffer (N17).
         if parts.count >= 2, parts[1].hasPrefix("/media/"),
@@ -928,6 +938,92 @@ extension LibraryCatalog {
                 }
             }
             connection.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { _ in connection.cancel() })
+        }
+    }
+}
+
+// MARK: - The Import Drive across two minis (I01a)
+
+extension LibraryCatalog {
+    /// This Mac's address and port for the partner to download from.
+    var ownBase: String? {
+        guard let port = listenerPort, let ip = DLNAServer.localAddress() else { return nil }
+        return "http://\(ip):\(port)"
+    }
+
+    /// Offers a file at a one-time address; withdrawn with `withdraw`.
+    func offer(_ url: URL) -> String { let token = UUID().uuidString; outbox[token] = url; return token }
+    func withdraw(_ token: String) { outbox[token] = nil }
+
+    /// Adds library-relative paths (this Mac's or the partner's) to a playlist, making it if new.
+    func addToPlaylist(_ name: String, paths: [String]) {
+        let name = name.trimmingCharacters(in: .whitespaces)
+        guard Self.validName(name) else { return }
+        var list = playlists[name] ?? []
+        for p in paths where !list.contains(p) { list.append(p) }
+        guard list != (playlists[name] ?? []) else { return }
+        playlists[name] = list
+        saveMarksAndPublish()
+    }
+
+    fileprivate func serveOutbox(_ connection: NWConnection, url: URL, lines: [String]) {
+        guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, let handle = try? FileHandle(forReadingFrom: url) else {
+            connection.send(content: Data("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n".utf8), completion: .contentProcessed { _ in connection.cancel() })
+            return
+        }
+        let head = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: \(size)\r\nConnection: close\r\n\r\n"
+        connection.send(content: Data(head.utf8), completion: .contentProcessed { _ in })
+        func next() {
+            guard let chunk = try? handle.read(upToCount: 1 << 20), !chunk.isEmpty else {
+                try? handle.close()
+                connection.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { _ in connection.cancel() })
+                return
+            }
+            connection.send(content: chunk, completion: .contentProcessed { error in
+                if error != nil { try? handle.close(); connection.cancel() } else { next() }
+            })
+        }
+        next()
+    }
+
+    /// The partner's Import Drive handing a file to this Mac: downloaded into place, never overwriting — the same file is a
+    /// duplicate; same name, different file → the bigger is kept and the smaller goes to the Trash (020).
+    fileprivate func takeIn(_ request: CacheRequest, on connection: NWConnection) {
+        func reply(_ problem: String?) {
+            let body = (try? JSONSerialization.data(withJSONObject: ["ok": problem == nil, "problem": problem ?? ""])) ?? Data()
+            connection.send(content: Framing.frame(body), completion: .contentProcessed { _ in connection.cancel() })
+        }
+        guard let path = request.path, let address = request.newName, let source = URL(string: address),
+              let target = libraryFile(path), let store else { reply("Not a place in this library."); return }
+        // Only from the partner, and only from the partner's own address.
+        var caller: String?
+        if case .hostPort(let host, _) = connection.endpoint { caller = "\(host)".components(separatedBy: "%").first }
+        Task {
+            guard LibraryPartner.shared.partnerName != nil, let partnerBase = await LibraryPartner.shared.baseURL(),
+                  let partnerHost = partnerBase.host(), source.host() == partnerHost,
+                  caller.map({ $0 == partnerHost || $0.hasSuffix(partnerHost) }) ?? false else {
+                reply("This Mac only takes files from its partner mini."); return
+            }
+            do {
+                let (temp, response) = try await URLSession.shared.download(from: source)
+                let expected = response.expectedContentLength
+                if expected > 0, FileJob.size(temp) != expected { try? FileManager.default.removeItem(at: temp); reply("The file arrived incomplete."); return }
+                try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+                if FileManager.default.fileExists(atPath: target.path) {
+                    if LibraryIntake.sameBytes(temp, target) || FileJob.size(temp) <= FileJob.size(target) {
+                        try? FileManager.default.removeItem(at: temp)       // the library already has it, or a bigger one
+                        reply(nil); return
+                    }
+                    if let trash = store.trashFolder, let root = running { _ = try LibraryStore.moveToTrash([target], libraryRoot: root, trash: trash) }
+                }
+                try FileManager.default.moveItem(at: temp, to: target)
+                store.journal("taken in from the partner's Import Drive", from: source, to: target)
+                report("Took in “\(target.lastPathComponent)” from the partner's Import Drive")
+                await rescan()
+                reply(nil)
+            } catch {
+                reply(error.localizedDescription)
+            }
         }
     }
 }

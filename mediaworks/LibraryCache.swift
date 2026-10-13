@@ -93,7 +93,9 @@ nonisolated struct CacheRequest: Codable, Sendable, Hashable {
     /// `addToPlaylist` / `removeFromPlaylist` (path = the file, playlist = the playlist's name) — moving a file from one
     /// playlist to another on the TV (004c, N06).
     /// `getOwn` — the partner mini asking for THIS Mac's own listing, not the merged one (N16).
-    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash, unthumb, renamePlaylist, checkAll, addToPlaylist, removeFromPlaylist, getOwn }
+    /// `takeIn` — the partner's Import Drive handing over a file for this Mac's trunk (I01a): path = where it goes in the
+    /// library, newName = the one-time address to download it from. Only accepted from the partner's own address.
+    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash, unthumb, renamePlaylist, checkAll, addToPlaylist, removeFromPlaylist, getOwn, takeIn }
     var op: Op
     /// The file, relative to the library root ("Music Videos/Rock/1990s/Queensryche - Silent Lucidity.mp4").
     var path: String?
