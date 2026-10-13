@@ -261,6 +261,12 @@ final class LibraryCatalog {
                                       wasThumbedUp: playlists[LibraryCache.thumbsUp]?.contains(path) ?? false)
             if request.op == .renamePlaylist { change.newName = request.newName?.trimmingCharacters(in: .whitespaces) }
             if request.op == .checkAll { change.wasUnchecked = (playlists[path] ?? []).filter { unchecked.contains($0) } }
+            if [.addToPlaylist, .removeFromPlaylist].contains(request.op) {
+                // REM  Only a real change is recorded — already in (or already out of) the playlist is nothing to undo.
+                guard let name = request.playlist, let list = playlists[name],
+                      list.contains(path) == (request.op == .removeFromPlaylist) else { return }
+                change.playlist = name
+            }
             deviceChanges.insert(change, at: 0)
             if deviceChanges.count > 1000 { deviceChanges.removeLast(deviceChanges.count - 1000) }
             saveChanges()
@@ -288,6 +294,16 @@ final class LibraryCatalog {
             renamePlaylistFile(path, to: newName)
         case .checkAll:
             for file in playlists[path] ?? [] { unchecked.remove(file) }
+        // REM  MOVING A FILE BETWEEN PLAYLISTS — his words, 2026-10-10 (004c): "just mantenance and upkeep. moving from one
+        // REM  playlist to another." Out of one, into another; the file itself never moves (026). Only playlists that exist.
+        case .addToPlaylist:
+            guard let name = request.playlist, var list = playlists[name] else { return }
+            if !list.contains(path) { list.append(path) }
+            playlists[name] = list
+        case .removeFromPlaylist:
+            guard let name = request.playlist, var list = playlists[name] else { return }
+            list.removeAll { $0 == path }
+            playlists[name] = list.isEmpty && name == LibraryCache.thumbsUp ? nil : list
         }
         saveMarksAndPublish()
     }
@@ -414,6 +430,16 @@ final class LibraryCatalog {
             playlists[change.path] = list
             playlists[newName] = nil
             renamePlaylistFile(newName, to: change.path)
+            deviceChanges[index].undone = .now
+            saveChanges()
+            saveMarksAndPublish()
+            return
+        }
+        if [.addToPlaylist, .removeFromPlaylist].contains(change.op), let name = change.playlist {
+            var list = playlists[name] ?? []
+            if change.op == .addToPlaylist { list.removeAll { $0 == change.path } }
+            else if !list.contains(change.path) { list.append(change.path) }
+            playlists[name] = list.isEmpty && name == LibraryCache.thumbsUp ? nil : list
             deviceChanges[index].undone = .now
             saveChanges()
             saveMarksAndPublish()

@@ -88,7 +88,9 @@ nonisolated struct CacheRequest: Codable, Sendable, Hashable {
     /// `unthumb` takes a file out of Thumbs Up (the TV's playlist upkeep, 004c).
     /// `renamePlaylist` (path = the playlist's name, newName = its new one) and `checkAll` (path = the playlist's name) —
     /// his rating rounds, platforms PL1–PL9.
-    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash, unthumb, renamePlaylist, checkAll }
+    /// `addToPlaylist` / `removeFromPlaylist` (path = the file, playlist = the playlist's name) — moving a file from one
+    /// playlist to another on the TV (004c, N06).
+    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash, unthumb, renamePlaylist, checkAll, addToPlaylist, removeFromPlaylist }
     var op: Op
     /// The file, relative to the library root ("Music Videos/Rock/1990s/Queensryche - Silent Lucidity.mp4").
     var path: String?
@@ -100,6 +102,8 @@ nonisolated struct CacheRequest: Codable, Sendable, Hashable {
     var picture: Data?
     /// For `renamePlaylist`: the playlist's new name.
     var newName: String?
+    /// For `addToPlaylist` / `removeFromPlaylist`: which playlist.
+    var playlist: String?
 }
 
 /// One change a phone or iPad made, as the Mac recorded it — with what it was before, so it can be undone (platforms 002e/f).
@@ -126,6 +130,8 @@ nonisolated struct DeviceChange: Codable, Sendable, Hashable, Identifiable {
     var newName: String?
     /// A Check all: the files that were unchecked before it, to put back on Undo.
     var wasUnchecked: [String]?
+    /// An add to / remove from a playlist: which playlist.
+    var playlist: String?
 }
 
 nonisolated enum LibraryCache {
@@ -265,6 +271,16 @@ nonisolated extension LibrarySnapshot {
             }
         case .trash:
             copy.root = Self.removingFile(copy.root, path.split(separator: "/").map(String.init))
+        case .addToPlaylist:
+            guard let name = request.playlist, var lists = copy.playlists, var list = lists[name] else { return copy }
+            if !list.contains(path) { list.append(path) }
+            lists[name] = list
+            copy.playlists = lists
+        case .removeFromPlaylist:
+            guard let name = request.playlist, var lists = copy.playlists, var list = lists[name] else { return copy }
+            list.removeAll { $0 == path }
+            lists[name] = list.isEmpty && name == LibraryCache.thumbsUp ? nil : list
+            copy.playlists = lists
         default:
             break
         }
