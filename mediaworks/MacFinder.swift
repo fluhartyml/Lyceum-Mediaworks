@@ -68,6 +68,16 @@ struct MacPickerSection: View {
 
     var body: some View {
         Section {
+            #if os(tvOS)
+            // REM  HIS CATCH, 2026-10-13 on the Living Room TV: "it doesnt let you choose the mac it only shows one uneditable
+            // REM  choice". A Picker in the TV's Settings sheet does not open a choice list with the remote — so on the TV
+            // REM  every Mac is its own row, ✓ on the chosen one; a click picks it.
+            choice("Any Mac", nil)
+            ForEach(finder.names, id: \.self) { choice($0, $0) }
+            if let chosen = finder.chosen, !finder.names.contains(chosen) {
+                choice("\(chosen) (not found now)", chosen)
+            }
+            #else
             Picker("Library from", selection: Binding(get: { finder.chosen ?? "" },
                                                       set: { finder.chosen = $0.isEmpty ? nil : $0 })) {
                 Text("Any Mac").tag("")
@@ -76,6 +86,7 @@ struct MacPickerSection: View {
                     Text("\(chosen) (not found now)").tag(chosen)
                 }
             }
+            #endif
             if finder.names.isEmpty {
                 Text("Looking for Macs running Lyceum Mediaworks…").foregroundStyle(.secondary)
             }
@@ -84,6 +95,18 @@ struct MacPickerSection: View {
         } footer: {
             Text("Each Mac is listed by its computer name. The library, playlists and videos come from the Mac you choose.")
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    private func choice(_ title: String, _ name: String?) -> some View {
+        Button {
+            finder.chosen = name
+        } label: {
+            HStack {
+                Text(title)
+                Spacer()
+                if finder.chosen == name { Image(systemName: "checkmark") }
+            }
         }
     }
 }
