@@ -54,6 +54,9 @@ struct HybridLibraryView: View {
     // REM  HIS WORD, 2026-10-13: "yes right click to rename on the mac" — the same rename the TV's Rename… row sends (PL2).
     @State private var renaming: String?
     @State private var newName = ""
+    // REM  HIS ASK, 2026-10-13: "can i right click a folder to either rename the folder or make a playlist from folder?" ·
+    // REM  "yes build both include subfolders".
+    @State private var renamingFolder: String?
     // REM  HIS ASK, 2026-10-13: "colums should be click the title and drag to rearange and colum width adjusts
     // REM  automatically upon double click" — the same as the Library view: dragged order remembered, edge double-click fits.
     @State private var columns = TableColumnCustomization<Row>()
@@ -81,6 +84,10 @@ struct HybridLibraryView: View {
                 Section("Lyceum") {
                     OutlineGroup(HybridFolder.tree(snapshot?.root ?? CachedFolder(name: ""), ""), children: \.children) { node in
                         Label("\(node.name)  (\(node.count))", systemImage: "folder").tag(Place.folder(node.path))
+                            .contextMenu {
+                                Button("Rename Folder…") { newName = node.name; renamingFolder = node.path }
+                                Button("Make Playlist from Folder") { playlistFromFolder(node.path) }
+                            }
                     }
                 }
             }
@@ -147,6 +154,11 @@ struct HybridLibraryView: View {
             TextField("Name", text: $newName)
             Button("Rename") { if let old = renaming { rename(old, to: newName) }; renaming = nil }
             Button("Cancel", role: .cancel) { renaming = nil }
+        }
+        .alert("Rename Folder", isPresented: Binding(get: { renamingFolder != nil }, set: { if !$0 { renamingFolder = nil } })) {
+            TextField("Name", text: $newName)
+            Button("Rename") { if let path = renamingFolder { renameFolder(path, to: newName) }; renamingFolder = nil }
+            Button("Cancel", role: .cancel) { renamingFolder = nil }
         }
         .alert("Library", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
             Button("OK") { problem = nil }
@@ -242,6 +254,55 @@ struct HybridLibraryView: View {
             }
             if place == .playlist(old) { place = .playlist(name) }
             await partner.refresh()
+        }
+    }
+
+    /// The servers holding a folder — or nil, with the reason shown, when one of them is too old to read the request.
+    /// None is asked unless all can do it, so a folder is never renamed on one mini and left on the other.
+    private func folderHolders(_ path: String) -> [String]? {
+        let holders = partner.servers.filter { name in
+            partner.snapshots[name].map { DLNAContent.folder($0.root, path) != nil } ?? false
+        }
+        let old = holders.filter { name in
+            (partner.snapshots[name]?.serverBuild?.split(separator: " ").first.flatMap { Int($0) } ?? 0) < LibraryCache.folderRequestsBuild
+        }
+        guard old.isEmpty else {
+            problem = old.joined(separator: " and ") + " is on a build older than \(LibraryCache.folderRequestsBuild), which cannot do this yet. It arrives with the TestFlight update. Nothing was changed."
+            return nil
+        }
+        return holders
+    }
+
+    private func renameFolder(_ path: String, to proposed: String) {
+        let name = proposed.trimmingCharacters(in: .whitespaces)
+        let old = (path as NSString).lastPathComponent
+        guard !name.isEmpty, name != old else { return }
+        guard LibraryCatalog.validName(name) else { problem = "A folder name cannot contain “/” or “:”, or start with a period."; return }
+        let parent = (path as NSString).deletingLastPathComponent
+        let renamed = parent.isEmpty ? name : parent + "/" + name
+        guard snapshot.flatMap({ DLNAContent.folder($0.root, renamed) }) == nil else { problem = "There is already a folder named “\(name)” there."; return }
+        guard let holders = folderHolders(path) else { return }
+        Task {
+            for host in holders {
+                var request = CacheRequest(op: .renameFolder, path: path, device: Host.current().localizedName ?? "Mac")
+                request.newName = name
+                if await partner.ask(request, to: host) == nil { problem = "\(host) did not answer — “\(old)” was not renamed there." }
+            }
+            await partner.refresh()
+            if place == .folder(path) { place = .folder(renamed) }
+        }
+    }
+
+    private func playlistFromFolder(_ path: String) {
+        let name = (path as NSString).lastPathComponent
+        guard let holders = folderHolders(path) else { return }
+        Task {
+            for host in holders {
+                let request = CacheRequest(op: .playlistFromFolder, path: path, device: Host.current().localizedName ?? "Mac")
+                if await partner.ask(request, to: host) == nil { problem = "\(host) did not answer — its files were not added to “\(name)”." }
+            }
+            await partner.refresh()
+            place = .playlist(name)
         }
     }
 

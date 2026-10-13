@@ -51,6 +51,9 @@ struct DeviceChangesView: View {
 
     private static func before(_ change: DeviceChange) -> String {
         if let trashedTo = change.trashedTo { return "Now in the Trash: \(trashedTo)" }
+        if let added = change.added, let name = change.playlist {
+            return "\(added.count) file\(added.count == 1 ? "" : "s") added to “\(name)”\(change.playlistWasNew == true ? ", a new playlist" : "")"
+        }
         if let newName = change.newName { return "“\(change.path)” → “\(newName)”" }
         if let was = change.wasUnchecked { return "\(was.count) file\(was.count == 1 ? " was" : "s were") unchecked before" }
         if let old = change.beforeTags, let new = change.tags {
@@ -79,6 +82,8 @@ struct DeviceChangesView: View {
         case .removeFromPlaylist: "Taken out of a playlist"
         case .getOwn: "Partner looked"
         case .takeIn: "Taken in from the partner's Import Drive"
+        case .renameFolder: "Renamed folder"
+        case .playlistFromFolder: "Made a playlist from a folder"
         }
     }
 }

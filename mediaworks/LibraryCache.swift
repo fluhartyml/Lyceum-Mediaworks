@@ -98,7 +98,7 @@ nonisolated struct CacheRequest: Codable, Sendable, Hashable {
     /// `getOwn` — the partner mini asking for THIS Mac's own listing, not the merged one (N16).
     /// `takeIn` — the partner's Import Drive handing over a file for this Mac's trunk (I01a): path = where it goes in the
     /// library, newName = the one-time address to download it from. Only accepted from the partner's own address.
-    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash, unthumb, renamePlaylist, checkAll, addToPlaylist, removeFromPlaylist, getOwn, takeIn }
+    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash, unthumb, renamePlaylist, checkAll, addToPlaylist, removeFromPlaylist, getOwn, takeIn, renameFolder, playlistFromFolder }
     var op: Op
     /// The file, relative to the library root ("Music Videos/Rock/1990s/Queensryche - Silent Lucidity.mp4").
     var path: String?
@@ -108,7 +108,7 @@ nonisolated struct CacheRequest: Codable, Sendable, Hashable {
     var tags: [String: String]?
     /// For `setTags`: a new picture for 012, if one was chosen.
     var picture: Data?
-    /// For `renamePlaylist`: the playlist's new name.
+    /// For `renamePlaylist`: the playlist's new name. For `renameFolder`: the folder's new name (its last part only).
     var newName: String?
     /// For `addToPlaylist` / `removeFromPlaylist`: which playlist.
     var playlist: String?
@@ -138,11 +138,19 @@ nonisolated struct DeviceChange: Codable, Sendable, Hashable, Identifiable {
     var newName: String?
     /// A Check all: the files that were unchecked before it, to put back on Undo.
     var wasUnchecked: [String]?
-    /// An add to / remove from a playlist: which playlist.
+    /// An add to / remove from a playlist: which playlist. A playlist made from a folder: its name.
     var playlist: String?
+    /// A playlist made from a folder: the files it added, and whether the playlist was new — what Undo takes back.
+    var added: [String]?
+    var playlistWasNew: Bool?
 }
 
 nonisolated enum LibraryCache {
+    // REM  HIS ASK, 2026-10-13: "can i right click a folder to either rename the folder or make a playlist from folder?" ·
+    // REM  "yes build both include subfolders". A server older than this cannot read those two requests — and answers as
+    // REM  if all went well — so a Mac asks only servers at this build or later.
+    static let folderRequestsBuild = 184
+
     /// The Bonjour service the Mac announces on the home network.
     static let serviceType = "_lyceum._tcp"
 

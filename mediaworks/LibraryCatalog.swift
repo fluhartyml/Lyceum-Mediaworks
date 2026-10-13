@@ -266,7 +266,8 @@ final class LibraryCatalog {
     // REM  a thumbs up playlist" · "thats the point of thumbs downing it to take it out of synch rotation". The Mac keeps
     // REM  the marks (Marks.json), puts them in the cache, and every device sees them on its next look. Nothing is deleted.
     private func apply(_ request: CacheRequest) {
-        guard let path = request.path, !path.isEmpty, ![.get, .file, .setTags, .trash, .getOwn, .takeIn].contains(request.op) else { return }
+        guard let path = request.path, !path.isEmpty,
+              ![.get, .file, .setTags, .trash, .getOwn, .takeIn, .renameFolder, .playlistFromFolder].contains(request.op) else { return }
         if request.op == .renamePlaylist {
             // REM  A bad or taken name is refused before anything is recorded.
             guard let newName = request.newName?.trimmingCharacters(in: .whitespaces), Self.validName(newName),
@@ -291,7 +292,7 @@ final class LibraryCatalog {
             saveChanges()
         }
         switch request.op {
-        case .get, .file, .setTags, .trash, .getOwn, .takeIn: return
+        case .get, .file, .setTags, .trash, .getOwn, .takeIn, .renameFolder, .playlistFromFolder: return
         case .check: unchecked.remove(path)
         case .uncheck: unchecked.insert(path)
         case .thumbsUp:
@@ -472,7 +473,16 @@ final class LibraryCatalog {
     /// Puts the file back the way it was before a device's change, and passes that to every device.
     func undo(_ change: DeviceChange) {
         guard let index = deviceChanges.firstIndex(where: { $0.id == change.id }), deviceChanges[index].undone == nil else { return }
-        if change.op == .setTags || change.op == .trash {
+        if change.op == .playlistFromFolder, let name = change.playlist, let added = change.added {
+            var list = playlists[name] ?? []
+            list.removeAll { added.contains($0) }
+            playlists[name] = list.isEmpty && change.playlistWasNew == true ? nil : list
+            deviceChanges[index].undone = .now
+            saveChanges()
+            saveMarksAndPublish()
+            return
+        }
+        if change.op == .setTags || change.op == .trash || change.op == .renameFolder {
             Task {
                 if await undoTagsOrTrash(change), let i = deviceChanges.firstIndex(where: { $0.id == change.id }) {
                     deviceChanges[i].undone = .now
@@ -563,6 +573,41 @@ final class LibraryCatalog {
             change.tags = request.tags
             change.beforeTags = Dictionary(uniqueKeysWithValues: edits.keys.map { ($0.rawValue, before.tags[$0] ?? "") })
             report("\(who) changed the tags of “\(url.lastPathComponent)”")
+        case .renameFolder:
+            // REM  Only this Mac's own folder is renamed — a partner's half of the same folder is renamed by the partner.
+            var isFolder: ObjCBool = false
+            guard let newName = request.newName?.trimmingCharacters(in: .whitespaces), Self.validName(newName),
+                  newName != url.lastPathComponent,
+                  FileManager.default.fileExists(atPath: url.path, isDirectory: &isFolder), isFolder.boolValue else { return }
+            let target = url.deletingLastPathComponent().appending(path: newName, directoryHint: .isDirectory)
+            guard !FileManager.default.fileExists(atPath: target.path) else {
+                report("\(who): “\(newName)” already exists — the folder “\(url.lastPathComponent)” was not renamed"); return
+            }
+            do { try FileManager.default.moveItem(at: url, to: target) } catch {
+                report("\(who): the folder “\(url.lastPathComponent)” was not renamed — \(error.localizedDescription)"); return
+            }
+            folderMoved(from: path, to: Self.sibling(path, newName))
+            change.newName = newName
+            report("\(who) renamed the folder “\(url.lastPathComponent)” to “\(newName)”")
+        case .playlistFromFolder:
+            // REM  Every media file under the folder, subfolders included (his "include subfolders"), named after the folder.
+            // REM  Only this Mac's own files — the partner adds its own half to the same-named list.
+            let name = url.lastPathComponent
+            guard Self.validName(name), let folder = snapshot.flatMap({ DLNAContent.folder($0.root, path) }) else { return }
+            let wasNew = playlists[name] == nil
+            var list = playlists[name] ?? []
+            let added = Self.ownMedia(in: folder, at: path).filter { !list.contains($0) }
+            guard !added.isEmpty else { return }
+            list += added
+            playlists[name] = list
+            change.playlist = name
+            change.added = added
+            change.playlistWasNew = wasNew
+            deviceChanges.insert(change, at: 0)
+            saveChanges()
+            saveMarksAndPublish()
+            report("\(who) made the playlist “\(name)” from its folder — \(added.count) file\(added.count == 1 ? "" : "s")")
+            return
         case .trash:
             guard let trash = store.trashFolder,
                   let moved = try? LibraryStore.moveToTrash([url], libraryRoot: root, trash: trash).first else { return }
@@ -586,6 +631,26 @@ final class LibraryCatalog {
         Task { await rescan() }
     }
 
+    /// A path with its last part replaced — "Movies and Shows/Sci-Fi" + "Science Fiction".
+    private static func sibling(_ path: String, _ name: String) -> String {
+        let parent = (path as NSString).deletingLastPathComponent
+        return parent.isEmpty ? name : parent + "/" + name
+    }
+
+    /// This Mac's own media files under a folder, at every depth, as library paths.
+    private static func ownMedia(in folder: CachedFolder, at path: String) -> [String] {
+        folder.files.filter { $0.isMedia && $0.host == nil }.map { path + "/" + $0.name }
+            + folder.folders.flatMap { ownMedia(in: $0, at: path + "/" + $0.name) }
+    }
+
+    /// A folder renamed: checkmarks and playlist entries inside it follow it, or its files would drop out of every playlist.
+    private func folderMoved(from old: String, to new: String) {
+        func moved(_ p: String) -> String { p.hasPrefix(old + "/") ? new + String(p.dropFirst(old.count)) : p }
+        unchecked = Set(unchecked.map(moved))
+        for (name, list) in playlists { playlists[name] = list.map(moved) }
+        saveMarksAndPublish()
+    }
+
     /// Walks the library again now, so a change shows on every device without waiting for the five-minute walk.
     private func rescan() async {
         guard let root = running else { return }
@@ -596,6 +661,18 @@ final class LibraryCatalog {
 
     private func undoTagsOrTrash(_ change: DeviceChange) async -> Bool {
         guard let store, let root = running else { return false }
+        if change.op == .renameFolder, let newName = change.newName {
+            let renamed = Self.sibling(change.path, newName)
+            guard let from = libraryFile(renamed), let to = libraryFile(change.path),
+                  FileManager.default.fileExists(atPath: from.path), !FileManager.default.fileExists(atPath: to.path) else {
+                report("Undo: the folder “\(newName)” is gone, or “\((change.path as NSString).lastPathComponent)” exists again — left as it is")
+                return false
+            }
+            do { try FileManager.default.moveItem(at: from, to: to) } catch { report("Undo failed: \(error.localizedDescription)"); return false }
+            folderMoved(from: renamed, to: change.path)
+            await rescan()
+            return true
+        }
         if let trashedTo = change.trashedTo, let from = libraryFile(trashedTo), let to = libraryFile(change.path) {
             guard !FileManager.default.fileExists(atPath: to.path) else {
                 report("Undo: “\(to.lastPathComponent)” is back already, or another file has its name — left as it is")
@@ -752,7 +829,7 @@ final class LibraryCatalog {
             if request.op == .takeIn { takeIn(request, on: connection); return }
             if routeToPartner(request, on: connection) { return }
             if request.op == .file { sendFile(request.path, on: connection); return }
-            if request.op == .setTags || request.op == .trash {
+            if [.setTags, .trash, .renameFolder, .playlistFromFolder].contains(request.op) {
                 Task { @MainActor in
                     await carryOut(request)
                     connection.send(content: Framing.frame(payload), completion: .contentProcessed { _ in connection.cancel() })
