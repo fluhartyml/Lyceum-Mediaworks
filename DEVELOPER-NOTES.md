@@ -19,6 +19,13 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-13 ~11:10–11:50 — TWO MACS, ONE LIBRARY (N16–N19) + IMPORT DRIVE TO THE PARTNER (I01a), builds 169–170
+His design, in his words on the sheet (N16–N19), then *"add it and code anything waiting to be coded"*. **Not on any device; the minis have never run 163+.**
+- **169** `LibraryPartner.swift` — Settings → General → Two Macs, One Library. `getOwn` (own listing) fetched every 30 s; `PartnerMerge` (own wins a clash; partner files carry `host`); per-file edits forwarded to the owner, playlist renames / Check All to both. `PartnerBuffer` on the internal drive (`…/Lyceum Mediaworks/Buffer`), served as it fills, `RangeRelay` for jumps ahead or no room. `BufferGuard`: slider 25 GB … (free + held) − 25 GB; 25 GB always free; oldest-played out first; nil = stream straight.
+- **170** I01a — intake hands a file to the partner when this Mac lacks the trunk folder and the partner has it (`takeIn` + `/outbox/<token>`; accepted only from the partner's own address; drop copy trashed only after the partner's listing shows it).
+- Tests: 42/42 (PartnerTests added). Two minis actually talking: NOT tried.
+- Still waiting on him: 029 spin-offs ("later") · older LOCKED+BUILT lines → DONE (he asked what the answer should be; I said yes + legend "built").
+
 ### 2026-10-13 ~10:00–11:00 — THE ROADMAP SHEET BUILT START TO FINISH, builds 158–167 (his "build the amber sheet from start to finish")
 His words: *"build the amber sheet from start to finish announce tts each build number progression"* · mid-run: *"update locked to done as you go"*. **None of 158–167 has run on any of his devices.**
 - **158** N06 — TV: add to / take out of ANY playlist (new ops `addToPlaylist` / `removeFromPlaylist`, Undo on the Mac). The other TV edit buttons were already wired since 153.
