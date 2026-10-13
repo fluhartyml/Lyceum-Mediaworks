@@ -27,7 +27,7 @@ entry once it is done, and move anything that became a decision into the section
 - Playlists window: **Sort by Sorting Settings** (016).
 - Tests: `mediaworksTests/SortingTests.swift` — 15 rule checks, compiled, **not yet run** (running opens the app as test host — ask him first).
 - ⬜ Open with him: on Music Video with Album artist → Artist levels, "Santana feat. Rob Thomas" (AA Santana) files as `Santana/Santana feat. Rob Thomas/` — right, or should it sit directly in `Santana/`?
-- ⬜ NOT DONE: TV edit buttons are still placeholders (roadmap N06–N09) — his catch tonight, next up.
+- 🟡 TV edit buttons (N06/N09), build 153: the code WAS connected — the Mac answered Genre/Kind/Title/Trash only after re-walking the whole library (minutes over SMB), and the TV showed nothing until then; Rename/Check All showed nothing until the Mac answered. Now `LibrarySnapshot.applying` shows the change at once on the device AND in the Mac's answer; the full walk follows in the background. **Unverified on his TV.** If something still does nothing there, find WHICH control first.
 
 ### 2026-10-12 07:14 — REMOTE DOWNLOADER (his idea — NOT coded, home undecided)
 - His words: *"can we make a downloader that takes a file download web address but does the actual download on another computer?"* — after Safari kept dying on two large Internet Archive downloads and its retry never recovered.

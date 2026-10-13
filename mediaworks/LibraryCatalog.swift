@@ -491,7 +491,16 @@ final class LibraryCatalog {
         }
         deviceChanges.insert(change, at: 0)
         saveChanges()
-        await rescan()
+        // The answer goes back with the change already in it; the full walk follows in the background.
+        if let current = snapshot {
+            let changed = current.applying(request)
+            snapshot = changed
+            if let data = try? LibraryCache.encoder.encode(changed) {
+                payload = data
+                try? data.write(to: LibraryCache.fileURL, options: .atomic)
+            }
+        }
+        Task { await rescan() }
     }
 
     /// Walks the library again now, so a change shows on every device without waiting for the five-minute walk.

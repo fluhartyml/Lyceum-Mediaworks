@@ -75,6 +75,8 @@ final class MacLibrary {
         var request = request
         request.device = Self.deviceName
         pending.append(request)
+        // Shown here at once, as 👍/👎 are — the Mac's answer then confirms it.
+        if let copy = snapshot { snapshot = copy.applying(request) }
         Task { await fetch() }
     }
 

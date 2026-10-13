@@ -33,6 +33,8 @@ nonisolated struct CachedInfo: Codable, Hashable, Sendable {
     /// The embedded picture, shrunk to a row icon (PNG).
     var thumbnail: Data?
 
+    init() {}
+
     #if !os(tvOS)
     init(_ info: MediaInfo) {
         length = info.length; resolution = info.resolution; title = info.title; artist = info.artist
@@ -208,5 +210,83 @@ nonisolated extension LibrarySnapshot {
         }
         let prefix = parts.isEmpty ? "" : parts.joined(separator: "/") + "/"
         return folder.files.filter(\.isMedia).map { prefix + $0.name }
+    }
+}
+
+// REM  A CHANGE SHOWN AT ONCE — his catch, 2026-10-11 on the Living Room TV: "i was only able to do thumbs up and thumbs down
+// REM  on the apple tv the other stuff i tried to do were buttons not wired up to do anything." 👍/👎 updated the TV's own copy
+// REM  at once; Genre, Kind, Title, Rename and Check All did not, and the Mac answered them only after re-walking the whole
+// REM  library — minutes on a network share — so nothing visibly happened. Now both ends apply the change to the copy straight
+// REM  away: the device as soon as it is pressed, the Mac in the answer it sends back.
+nonisolated extension LibrarySnapshot {
+    /// Media Kind words by the code the MP4 tag stores (the same list as the Inspector's 024).
+    static let mediaKindWords = ["1": "Music", "2": "Audiobook", "6": "Music Video", "9": "Movie", "10": "TV Show",
+                                 "11": "Booklet", "14": "Ringtone", "21": "Podcast"]
+
+    /// This copy with one device change applied — tags, a playlist rename, Check All, or a Trash move.
+    func applying(_ request: CacheRequest) -> LibrarySnapshot {
+        var copy = self
+        guard let path = request.path else { return copy }
+        switch request.op {
+        case .setTags:
+            let tags = request.tags ?? [:]
+            copy.root = Self.editingFile(copy.root, path.split(separator: "/").map(String.init)) { original in
+                var file = original
+                var info = file.info ?? CachedInfo()
+                for (key, value) in tags {
+                    let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let words = text.isEmpty ? nil : text
+                    switch key {
+                    case "title": info.title = words
+                    case "artist": info.artist = words
+                    case "album": info.album = words
+                    case "genre": info.genre = words
+                    case "show": info.show = words
+                    case "description": info.summary = words
+                    case "year": info.year = words.flatMap { Int($0.prefix(4)) }
+                    case "season": info.season = words.flatMap { Int($0) }
+                    case "episode": info.episode = words.flatMap { Int($0) }
+                    case "mediaKind": info.mediaKind = words.map { Self.mediaKindWords[$0] ?? $0 }
+                    default: break
+                    }
+                }
+                file.info = info
+                return file
+            }
+        case .renamePlaylist:
+            guard let newName = request.newName?.trimmingCharacters(in: .whitespaces), !newName.isEmpty,
+                  var lists = copy.playlists, let list = lists[path], lists[newName] == nil else { return copy }
+            lists[newName] = list
+            lists[path] = nil
+            copy.playlists = lists
+        case .checkAll:
+            for file in copy.playlists?[path] ?? [] {
+                copy.root = Self.editingFile(copy.root, file.split(separator: "/").map(String.init)) { var f = $0; f.checked = nil; return f }
+            }
+        case .trash:
+            copy.root = Self.removingFile(copy.root, path.split(separator: "/").map(String.init))
+        default:
+            break
+        }
+        return copy
+    }
+
+    private static func editingFile(_ folder: CachedFolder, _ parts: [String], _ edit: (CachedFile) -> CachedFile) -> CachedFolder {
+        var folder = folder
+        guard let first = parts.first else { return folder }
+        if parts.count == 1 {
+            folder.files = folder.files.map { $0.name == first ? edit($0) : $0 }
+        } else {
+            folder.folders = folder.folders.map { $0.name == first ? editingFile($0, Array(parts.dropFirst()), edit) : $0 }
+        }
+        return folder
+    }
+
+    private static func removingFile(_ folder: CachedFolder, _ parts: [String]) -> CachedFolder {
+        var folder = folder
+        guard let first = parts.first else { return folder }
+        if parts.count == 1 { folder.files.removeAll { $0.name == first } }
+        else { folder.folders = folder.folders.map { $0.name == first ? removingFile($0, Array(parts.dropFirst())) : $0 } }
+        return folder
     }
 }
