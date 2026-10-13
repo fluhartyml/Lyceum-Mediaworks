@@ -316,13 +316,24 @@ struct MacLibraryView: View {
     static let barMaterial = Material.bar
     #endif
 
+    // REM  THE SERVER'S BUILD, DEVELOPMENT BUILDS ONLY — his ask, 2026-10-13: "during development can the from homelab b date and
+    // REM  time stamp also display the server build number?" · "it will show on the macbook as a test server before we push
+    // REM  to testflight". App Store builds leave it out, like the title-bar build. A Mac older than 176 never sent it.
+    static func serverBuild(_ snapshot: LibrarySnapshot) -> String {
+        #if DEBUG
+        return " · build " + (snapshot.serverBuild ?? "older than 176")
+        #else
+        return ""
+        #endif
+    }
+
     var body: some View {
         if let snapshot = library.snapshot {
             NavigationStack {
                 CachedFolderList(folder: snapshot.root, path: "", isTop: true)
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         VStack(spacing: 2) {
-                            Text("From \(snapshot.macName) · \(snapshot.made.formatted(date: .abbreviated, time: .shortened))\(library.fromCloud ? " · from iCloud" : library.heard == nil ? " · saved copy" : "")")
+                            Text("From \(snapshot.macName)\(Self.serverBuild(snapshot)) · \(snapshot.made.formatted(date: .abbreviated, time: .shortened))\(library.fromCloud ? " · from iCloud" : library.heard == nil ? " · saved copy" : "")")
                             if !library.pending.isEmpty {
                                 Text("\(library.pending.count) change\(library.pending.count == 1 ? "" : "s") waiting for your Mac")
                             }

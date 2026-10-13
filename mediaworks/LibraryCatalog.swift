@@ -186,8 +186,9 @@ final class LibraryCatalog {
             }
             return folder
         }
-        let own = LibrarySnapshot(made: .now, macName: Host.current().localizedName ?? "Mac",
+        var own = LibrarySnapshot(made: .now, macName: Host.current().localizedName ?? "Mac",
                                   root: fill(found.folder, base), playlists: playlists)
+        own.serverBuild = "\(BuildStamp.number) · \(BuildStamp.commit)"
         ownSnapshot = own
         ownPayload = (try? LibraryCache.encoder.encode(own)) ?? Data()
         republishMerged()

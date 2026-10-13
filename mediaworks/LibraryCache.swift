@@ -81,6 +81,9 @@ nonisolated struct LibrarySnapshot: Codable, Sendable {
     var root: CachedFolder
     /// Playlists by name, each a list of file paths relative to the library — "Thumbs Up" first.
     var playlists: [String: [String]]?
+    /// The serving Mac's build and commit — "176 · 1a2b3c4" (his ask, 2026-10-13, for development: "can the from homelab b
+    /// date and time stamp also display the server build number?"). Nil from a Mac older than 176, which never sent it.
+    var serverBuild: String?
 }
 
 /// What a phone or iPad asks the Mac — the Mac is the gatekeeper for every change (platforms 002b).
