@@ -86,14 +86,18 @@ final class MacLibrary {
         if var copy = snapshot {
             if op != .unthumb { copy.root = Self.marking(copy.root, path.split(separator: "/").map(String.init), op) }
             if op == .unthumb {
-                var list = copy.playlists?[LibraryCache.thumbsUp] ?? []
-                list.removeAll { $0 == path }
-                copy.playlists = (copy.playlists ?? [:]).merging([LibraryCache.thumbsUp: list]) { $1 }
+                var lists = copy.playlists ?? [:]
+                for name in lists.keys where LibraryCache.isThumbsUp(name) {
+                    lists[name]?.removeAll { $0 == path }
+                    if lists[name]?.isEmpty == true { lists[name] = nil }
+                }
+                copy.playlists = lists
             }
             if op == .thumbsUp {
-                var list = copy.playlists?[LibraryCache.thumbsUp] ?? []
+                let name = copy.thumbsUpList(for: path)
+                var list = copy.playlists?[name] ?? []
                 if !list.contains(path) { list.append(path) }
-                copy.playlists = (copy.playlists ?? [:]).merging([LibraryCache.thumbsUp: list]) { $1 }
+                copy.playlists = (copy.playlists ?? [:]).merging([name: list]) { $1 }
             }
             snapshot = copy
         }
@@ -103,7 +107,7 @@ final class MacLibrary {
     /// The playlists, Thumbs Up first, then by name.
     var playlistNames: [String] {
         (snapshot?.playlists?.keys.map { $0 } ?? []).sorted { a, b in
-            a == LibraryCache.thumbsUp ? true : b == LibraryCache.thumbsUp ? false : a.localizedStandardCompare(b) == .orderedAscending
+            LibraryCache.playlistOrder(a, b)
         }
     }
 
@@ -377,7 +381,7 @@ private struct CachedFolderList: View {
                         PlaylistList(name: name)
                     } label: {
                         HStack {
-                            Label(name, systemImage: name == LibraryCache.thumbsUp ? "hand.thumbsup.fill" : "music.note.list")
+                            Label(name, systemImage: LibraryCache.isThumbsUp(name) ? "hand.thumbsup.fill" : "music.note.list")
                             Spacer()
                             Text("\(list.count)").foregroundStyle(.secondary).monospacedDigit()
                         }
@@ -427,7 +431,7 @@ private struct PlaylistList: View {
             Section {
                 // REM  SAVE AS NEW PLAYLIST — his word, 2026-10-13 (N09): he went to make a new playlist from Thumbs Up on the
                 // REM  TV and couldn't find how — nothing said "new playlist", only Rename. Same action as renaming Thumbs Up.
-                if name == LibraryCache.thumbsUp {
+                if LibraryCache.isThumbsUp(name) {
                     Button { newName = ""; saving = true } label: { Label("Save as New Playlist…", systemImage: "plus.rectangle.on.rectangle") }
                 }
                 Button { newName = name; renaming = true } label: { Label("Rename…", systemImage: "pencil") }
@@ -457,8 +461,8 @@ private struct PlaylistList: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text(name == LibraryCache.thumbsUp
-                 ? "Renaming Thumbs Up saves it as its own playlist. The next 👍 starts a new Thumbs Up."
+            Text(LibraryCache.isThumbsUp(name)
+                 ? "Renaming \(name) saves it as its own playlist. The next 👍 of that kind starts a new one."
                  : "Your Mac renames the playlist and its file.")
         }
         .alert("Save as New Playlist", isPresented: $saving) {
@@ -594,7 +598,7 @@ private struct CachedFileView: View {
     @Environment(MacLibrary.self) private var library
 
     private var file: CachedFile { library.snapshot?.file(at: path) ?? fallback }
-    private var thumbedUp: Bool { library.snapshot?.playlists?[LibraryCache.thumbsUp]?.contains(path) ?? false }
+    private var thumbedUp: Bool { library.snapshot?.isThumbedUp(path) ?? false }
     #if os(iOS)
     @Environment(PhonePlayer.self) private var phone: PhonePlayer?
     @Environment(TVRemote.self) private var remote: TVRemote?

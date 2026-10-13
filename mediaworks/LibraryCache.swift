@@ -155,8 +155,30 @@ nonisolated enum LibraryCache {
         return try? decoder.decode(LibrarySnapshot.self, from: data)
     }
 
-    /// Name of the playlist 👍 adds to.
+    /// The single Thumbs Up list of builds before 175 — kept only so it can be sorted into the per-kind lists.
     static let thumbsUp = "Thumbs Up"
+
+    // REM  THUMBS UP BY MEDIA KIND — his choice, 2026-10-13: "media kind tag sounds better" · "then no media kind goes into a
+    // REM  no media kind thumbs up list". 👍 adds a file to the Thumbs Up list of its Media Kind tag (024):
+    // REM  "Thumbs Up — Music Video", "Thumbs Up — Movie", … — and a file with no Media Kind to "Thumbs Up — No Media Kind".
+    static let thumbsUpPrefix = "Thumbs Up — "
+    static let noMediaKind = "No Media Kind"
+
+    /// The Thumbs Up list a file of this Media Kind goes to.
+    static func thumbsUp(forKind kind: String?) -> String {
+        let k = kind?.trimmingCharacters(in: .whitespaces) ?? ""
+        return thumbsUpPrefix + (k.isEmpty ? noMediaKind : k)
+    }
+
+    /// Any Thumbs Up list (and the old single one).
+    static func isThumbsUp(_ name: String) -> Bool { name == thumbsUp || name.hasPrefix(thumbsUpPrefix) }
+
+    /// Playlist order: the Thumbs Up lists first, then by name.
+    static func playlistOrder(_ a: String, _ b: String) -> Bool {
+        let ta = isThumbsUp(a), tb = isThumbsUp(b)
+        if ta != tb { return ta }
+        return a.localizedStandardCompare(b) == .orderedAscending
+    }
 
     static let encoder: JSONEncoder = { let e = JSONEncoder(); e.dateEncodingStrategy = .iso8601; return e }()
     static let decoder: JSONDecoder = { let d = JSONDecoder(); d.dateDecodingStrategy = .iso8601; return d }()
@@ -198,6 +220,14 @@ nonisolated enum Framing {
 }
 
 nonisolated extension LibrarySnapshot {
+    /// The Thumbs Up list 👍 puts this file in — by its Media Kind tag.
+    func thumbsUpList(for path: String) -> String { LibraryCache.thumbsUp(forKind: file(at: path)?.info?.mediaKind) }
+
+    /// Whether the file is in any Thumbs Up list.
+    func isThumbedUp(_ path: String) -> Bool {
+        (playlists ?? [:]).contains { LibraryCache.isThumbsUp($0.key) && $0.value.contains(path) }
+    }
+
     /// The file at a library-relative path, as this copy has it now.
     func file(at path: String) -> CachedFile? {
         var parts = path.split(separator: "/").map(String.init)
@@ -284,7 +314,7 @@ nonisolated extension LibrarySnapshot {
         case .removeFromPlaylist:
             guard let name = request.playlist, var lists = copy.playlists, var list = lists[name] else { return copy }
             list.removeAll { $0 == path }
-            lists[name] = list.isEmpty && name == LibraryCache.thumbsUp ? nil : list
+            lists[name] = list.isEmpty && LibraryCache.isThumbsUp(name) ? nil : list
             copy.playlists = lists
         default:
             break

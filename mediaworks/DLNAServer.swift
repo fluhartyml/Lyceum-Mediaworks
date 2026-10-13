@@ -108,7 +108,7 @@ nonisolated enum DLNAContent {
             return subs + files
         }
         let lists = playlists.filter { !$0.value.isEmpty }.keys.sorted { a, b in
-            a == "Thumbs Up" ? true : b == "Thumbs Up" ? false : a.localizedStandardCompare(b) == .orderedAscending
+            LibraryCache.playlistOrder(a, b)
         }
 
         if id == "0" {

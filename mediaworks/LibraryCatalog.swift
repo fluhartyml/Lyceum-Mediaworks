@@ -98,6 +98,7 @@ final class LibraryCatalog {
             guard !Task.isCancelled else { return }
             publish(tree)
             await readMissingTags(in: tree, under: root, report: report)
+            sortOldThumbsUp()
             try? await Task.sleep(for: .seconds(300))
         }
     }
@@ -275,7 +276,7 @@ final class LibraryCatalog {
         if let device = request.device {
             var change = DeviceChange(when: .now, device: device, op: request.op, path: path,
                                       wasChecked: !unchecked.contains(path),
-                                      wasThumbedUp: playlists[LibraryCache.thumbsUp]?.contains(path) ?? false)
+                                      wasThumbedUp: thumbedUp(path))
             if request.op == .renamePlaylist { change.newName = request.newName?.trimmingCharacters(in: .whitespaces) }
             if request.op == .checkAll { change.wasUnchecked = (playlists[path] ?? []).filter { unchecked.contains($0) } }
             if [.addToPlaylist, .removeFromPlaylist].contains(request.op) {
@@ -294,14 +295,13 @@ final class LibraryCatalog {
         case .uncheck: unchecked.insert(path)
         case .thumbsUp:
             unchecked.remove(path)
-            var list = playlists[LibraryCache.thumbsUp] ?? []
+            let name = thumbsUpList(for: path)
+            var list = playlists[name] ?? []
             if !list.contains(path) { list.append(path) }
-            playlists[LibraryCache.thumbsUp] = list
+            playlists[name] = list
         case .thumbsDown: unchecked.insert(path)
         case .unthumb:
-            var list = playlists[LibraryCache.thumbsUp] ?? []
-            list.removeAll { $0 == path }
-            playlists[LibraryCache.thumbsUp] = list.isEmpty ? nil : list
+            takeOutOfThumbsUp(path)
         case .renamePlaylist:
             // REM  RENAMING IS SAVING — his rule, 2026-10-10 (PL2): "after renamed, its no longer a thumbs up playlist so the
             // REM  next song thumbs upped needs to make a new thumbs up playlist." Thumbs Up renamed = gone; the next 👍 starts one.
@@ -320,7 +320,7 @@ final class LibraryCatalog {
         case .removeFromPlaylist:
             guard let name = request.playlist, var list = playlists[name] else { return }
             list.removeAll { $0 == path }
-            playlists[name] = list.isEmpty && name == LibraryCache.thumbsUp ? nil : list
+            playlists[name] = list.isEmpty && LibraryCache.isThumbsUp(name) ? nil : list
         }
         saveMarksAndPublish()
     }
@@ -334,6 +334,32 @@ final class LibraryCatalog {
         for url in urls { if let path = relative(url), !list.contains(path) { list.append(path) } }
         guard list != (playlists[name] ?? []) else { return }
         playlists[name] = list
+        saveMarksAndPublish()
+    }
+
+    /// The Thumbs Up list for a file — by its Media Kind, from the tags read so far.
+    func thumbsUpList(for path: String) -> String { LibraryCache.thumbsUp(forKind: snapshot?.file(at: path)?.info?.mediaKind) }
+
+    func thumbedUp(_ path: String) -> Bool { playlists.contains { LibraryCache.isThumbsUp($0.key) && $0.value.contains(path) } }
+
+    /// Out of every Thumbs Up list; an emptied one goes away (the next 👍 of that kind starts it again).
+    private func takeOutOfThumbsUp(_ path: String) {
+        for name in playlists.keys where LibraryCache.isThumbsUp(name) {
+            var list = playlists[name] ?? []
+            list.removeAll { $0 == path }
+            playlists[name] = list.isEmpty ? nil : list
+        }
+    }
+
+    /// The single "Thumbs Up" of builds before 175, sorted into the per-kind lists once the tags have been read.
+    func sortOldThumbsUp() {
+        guard let old = playlists[LibraryCache.thumbsUp], !old.isEmpty else { return }
+        for path in old {
+            let name = thumbsUpList(for: path)
+            if !(playlists[name] ?? []).contains(path) { playlists[name, default: []].append(path) }
+        }
+        playlists[LibraryCache.thumbsUp] = nil
+        report("Thumbs Up sorted by Media Kind: \(old.count) file\(old.count == 1 ? "" : "s")")
         saveMarksAndPublish()
     }
 
@@ -377,7 +403,7 @@ final class LibraryCatalog {
     var playlistNames: [String] {
         _ = marksVersion
         return playlists.keys.sorted { a, b in
-            a == LibraryCache.thumbsUp ? true : b == LibraryCache.thumbsUp ? false : a.localizedStandardCompare(b) == .orderedAscending
+            LibraryCache.playlistOrder(a, b)
         }
     }
 
@@ -468,7 +494,7 @@ final class LibraryCatalog {
             var list = playlists[name] ?? []
             if change.op == .addToPlaylist { list.removeAll { $0 == change.path } }
             else if !list.contains(change.path) { list.append(change.path) }
-            playlists[name] = list.isEmpty && name == LibraryCache.thumbsUp ? nil : list
+            playlists[name] = list.isEmpty && LibraryCache.isThumbsUp(name) ? nil : list
             deviceChanges[index].undone = .now
             saveChanges()
             saveMarksAndPublish()
@@ -482,10 +508,11 @@ final class LibraryCatalog {
             return
         }
         if change.wasChecked { unchecked.remove(change.path) } else { unchecked.insert(change.path) }
-        var list = playlists[LibraryCache.thumbsUp] ?? []
-        if !change.wasThumbedUp { list.removeAll { $0 == change.path } }
-        else if !list.contains(change.path) { list.append(change.path) }
-        playlists[LibraryCache.thumbsUp] = list.isEmpty ? nil : list
+        if !change.wasThumbedUp { takeOutOfThumbsUp(change.path) }
+        else if !thumbedUp(change.path) {
+            let name = thumbsUpList(for: change.path)
+            playlists[name, default: []].append(change.path)
+        }
         deviceChanges[index].undone = .now
         saveChanges()
         saveMarksAndPublish()
@@ -510,7 +537,7 @@ final class LibraryCatalog {
         let who = request.device ?? "A device"
         var change = DeviceChange(when: .now, device: who, op: request.op, path: path,
                                   wasChecked: !unchecked.contains(path),
-                                  wasThumbedUp: playlists[LibraryCache.thumbsUp]?.contains(path) ?? false)
+                                  wasThumbedUp: thumbedUp(path))
         switch request.op {
         case .setTags:
             guard let entry = FolderListing.entries(in: url.deletingLastPathComponent())

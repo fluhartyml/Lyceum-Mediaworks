@@ -534,7 +534,7 @@ struct TVEditSheet: View {
         return all.sorted()
     }
 
-    private var thumbedUp: Bool { library.snapshot?.playlists?[LibraryCache.thumbsUp]?.contains(path) ?? false }
+    private var thumbedUp: Bool { library.snapshot?.isThumbedUp(path) ?? false }
 
     var body: some View {
         NavigationStack {
@@ -558,10 +558,10 @@ struct TVEditSheet: View {
                 // REM  MOVING BETWEEN PLAYLISTS (004c, N06) — "moving from one playlist to another": every playlist is a row,
                 // REM  ✓ when this file is in it; select a row to put the file in or take it out. Out of one + into another = a move.
                 Section("Playlists — select to add or take out") {
-                    Button(thumbedUp ? "✓  Thumbs Up — take out" : "Thumbs Up — add") {
+                    Button(thumbedUp ? "✓  Thumbs Up — take out" : "\(library.snapshot?.thumbsUpList(for: path) ?? "Thumbs Up") — add") {
                         library.change(thumbedUp ? .unthumb : .thumbsUp, path)
                     }
-                    ForEach(library.playlistNames.filter { $0 != LibraryCache.thumbsUp }, id: \.self) { name in
+                    ForEach(library.playlistNames.filter { !LibraryCache.isThumbsUp($0) }, id: \.self) { name in
                         let isIn = library.snapshot?.playlists?[name]?.contains(path) ?? false
                         Button(isIn ? "✓  \(name) — take out" : "\(name) — add") {
                             library.send(CacheRequest(op: isIn ? .removeFromPlaylist : .addToPlaylist, path: path, playlist: name))

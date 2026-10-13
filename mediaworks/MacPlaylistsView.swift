@@ -42,7 +42,7 @@ struct MacPlaylistsView: View {
     var body: some View {
         NavigationSplitView {
             List(catalog.playlistNames, id: \.self, selection: $selected) { name in
-                Label("\(name)  (\(catalog.playlist(name).count))", systemImage: name == LibraryCache.thumbsUp ? "hand.thumbsup.fill" : "music.note.list")
+                Label("\(name)  (\(catalog.playlist(name).count))", systemImage: LibraryCache.isThumbsUp(name) ? "hand.thumbsup.fill" : "music.note.list")
                     .tag(name)
             }
             .overlay {
@@ -71,21 +71,21 @@ struct MacPlaylistsView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text(selected == LibraryCache.thumbsUp
-                 ? "Renaming Thumbs Up saves it as its own playlist. The next 👍 starts a new Thumbs Up."
+            Text(selected.map(LibraryCache.isThumbsUp) == true
+                 ? "Renaming \(selected ?? "") saves it as its own playlist. The next 👍 of that kind starts a new one."
                  : "The playlist's file in the Playlists folder is renamed too.")
         }
         .alert("Save as New Playlist", isPresented: $saving) {
             TextField("Playlist name", text: $newName)
             Button("Save") {
                 let trimmed = newName.trimmingCharacters(in: .whitespaces)
-                guard !trimmed.isEmpty, trimmed != LibraryCache.thumbsUp else { return }
-                catalog.playlistAction(.renamePlaylist, LibraryCache.thumbsUp, newName: trimmed)
+                guard !trimmed.isEmpty, !LibraryCache.isThumbsUp(trimmed), let from = selected else { return }
+                catalog.playlistAction(.renamePlaylist, from, newName: trimmed)
                 selected = trimmed
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Everything in Thumbs Up becomes a playlist with this name. The next 👍 starts a new Thumbs Up.")
+            Text("Everything in \(selected ?? "Thumbs Up") becomes a playlist with this name. The next 👍 of that kind starts a new one.")
         }
     }
 
@@ -98,7 +98,7 @@ struct MacPlaylistsView: View {
                 Text("\(checked.count) of \(files.count) checked").foregroundStyle(.secondary)
                 Spacer()
                 // REM  SAVE AS NEW PLAYLIST — his word, 2026-10-13 (N09): the way to make a playlist from Thumbs Up, said plainly.
-                if name == LibraryCache.thumbsUp {
+                if LibraryCache.isThumbsUp(name) {
                     Button("Save as New Playlist…") { newName = ""; saving = true }
                         .lyceumHelp("Save as New Playlist — Thumbs Up becomes its own playlist; the next 👍 starts a new one")
                 }
