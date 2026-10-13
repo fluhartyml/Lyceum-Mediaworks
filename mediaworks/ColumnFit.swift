@@ -23,14 +23,20 @@ typealias PlatformFont = NSFont
 
 /// Placed behind a pane's Table: owns the double-click watcher for that one table.
 struct ColumnFit: NSViewRepresentable {
-    /// The width to give the shown column at this index, or nil to leave it.
-    let fit: (Int) -> CGFloat?
+    /// The width to give the shown column at this index (with its header title), or nil to leave it.
+    let fit: (Int, String) -> CGFloat?
+
+    /// By position — for a pane that keeps its own column order (Commander).
+    init(fit: @escaping (Int) -> CGFloat?) { self.fit = { index, _ in fit(index) } }
+
+    /// By header title — for a Table whose columns he can drag into any order, where a position names no column.
+    init(title fitTitle: @escaping (String) -> CGFloat?) { self.fit = { _, name in fitTitle(name) } }
 
     func makeNSView(context: Context) -> Marker { Marker() }
     func updateNSView(_ view: Marker, context: Context) { view.fit = fit }
 
     final class Marker: NSView {
-        var fit: (Int) -> CGFloat? = { _ in nil }
+        var fit: (Int, String) -> CGFloat? = { _, _ in nil }
         private var monitor: Any?
 
         override func viewDidMoveToWindow() {
@@ -60,9 +66,9 @@ struct ColumnFit: NSViewRepresentable {
             }) else { return }
             // After the header has finished its own click handling.
             DispatchQueue.main.async { [weak self, weak table] in
-                guard let self, let table, let width = self.fit(index),
-                      table.tableColumns.indices.contains(index) else { return }
+                guard let self, let table, table.tableColumns.indices.contains(index) else { return }
                 let column = table.tableColumns[index]
+                guard let width = self.fit(index, column.title) else { return }
                 column.width = min(max(width, column.minWidth), column.maxWidth)
             }
         }

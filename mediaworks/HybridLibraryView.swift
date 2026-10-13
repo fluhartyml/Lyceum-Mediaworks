@@ -44,6 +44,10 @@ struct HybridLibraryView: View {
     @State private var selection = Set<String>()
     @State private var playing: (url: URL, title: String)?
     @State private var problem: String?
+    // REM  HIS ASK, 2026-10-13: "colums should be click the title and drag to rearange and colum width adjusts
+    // REM  automatically upon double click" — the same as the Library view: dragged order remembered, edge double-click fits.
+    @State private var columns = TableColumnCustomization<Row>()
+    @AppStorage("hybridColumns") private var savedColumns = Data()
     @Environment(\.openWindow) private var openWindow
 
     private var snapshot: LibrarySnapshot? { catalog.snapshot }
@@ -73,14 +77,17 @@ struct HybridLibraryView: View {
                                            systemImage: "rectangle.stack",
                                            description: Text(serversLine))
                 } else {
-                    Table(rows, selection: $selection) {
-                        TableColumn("✓") { row in Text(row.file.isChecked ? "✓" : "—") }.width(30)
-                        TableColumn("Name") { row in Text(row.file.info?.title ?? row.file.name) }
-                        TableColumn("Artist") { row in Text(row.file.info?.artist ?? "") }
-                        TableColumn("Media Kind") { row in Text(row.file.info?.mediaKind ?? "") }
-                        TableColumn("Length") { row in Text(row.file.info?.length.map { FolderView.lengthText($0) } ?? "") }.width(80)
-                        TableColumn("Server") { row in Text(row.file.host ?? Host.current().localizedName ?? "") }
+                    Table(rows, selection: $selection, columnCustomization: $columns) {
+                        TableColumn("✓") { row in Text(cellText(row, "✓")) }.width(30).customizationID("check")
+                        TableColumn("Name") { row in Text(cellText(row, "Name")) }.customizationID("name")
+                        TableColumn("Artist") { row in Text(cellText(row, "Artist")) }.customizationID("artist")
+                        TableColumn("Media Kind") { row in Text(cellText(row, "Media Kind")) }.customizationID("kind")
+                        TableColumn("Length") { row in Text(cellText(row, "Length")) }.width(80).customizationID("length")
+                        TableColumn("Server") { row in Text(cellText(row, "Server")) }.customizationID("server")
                     }
+                    // REM  By title, not position — once he drags the columns around, a position names no column.
+                    .background(ColumnFit(title: { fitWidth($0) }))
+                    .onChange(of: columns) { if let data = try? JSONEncoder().encode(columns) { savedColumns = data } }
                     .contextMenu(forSelectionType: String.self) { paths in
                         Button("Play") { play(paths.first) }
                         Divider()
@@ -100,6 +107,9 @@ struct HybridLibraryView: View {
             }
         }
         .font(.lyceumBody)
+        .onAppear {
+            if let saved = try? JSONDecoder().decode(TableColumnCustomization<Row>.self, from: savedColumns) { columns = saved }
+        }
         .sheet(isPresented: Binding(get: { playing != nil }, set: { if !$0 { playing = nil } })) {
             if let playing {
                 VStack(spacing: 0) {
@@ -122,6 +132,26 @@ struct HybridLibraryView: View {
         case .playlist(let name):
             return (snapshot.playlists?[name] ?? []).compactMap { p in snapshot.file(at: p).map { Row(path: p, file: $0) } }
         }
+    }
+
+    /// The words a column shows for a row — the cells and the double-click fit read the same text.
+    private func cellText(_ row: Row, _ title: String) -> String {
+        switch title {
+        case "✓":          return row.file.isChecked ? "✓" : "—"
+        case "Name":       return row.file.info?.title ?? row.file.name
+        case "Artist":     return row.file.info?.artist ?? ""
+        case "Media Kind": return row.file.info?.mediaKind ?? ""
+        case "Length":     return row.file.info?.length.map { FolderView.lengthText($0) } ?? ""
+        case "Server":     return row.file.host ?? Host.current().localizedName ?? ""
+        default:           return ""
+        }
+    }
+
+    /// The width that shows a column's longest entry (and its title) whole, at the app's 18 pt.
+    private func fitWidth(_ title: String) -> CGFloat? {
+        let font = PlatformFont.systemFont(ofSize: 18)
+        func width(_ text: String) -> CGFloat { ceil((text as NSString).size(withAttributes: [.font: font]).width) }
+        return rows.reduce(width(title) + 24) { max($0, width(cellText($1, title)) + 16) }
     }
 
     private var serversLine: String {
