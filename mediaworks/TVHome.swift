@@ -228,7 +228,7 @@ final class TVTheater {
 // REM  scrubs forward or reverse." Apple's own player keeps the arrows for itself (left/right = 10 s), so this one reads
 // REM  the remote's presses directly: a short press acts when it is let go; a press held past half a second acts once, the
 // REM  moment the half second passes. Since N08 (2026-10-12): tap ◀︎ ▶︎ = 5 s back / ahead, hold = previous / next file.
-// REM  Select / Play-Pause toggle; Back (Menu) leaves.
+// REM  Select / Play-Pause toggle; hold Select shows / hides the bar (N15); Back (Menu) leaves.
 struct TVPlayer: View {
     @Environment(TVTheater.self) private var theater
     @Environment(MacLibrary.self) private var library
@@ -278,16 +278,16 @@ struct TVPlayer: View {
                     .padding(.horizontal, 60)
                 }
                 // REM  THE FILE NAME — his ask, 2026-10-10 13:25 watching #NSYNC on the Living Room TV: "can it show the file name
-                // REM  at the bottom of the screen?" Shown for 5 s when each video starts, and 3 s after any press.
+                // REM  at the bottom of the screen?" Shown for 5 s when each video starts and after any press; hold center shows / hides it.
                 if let path = theater.current {
                     Text((path as NSString).lastPathComponent).font(.lyceumHeadline)
                 }
                 // The key line only with a peek — "always" keeps just the file name on screen.
                 if showInfo {
                     #if DEBUG
-                    Text("▲ 👍 + next   ▼ 👎 + next   ◀︎ back 5 s   ▶︎ ahead 5 s   hold ◀︎ previous   hold ▶︎ next").foregroundStyle(.secondary)
+                    Text("▲ 👍 + next   ▼ 👎 + next   ◀︎ back 5 s   ▶︎ ahead 5 s   hold ◀︎ previous   hold ▶︎ next   hold ● bar").foregroundStyle(.secondary)
                     #else
-                    Text("▲ 👍   ▼ 👎 + next   ◀︎ back 5 s   ▶︎ ahead 5 s   hold ◀︎ previous   hold ▶︎ next").foregroundStyle(.secondary)
+                    Text("▲ 👍   ▼ 👎 + next   ◀︎ back 5 s   ▶︎ ahead 5 s   hold ◀︎ previous   hold ▶︎ next   hold ● bar").foregroundStyle(.secondary)
                     #endif
                 }
             }
@@ -321,6 +321,10 @@ struct TVPlayer: View {
         case .holdRight: theater.next(); light(.next)
         case .holdLeft: theater.previous(); light(.previous)
         case .playPause: if theater.isPlaying { theater.player.pause() } else { theater.player.play() }; light(.playPause)
+        // REM  HOLD CENTER SHOWS / HIDES THE BAR (platforms N15) — his words, 2026-10-13: "keep it display only and auto hide
+        // REM  after 5 seconds" · "center hold shows hides the display bar". A center click stays play / pause.
+        case .holdCenter:
+            if showInfo { peekID += 1; withAnimation { showInfo = false } } else { peek() }
         case .back: theater.presented = false
         }
     }
@@ -354,8 +358,8 @@ struct TVPlayer: View {
 
     @State private var peekID = 0
 
-    /// Shows the file name and the key line for a few seconds — a newer peek restarts the clock.
-    private func peek(for seconds: Double = 3) {
+    /// Shows the bar for 5 seconds (N15) — a newer peek restarts the clock.
+    private func peek(for seconds: Double = 5) {
         peekID += 1
         let mine = peekID
         withAnimation { showInfo = true }
@@ -366,7 +370,7 @@ struct TVPlayer: View {
     }
 }
 
-enum RemotePress { case up, down, tapLeft, tapRight, holdLeft, holdRight, playPause, back }
+enum RemotePress { case up, down, tapLeft, tapRight, holdLeft, holdRight, playPause, holdCenter, back }
 
 /// The media buttons in the dark bar, left to right (N07).
 enum TVControl: CaseIterable {
@@ -440,7 +444,18 @@ struct RemotePlayerView: UIViewControllerRepresentable {
                         self.handle(hold)
                     }
                 }
-            case .upArrow, .downArrow, .select, .playPause: break
+            case .select:
+                // REM  Center held past half a second = show / hide the bar (N15), once; a short click is play / pause.
+                holdFired = false
+                holdTimer?.invalidate()
+                holdTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
+                    MainActor.assumeIsolated {
+                        guard let self else { return }
+                        self.holdFired = true
+                        self.handle(.holdCenter)
+                    }
+                }
+            case .upArrow, .downArrow, .playPause: break
             default: super.pressesBegan(presses, with: event)
             }
         }
@@ -454,7 +469,11 @@ struct RemotePlayerView: UIViewControllerRepresentable {
                 holdFired = false
             case .upArrow: handle(.up)
             case .downArrow: handle(.down)
-            case .select, .playPause: handle(.playPause)
+            case .select:
+                holdTimer?.invalidate(); holdTimer = nil
+                if !holdFired { handle(.playPause) }
+                holdFired = false
+            case .playPause: handle(.playPause)
             case .menu: handle(.back)
             default: super.pressesEnded(presses, with: event)
             }
