@@ -137,6 +137,14 @@ struct mediaworksApp: App {
         .defaultSize(width: 1200, height: 860)
         .restorationBehavior(.disabled)
 
+        // REM  TRANSCODE — standardize the library: MP4 · H.264/HEVC · AAC (roadmap 017, Transcoder.swift). Window menu.
+        Window("Transcode", id: "transcode") {
+            TranscodeView()
+                .environment(library)
+        }
+        .defaultSize(width: 1100, height: 720)
+        .restorationBehavior(.disabled)
+
         // REM  HISTORY — every change from the journal, newest first, each with Undo (roadmap 014, HistoryView.swift).
         Window("History", id: "history") {
             HistoryView()
