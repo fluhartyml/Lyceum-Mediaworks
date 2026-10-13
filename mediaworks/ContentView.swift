@@ -67,6 +67,8 @@ struct ContentView: View {
             // REM  CLONE & SYNC jobs with a schedule run by themselves (013, 001c).
             CloneSyncStore.shared.startSchedule(library: library)
         }
+        // REM  REMOTE JOBS — listens if this Mac accepts jobs, and finishes any queue left from before a restart (N12).
+        .task { JobWorker.shared.start() }
         // REM  The Mac watches for an Apple TV running Lyceum, for Play on Apple TV and the remote window.
         .task { await TVRemote.shared.keepWatching() }
         #else

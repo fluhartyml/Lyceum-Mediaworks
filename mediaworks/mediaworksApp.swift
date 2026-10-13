@@ -130,6 +130,13 @@ struct mediaworksApp: App {
         .defaultSize(width: 1100, height: 760)
         .restorationBehavior(.disabled)
 
+        // REM  REMOTE JOBS — direct another Mac's moves, copies and downloads; carry out theirs (N12, N13). Window menu.
+        Window("Remote Jobs", id: "remotejobs") {
+            RemoteJobsView()
+        }
+        .defaultSize(width: 1200, height: 860)
+        .restorationBehavior(.disabled)
+
         // REM  HISTORY — every change from the journal, newest first, each with Undo (roadmap 014, HistoryView.swift).
         Window("History", id: "history") {
             HistoryView()

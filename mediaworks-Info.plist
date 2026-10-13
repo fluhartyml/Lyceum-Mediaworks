@@ -11,6 +11,7 @@
 	<array>
 		<string>_lyceum._tcp</string>
 		<string>_lyceum-tv._tcp</string>
+		<string>_lyceum-jobs._tcp</string>
 	</array>
 </dict>
 </plist>
