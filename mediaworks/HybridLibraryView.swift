@@ -51,6 +51,9 @@ struct HybridLibraryView: View {
     @State private var selection = Set<String>()
     @State private var playing: (url: URL, title: String)?
     @State private var problem: String?
+    // REM  HIS WORD, 2026-10-13: "yes right click to rename on the mac" — the same rename the TV's Rename… row sends (PL2).
+    @State private var renaming: String?
+    @State private var newName = ""
     // REM  HIS ASK, 2026-10-13: "colums should be click the title and drag to rearange and colum width adjusts
     // REM  automatically upon double click" — the same as the Library view: dragged order remembered, edge double-click fits.
     @State private var columns = TableColumnCustomization<Row>()
@@ -71,6 +74,7 @@ struct HybridLibraryView: View {
                         ForEach(lists.keys.sorted(by: LibraryCache.playlistOrder), id: \.self) { name in
                             Label("\(name)  (\(lists[name]?.count ?? 0))", systemImage: LibraryCache.isThumbsUp(name) ? "hand.thumbsup.fill" : "music.note.list")
                                 .tag(Place.playlist(name))
+                                .contextMenu { Button("Rename…") { newName = name; renaming = name } }
                         }
                     }
                 }
@@ -138,6 +142,11 @@ struct HybridLibraryView: View {
                     HStack { Text(playing.title); Spacer(); Button("Done") { self.playing = nil }.keyboardShortcut(.cancelAction) }.padding(10)
                 }
             }
+        }
+        .alert("Rename Playlist", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            TextField("Name", text: $newName)
+            Button("Rename") { if let old = renaming { rename(old, to: newName) }; renaming = nil }
+            Button("Cancel", role: .cancel) { renaming = nil }
         }
         .alert("Library", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
             Button("OK") { problem = nil }
@@ -216,6 +225,23 @@ struct HybridLibraryView: View {
         Task {
             guard let url = await partner.mediaURL(path, on: host) else { problem = "\(host) is out of reach."; return }
             playing = (url, file.info?.title ?? file.name)
+        }
+    }
+
+    /// A playlist of the same name on several servers shows as one list, so every server that has it renames it.
+    private func rename(_ old: String, to proposed: String) {
+        let name = proposed.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty, name != old else { return }
+        guard snapshot?.playlists?[name] == nil else { problem = "There is already a playlist named “\(name)”."; return }
+        let holders = partner.servers.filter { partner.snapshots[$0]?.playlists?[old] != nil }
+        Task {
+            for host in holders {
+                var request = CacheRequest(op: .renamePlaylist, path: old, device: Host.current().localizedName ?? "Mac")
+                request.newName = name
+                if await partner.ask(request, to: host) == nil { problem = "\(host) did not answer — “\(old)” was not renamed there." }
+            }
+            if place == .playlist(old) { place = .playlist(name) }
+            await partner.refresh()
         }
     }
 
