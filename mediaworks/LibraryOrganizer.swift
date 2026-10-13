@@ -191,6 +191,10 @@ final class LibraryOrganizer {
             if parts.count > 1 {
                 if let albumArtist, albumArtist.caseInsensitiveCompare(artist) != .orderedSame {
                     // Album artist leads; a featured guest gets a copy only with a solo folder (021e, 021f).
+                    // The lead named in both tags is one folder — "Santana feat. Rob Thomas" with Album artist Santana
+                    // files in Santana/, no Santana/Santana feat. Rob Thomas/. His words, 2026-10-12: "santana has a
+                    // folder but rob does not have a solo career so he wont have a rob thomas folder."
+                    if let lead = parts.first(where: { $0.caseInsensitiveCompare(albumArtist) == .orderedSame }) { main = lead }
                     extra = parts.filter { $0.caseInsensitiveCompare(albumArtist) != .orderedSame && solo.contains($0.lowercased()) }
                 } else {
                     let withFolders = parts.filter { solo.contains($0.lowercased()) }
@@ -213,8 +217,10 @@ final class LibraryOrganizer {
                     guard let k = v[level] else { continue }        // empty → level skipped (009a)
                     out.append(FilingRules.safe(k))
                 case "Album artist":
-                    // Same as Artist (or only one filled in) → one folder: the Artist level makes it (021).
-                    guard let aa = albumArtist, let a = artist, aa.caseInsensitiveCompare(a) != .orderedSame else { continue }
+                    // Same as the artist this folder is for (or only one filled in) → one folder: the Artist level
+                    // makes it (021). A guest's copy goes to the guest's own solo folder, not under the lead (021f).
+                    guard let aa = albumArtist, let who, artist != nil, who == main,
+                          aa.caseInsensitiveCompare(who) != .orderedSame else { continue }
                     out.append(FilingRules.safe(aa))
                 case "Artist":
                     guard let who else { continue }

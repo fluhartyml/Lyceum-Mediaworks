@@ -109,11 +109,26 @@ struct SortingTests {
                 == [["Music Video", "Rock", "Queen"]])
     }
 
-    @Test func differentAlbumArtistBreaksTheTie() {    // 021, 021a
+    @Test func aLeadNamedInBothTagsIsOneFolder() {    // 021, 021e — Santana feat. Rob Thomas
         let t = SortingSettings.suggested.video
         let v = video(["Media kind": "Music Video", "Genre": "Rock", "Artist": "Santana feat. Rob Thomas", "Album artist": "Santana"])
         #expect(folders(LibraryOrganizer.placements(v, trunk: .video, settings: t, solo: ["santana"], naming: .sortAs))
-                == [["Music Video", "Rock", "Santana", "Santana feat. Rob Thomas"]])
+                == [["Music Video", "Rock", "Santana"]])
+    }
+
+    @Test func aGuestsCopyGoesToTheGuestsOwnFolder() {   // 021f, on the Album artist → Artist levels
+        let t = SortingSettings.suggested.video
+        let v = video(["Media kind": "Music Video", "Genre": "Pop", "Artist": "Santana feat. Madonna", "Album artist": "Santana"])
+        #expect(LibraryOrganizer.placements(v, trunk: .video, settings: t, solo: ["santana", "madonna"], naming: .sortAs)
+                == .places([Placement(folders: ["Music Video", "Pop", "Santana"]),
+                            Placement(folders: ["Music Video", "Pop", "Madonna"], isCopy: true)]))
+    }
+
+    @Test func aDifferentAlbumArtistStillMakesItsFolder() {   // 021 — the tie-breaker
+        let t = SortingSettings.suggested.video
+        let v = video(["Media kind": "Music Video", "Genre": "Rock", "Artist": "Queen", "Album artist": "Various Artists"])
+        #expect(folders(LibraryOrganizer.placements(v, trunk: .video, settings: t, solo: ["queen"], naming: .sortAs))
+                == [["Music Video", "Rock", "Various Artists", "Queen"]])
     }
 }
 #endif
