@@ -35,6 +35,13 @@ private struct Row: Identifiable, Hashable {
     var id: String { path }
     let path: String
     let file: CachedFile
+    // The values each column sorts by — length as seconds, not as text.
+    var checkOrder: Int { file.isChecked ? 0 : 1 }
+    var name: String { file.info?.title ?? file.name }
+    var artist: String { file.info?.artist ?? "" }
+    var kind: String { file.info?.mediaKind ?? "" }
+    var length: Double { file.info?.length ?? 0 }
+    var server: String { file.host ?? Host.current().localizedName ?? "" }
 }
 
 struct HybridLibraryView: View {
@@ -48,6 +55,10 @@ struct HybridLibraryView: View {
     // REM  automatically upon double click" — the same as the Library view: dragged order remembered, edge double-click fits.
     @State private var columns = TableColumnCustomization<Row>()
     @AppStorage("hybridColumns") private var savedColumns = Data()
+    // REM  HIS RULING, 2026-10-13: "plain click sorts up and down" — click a title for ▲, again for ▼. Remembered.
+    @State private var sortOrder: [KeyPathComparator<Row>] = []
+    @AppStorage("hybridSortKey") private var sortKey = ""
+    @AppStorage("hybridSortAscending") private var sortAscending = true
     @Environment(\.openWindow) private var openWindow
 
     private var snapshot: LibrarySnapshot? { catalog.snapshot }
@@ -77,17 +88,18 @@ struct HybridLibraryView: View {
                                            systemImage: "rectangle.stack",
                                            description: Text(serversLine))
                 } else {
-                    Table(rows, selection: $selection, columnCustomization: $columns) {
-                        TableColumn("✓") { row in Text(cellText(row, "✓")) }.width(30).customizationID("check")
-                        TableColumn("Name") { row in Text(cellText(row, "Name")) }.customizationID("name")
-                        TableColumn("Artist") { row in Text(cellText(row, "Artist")) }.customizationID("artist")
-                        TableColumn("Media Kind") { row in Text(cellText(row, "Media Kind")) }.customizationID("kind")
-                        TableColumn("Length") { row in Text(cellText(row, "Length")) }.width(80).customizationID("length")
-                        TableColumn("Server") { row in Text(cellText(row, "Server")) }.customizationID("server")
+                    Table(rows, selection: $selection, sortOrder: $sortOrder, columnCustomization: $columns) {
+                        TableColumn("✓", value: \.checkOrder) { row in Text(cellText(row, "✓")) }.width(30).customizationID("check")
+                        TableColumn("Name", value: \.name, comparator: .localizedStandard) { row in Text(cellText(row, "Name")) }.customizationID("name")
+                        TableColumn("Artist", value: \.artist, comparator: .localizedStandard) { row in Text(cellText(row, "Artist")) }.customizationID("artist")
+                        TableColumn("Media Kind", value: \.kind, comparator: .localizedStandard) { row in Text(cellText(row, "Media Kind")) }.customizationID("kind")
+                        TableColumn("Length", value: \.length) { row in Text(cellText(row, "Length")) }.width(80).customizationID("length")
+                        TableColumn("Server", value: \.server, comparator: .localizedStandard) { row in Text(cellText(row, "Server")) }.customizationID("server")
                     }
                     // REM  By title, not position — once he drags the columns around, a position names no column.
                     .background(ColumnFit(title: { fitWidth($0) }))
                     .onChange(of: columns) { if let data = try? JSONEncoder().encode(columns) { savedColumns = data } }
+                    .onChange(of: sortOrder) { saveSort() }
                     .contextMenu(forSelectionType: String.self) { paths in
                         Button("Play") { play(paths.first) }
                         Divider()
@@ -117,6 +129,7 @@ struct HybridLibraryView: View {
         .font(.lyceumBody)
         .onAppear {
             if let saved = try? JSONDecoder().decode(TableColumnCustomization<Row>.self, from: savedColumns) { columns = saved }
+            restoreSort()
         }
         .sheet(isPresented: Binding(get: { playing != nil }, set: { if !$0 { playing = nil } })) {
             if let playing {
@@ -131,14 +144,41 @@ struct HybridLibraryView: View {
         } message: { Text(problem ?? "") }
     }
 
+    /// Unsorted, a playlist keeps its own order and a folder its listing order.
     private var rows: [Row] {
         guard let snapshot, let place else { return [] }
+        let list: [Row]
         switch place {
         case .folder(let path):
             guard let folder = DLNAContent.folder(snapshot.root, path) else { return [] }
-            return folder.files.filter { $0.kind != "other" }.map { Row(path: path + "/" + $0.name, file: $0) }
+            list = folder.files.filter { $0.kind != "other" }.map { Row(path: path + "/" + $0.name, file: $0) }
         case .playlist(let name):
-            return (snapshot.playlists?[name] ?? []).compactMap { p in snapshot.file(at: p).map { Row(path: p, file: $0) } }
+            list = (snapshot.playlists?[name] ?? []).compactMap { p in snapshot.file(at: p).map { Row(path: p, file: $0) } }
+        }
+        return sortOrder.isEmpty ? list : list.sorted(using: sortOrder)
+    }
+
+    private static let sortKeys: [(String, PartialKeyPath<Row>)] = [
+        ("check", \Row.checkOrder), ("name", \Row.name), ("artist", \Row.artist),
+        ("kind", \Row.kind), ("length", \Row.length), ("server", \Row.server),
+    ]
+
+    private func saveSort() {
+        guard let first = sortOrder.first else { sortKey = ""; return }
+        sortKey = Self.sortKeys.first { $0.1 == first.keyPath }?.0 ?? ""
+        sortAscending = first.order == .forward
+    }
+
+    private func restoreSort() {
+        let order: SortOrder = sortAscending ? .forward : .reverse
+        switch sortKey {
+        case "check":  sortOrder = [KeyPathComparator(\Row.checkOrder, order: order)]
+        case "name":   sortOrder = [KeyPathComparator(\Row.name, comparator: .localizedStandard, order: order)]
+        case "artist": sortOrder = [KeyPathComparator(\Row.artist, comparator: .localizedStandard, order: order)]
+        case "kind":   sortOrder = [KeyPathComparator(\Row.kind, comparator: .localizedStandard, order: order)]
+        case "length": sortOrder = [KeyPathComparator(\Row.length, order: order)]
+        case "server": sortOrder = [KeyPathComparator(\Row.server, comparator: .localizedStandard, order: order)]
+        default:       sortOrder = []
         }
     }
 
