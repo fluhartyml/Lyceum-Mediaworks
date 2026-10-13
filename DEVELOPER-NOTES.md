@@ -19,6 +19,20 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-13 ~10:00–11:00 — THE ROADMAP SHEET BUILT START TO FINISH, builds 158–167 (his "build the amber sheet from start to finish")
+His words: *"build the amber sheet from start to finish announce tts each build number progression"* · mid-run: *"update locked to done as you go"*. **None of 158–167 has run on any of his devices.**
+- **158** N06 — TV: add to / take out of ANY playlist (new ops `addToPlaylist` / `removeFromPlaylist`, Undo on the Mac). The other TV edit buttons were already wired since 153.
+- **159** I01 · 026b — `LibraryIntake.swift`: Settings → General → Import Drive; Window → Import Drive. Moves (never copies) by tags + Sorting tree; byte-identical / smaller same-name → 30-day Trash; numbered folders merge into one playlist only when a sibling or playlist of the base name exists ("Top 40" stays).
+- **160** 019 — `Identify.swift`: Inspector → Identify… iTunes first (video uses `media=all` — `entity=movie` returns 0, measured), Shazam last. ⚠️ Shazam's catalog needs ShazamKit enabled on the App ID — his to do.
+- **161** 014 — `HistoryView.swift`: Window → History, Undo per journal line (journal-undone.json).
+- **162** 013 — `CloneSync.swift`: Window → Clone & Sync. Clone never deletes from the backup; sync remembers the last run; conflicts left alone.
+- **163** N12 · N13 — `RemoteJobs.swift` / `RemoteJobsView.swift`: Window → Remote Jobs. OFF by default; allowed folders + 6-digit pairing code. Bonjour `_lyceum-jobs._tcp` (in Info.plist). Two Macs talking NOT yet tried — needs 163 on a mini (his word first).
+- **164 · 165** 017 — `Transcoder.swift` (Window → Transcode) + `MKVRemux.swift` (own MKV reader: VP9 via VideoToolbox's supplemental decoder, AAC passthrough). Tested on a COPY of one of his MKVs: 4K VP9 → 1080p H.264, 125 s, same length, picture and sound checked.
+- **166** 017 · 018 — `DLNAServer.swift`: Settings → General → Smart TVs (off by default). SSDP + UPnP MediaServer:1 on port 8200. Probed like a TV on the MacBook; no real TV yet.
+- **167** 015 — iPhone player controls on Liquid Glass; no opt-out anywhere else. TV dark bar kept (his design).
+- **Waiting on him:** 029 spin-offs (the line says "later") · the remote half of I01a (audio trunk on Lab A's SSD — how one library view spans two Macs is his design call) · may tests be run (they open the app) · switch the older LOCKED-but-BUILT lines to DONE?
+- The Lyceum on Lab B moved to `/Volumes/Samsung SSD 900 PRO 4TB B/Library B/Lyceum` (07:52 today).
+
 ### 2026-10-12 ~20:30 — SORTING SETTINGS + ORGANIZE LIBRARY, WIRED (his "go forth code" · "we dont make fake mocup apps")
 - Spec = `Workshop/Lyceum-Mediaworks-Sorting-Settings-MOCKUP-2026-10-12.html` in the apartment, every line locked by him. REMs cite its line numbers.
 - `SortingSettings.swift` — Settings → **Sorting** tab (Mac) / Sorting page (iPhone, iPad): Audio | Video, every tag ▲ ▼ + checkbox (sort order), folder tree with ▲ ▼ ✕ + Add, Video splits at Media kind into Movie / TV Show / Music Video / Home Video branches. Onboarding suggestion: Audio sort Artist, Title, Mood, Genre, Year, Star rating · folders Genre → Artist; Video = his tab at 18:52. **"Use This Folder Tree" must be pressed per trunk before anything is filed (026b).** Tags the app cannot read yet say "not read yet" (Star rating, Cast, Director…).
