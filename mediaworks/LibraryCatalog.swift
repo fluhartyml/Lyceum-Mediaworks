@@ -720,7 +720,16 @@ final class LibraryCatalog {
         readHeader()
     }
 
-    private func respond(_ connection: NWConnection, _ request: String) {
+    /// A smart TV asking for a file through DLNA (DLNAServer.swift) — the same streaming, plus the DLNA headers.
+    func streamForDLNA(_ connection: NWConnection, request: String) {
+        activeStreams += 1
+        connection.stateUpdateHandler = { state in
+            if case .cancelled = state { DispatchQueue.main.async { MainActor.assumeIsolated { LibraryCatalog.shared.activeStreams = max(0, LibraryCatalog.shared.activeStreams - 1) } } }
+        }
+        respond(connection, request, dlna: true)
+    }
+
+    private func respond(_ connection: NWConnection, _ request: String, dlna: Bool = false) {
         let lines = request.components(separatedBy: "\r\n")
         let parts = (lines.first ?? "").split(separator: " ")
         func fail(_ status: String) {
@@ -744,10 +753,12 @@ final class LibraryCatalog {
             partial = true
         }
         guard start <= end, start < size else { try? handle.close(); fail("416 Range Not Satisfiable"); return }
-        let type = url.pathExtension.lowercased() == "m4a" ? "audio/mp4" : (url.pathExtension.lowercased() == "mov" ? "video/quicktime" : "video/mp4")
+        let type = DLNAContent.mime(url.lastPathComponent) ?? "video/mp4"
         var head = partial ? "HTTP/1.1 206 Partial Content\r\n" : "HTTP/1.1 200 OK\r\n"
         head += "Content-Type: \(type)\r\nAccept-Ranges: bytes\r\nContent-Length: \(end - start + 1)\r\n"
         if partial { head += "Content-Range: bytes \(start)-\(end)/\(size)\r\n" }
+        // REM  Samsung and LG TVs will not play — or will not seek — without these two (DLNA 1.5).
+        if dlna { head += "transferMode.dlna.org: Streaming\r\ncontentFeatures.dlna.org: DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000\r\n" }
         head += "Connection: close\r\n\r\n"
         let isHead = parts[0] == "HEAD"
         connection.send(content: Data(head.utf8), completion: .contentProcessed { _ in })

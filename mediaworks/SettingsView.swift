@@ -57,6 +57,8 @@ struct SettingsView: View {
             #if os(macOS)
             // REM  THE IMPORT DRIVE (I01 / I01a / 026b) — LibraryIntake.swift.
             IntakeSettingsSection()
+            // REM  SMART TVs (DLNA, 017 / 018) — DLNAServer.swift.
+            DLNASettingsSection()
             #endif
             Section {
                 LabeledContent("Library folder") {

@@ -69,6 +69,8 @@ struct ContentView: View {
         }
         // REM  REMOTE JOBS — listens if this Mac accepts jobs, and finishes any queue left from before a restart (N12).
         .task { JobWorker.shared.start() }
+        // REM  SMART TVs (DLNA, 017/018) — serves if the user turned it on in Settings.
+        .task { DLNAServer.shared.startIfOn() }
         // REM  The Mac watches for an Apple TV running Lyceum, for Play on Apple TV and the remote window.
         .task { await TVRemote.shared.keepWatching() }
         #else
