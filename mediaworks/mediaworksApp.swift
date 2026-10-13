@@ -122,6 +122,14 @@ struct mediaworksApp: App {
         .defaultSize(width: 1000, height: 640)
         .restorationBehavior(.disabled)
 
+        // REM  HISTORY — every change from the journal, newest first, each with Undo (roadmap 014, HistoryView.swift).
+        Window("History", id: "history") {
+            HistoryView()
+                .environment(library)
+        }
+        .defaultSize(width: 1100, height: 700)
+        .restorationBehavior(.disabled)
+
         Window("About Lyceum Mediaworks", id: "about") {
             AboutView()
         }
