@@ -17,6 +17,7 @@ struct MacPlaylistsView: View {
     private let catalog = LibraryCatalog.shared
     @State private var selected: String?
     @State private var renaming = false
+    @State private var saving = false
     @State private var newName = ""
     @State private var sortingPlaylist = false
 
@@ -74,6 +75,18 @@ struct MacPlaylistsView: View {
                  ? "Renaming Thumbs Up saves it as its own playlist. The next 👍 starts a new Thumbs Up."
                  : "The playlist's file in the Playlists folder is renamed too.")
         }
+        .alert("Save as New Playlist", isPresented: $saving) {
+            TextField("Playlist name", text: $newName)
+            Button("Save") {
+                let trimmed = newName.trimmingCharacters(in: .whitespaces)
+                guard !trimmed.isEmpty, trimmed != LibraryCache.thumbsUp else { return }
+                catalog.playlistAction(.renamePlaylist, LibraryCache.thumbsUp, newName: trimmed)
+                selected = trimmed
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Everything in Thumbs Up becomes a playlist with this name. The next 👍 starts a new Thumbs Up.")
+        }
     }
 
     private func detail(_ name: String) -> some View {
@@ -84,6 +97,11 @@ struct MacPlaylistsView: View {
                 Text(name).font(.lyceumHeadline)
                 Text("\(checked.count) of \(files.count) checked").foregroundStyle(.secondary)
                 Spacer()
+                // REM  SAVE AS NEW PLAYLIST — his word, 2026-10-13 (N09): the way to make a playlist from Thumbs Up, said plainly.
+                if name == LibraryCache.thumbsUp {
+                    Button("Save as New Playlist…") { newName = ""; saving = true }
+                        .lyceumHelp("Save as New Playlist — Thumbs Up becomes its own playlist; the next 👍 starts a new one")
+                }
                 Button("Rename…") { newName = name; renaming = true }
                     .lyceumHelp("Rename — renaming Thumbs Up saves it as its own playlist")
                 // REM  016 — "the meta tag sort order will be used in making playlists" (Settings → Sorting, Audio or Video tab

@@ -414,6 +414,7 @@ private struct PlaylistList: View {
     let name: String
     @Environment(MacLibrary.self) private var library
     @State private var renaming = false
+    @State private var saving = false
     @State private var newName = ""
     @Environment(\.dismiss) private var dismiss
 
@@ -424,6 +425,11 @@ private struct PlaylistList: View {
             // REM  RENAME and CHECK ALL — his rating rounds (PL2, PL6, PL8): renaming Thumbs Up saves it as its own playlist,
             // REM  and the next 👍 starts a new one. Sent to the Mac, which renames the .m3u8 file too.
             Section {
+                // REM  SAVE AS NEW PLAYLIST — his word, 2026-10-13 (N09): he went to make a new playlist from Thumbs Up on the
+                // REM  TV and couldn't find how — nothing said "new playlist", only Rename. Same action as renaming Thumbs Up.
+                if name == LibraryCache.thumbsUp {
+                    Button { newName = ""; saving = true } label: { Label("Save as New Playlist…", systemImage: "plus.rectangle.on.rectangle") }
+                }
                 Button { newName = name; renaming = true } label: { Label("Rename…", systemImage: "pencil") }
                 Button { library.send(CacheRequest(op: .checkAll, path: name)) } label: {
                     Label("Check All — back in rotation", systemImage: "checkmark.square")
@@ -454,6 +460,18 @@ private struct PlaylistList: View {
             Text(name == LibraryCache.thumbsUp
                  ? "Renaming Thumbs Up saves it as its own playlist. The next 👍 starts a new Thumbs Up."
                  : "Your Mac renames the playlist and its file.")
+        }
+        .alert("Save as New Playlist", isPresented: $saving) {
+            TextField("Playlist name", text: $newName)
+            Button("Save") {
+                let trimmed = newName.trimmingCharacters(in: .whitespaces)
+                guard !trimmed.isEmpty, trimmed != name else { return }
+                library.send(CacheRequest(op: .renamePlaylist, path: name, newName: trimmed))
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Everything in Thumbs Up becomes a playlist with this name. The next 👍 starts a new Thumbs Up.")
         }
     }
 }
