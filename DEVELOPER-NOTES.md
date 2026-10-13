@@ -19,6 +19,12 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-13 ~11:5x — MAC UPDATES GO THROUGH TESTFLIGHT, ON A SCHEDULE (his rule)
+*"the mac os app will need to be updated on a schedule to shake down because it has to go over testflight the ios and tvos apps dont depend on testflight so they dont have to wait on a schedule"*
+- **macOS:** reaches his Macs (and the minis) by TestFlight → Mac changes are batched and shaken down on a schedule. Builds 158–171 are mostly Mac-side and wait for that round.
+- **iOS / tvOS:** run from Xcode — try them as soon as they build.
+- The schedule is his to set; never upload or submit without his word.
+
 ### 2026-10-13 ~11:10–11:50 — TWO MACS, ONE LIBRARY (N16–N19) + IMPORT DRIVE TO THE PARTNER (I01a), builds 169–170
 His design, in his words on the sheet (N16–N19), then *"add it and code anything waiting to be coded"*. **Not on any device; the minis have never run 163+.**
 - **169** `LibraryPartner.swift` — Settings → General → Two Macs, One Library. `getOwn` (own listing) fetched every 30 s; `PartnerMerge` (own wins a clash; partner files carry `host`); per-file edits forwarded to the owner, playlist renames / Check All to both. `PartnerBuffer` on the internal drive (`…/Lyceum Mediaworks/Buffer`), served as it fills, `RangeRelay` for jumps ahead or no room. `BufferGuard`: slider 25 GB … (free + held) − 25 GB; 25 GB always free; oldest-played out first; nil = stream straight.
