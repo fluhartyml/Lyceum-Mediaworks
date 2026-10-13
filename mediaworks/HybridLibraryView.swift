@@ -95,6 +95,14 @@ struct HybridLibraryView: View {
                         Button("Uncheck") { send(.uncheck, paths) }
                         Button("👍 Thumbs Up") { send(.thumbsUp, paths) }
                         Button("👎 Thumbs Down") { send(.thumbsDown, paths) }
+                        // REM  HIS ASK, 2026-10-13: "add remove from list on right click too". A Thumbs Up list takes the
+                        // REM  opposite of 👍 (unthumb); any other playlist loses just these files — the files themselves never move.
+                        if case .playlist(let name) = place {
+                            Divider()
+                            Button("Remove from “\(name)”") {
+                                LibraryCache.isThumbsUp(name) ? send(.unthumb, paths) : send(.removeFromPlaylist, paths, playlist: name)
+                            }
+                        }
                     } primaryAction: { paths in play(paths.first) }
                     Divider()
                     Text(serversLine).foregroundStyle(.secondary).padding(8).frame(maxWidth: .infinity, alignment: .leading)
@@ -172,11 +180,12 @@ struct HybridLibraryView: View {
     }
 
     /// A change goes to the server that holds the file — it alone writes its files (N16).
-    private func send(_ op: CacheRequest.Op, _ paths: Set<String>) {
+    private func send(_ op: CacheRequest.Op, _ paths: Set<String>, playlist: String? = nil) {
         Task {
             for path in paths {
                 guard let host = snapshot?.file(at: path)?.host else { continue }
-                let request = CacheRequest(op: op, path: path, device: Host.current().localizedName ?? "Mac")
+                var request = CacheRequest(op: op, path: path, device: Host.current().localizedName ?? "Mac")
+                request.playlist = playlist
                 if await partner.ask(request, to: host) == nil { problem = "\(host) did not answer — “\((path as NSString).lastPathComponent)” was not changed." }
             }
             await partner.refresh()
