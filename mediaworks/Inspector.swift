@@ -594,6 +594,8 @@ struct InspectorPane: View {
     @State private var problem: String?
     @State private var choosingPicture = false
     @State private var findingPicture = false
+    /// Identify… — iTunes first, Shazam last (019).
+    @State private var identifying = false
     /// Which tab Find… opens on — DuckDuckGo (picture) or Wikipedia (facts + picture).
     @State private var findOn: ArtworkSource = .duckduckgo
     #if os(macOS)
@@ -674,6 +676,11 @@ struct InspectorPane: View {
             guard (many.count > 1 && !applying) || canSave else { return false }
             return PictureDrop.load(providers, into: { usePicture($0) }, failed: { problem = $0 })
         }
+        .sheet(isPresented: $identifying) {
+            if let item {
+                IdentifySheet(file: item.url, isVideo: item.isVideo, initial: searchWords) { take($0, $1) }
+            }
+        }
         .alert("Inspector", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
             Button("OK") { problem = nil }
         } message: { Text(problem ?? "") }
@@ -724,6 +731,9 @@ struct InspectorPane: View {
                 Text("Tags").font(.lyceumHeadline)
                 Spacer()
                 if canSave {
+                    // REM  IDENTIFY (roadmap 019) — "Identification: iTunes first, Shazam as a last resort." Identify.swift.
+                    Button("Identify…") { identifying = true }
+                        .lyceumHelp("Identify — what is this file? Searches Apple's catalog by the file name; if that finds nothing, Shazam listens to the sound. A match fills the fields and the picture. Nothing is saved until Save Tags")
                     // REM  FIND INFO & PICTURE — his "can it do both at the same time?" → "yes build it that way".
                     Button("Web Metadata Scraper…") { findOn = .wikipedia; findingPicture = true }
                         .lyceumHelp("Web Metadata Scraper — opens on Wikipedia for this file's name; one click fills title, year, genre, director, descriptions and poster. Any web page works too: highlight words, then Select Text. Nothing is saved until Save Tags")
