@@ -19,6 +19,28 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-12 ~20:30 — SORTING SETTINGS + ORGANIZE LIBRARY, WIRED (his "go forth code" · "we dont make fake mocup apps")
+- Spec = `Workshop/Lyceum-Mediaworks-Sorting-Settings-MOCKUP-2026-10-12.html` in the apartment, every line locked by him. REMs cite its line numbers.
+- `SortingSettings.swift` — Settings → **Sorting** tab (Mac) / Sorting page (iPhone, iPad): Audio | Video, every tag ▲ ▼ + checkbox (sort order), folder tree with ▲ ▼ ✕ + Add, Video splits at Media kind into Movie / TV Show / Music Video / Home Video branches. Onboarding suggestion: Audio sort Artist, Title, Mood, Genre, Year, Star rating · folders Genre → Artist; Video = his tab at 18:52. **"Use This Folder Tree" must be pressed per trunk before anything is filed (026b).** Tags the app cannot read yet say "not read yet" (Star rating, Cast, Director…).
+- `SortingEngine.swift` — reads sort tags (TagReader slots + extra ID3/iTunes keys), TagSort (numbers as numbers, empty tag skipped), FilingRules.
+- `LibraryOrganizer.swift` — Window → **Organize Library**: plan first (every row untickable, grouped by source folder), asks about untagged files and half-solo duets, never overwrites, copies first then moves, journal, checkmarks + playlists follow (`LibraryCatalog.filesMoved`), each touched folder saved in tag order (ManualOrder), **Undo Last Organize** (copies → Lyceum Trash).
+- Playlists window: **Sort by Sorting Settings** (016).
+- Tests: `mediaworksTests/SortingTests.swift` — 15 rule checks, compiled, **not yet run** (running opens the app as test host — ask him first).
+- ⬜ Open with him: on Music Video with Album artist → Artist levels, "Santana feat. Rob Thomas" (AA Santana) files as `Santana/Santana feat. Rob Thomas/` — right, or should it sit directly in `Santana/`?
+- ⬜ NOT DONE: TV edit buttons are still placeholders (roadmap N06–N09) — his catch tonight, next up.
+
+### 2026-10-12 07:14 — REMOTE DOWNLOADER (his idea — NOT coded, home undecided)
+- His words: *"can we make a downloader that takes a file download web address but does the actual download on another computer?"* — after Safari kept dying on two large Internet Archive downloads and its retry never recovered.
+- Same shape as the 10-11 Commander-as-remote plan: the MacBook queues, a Mac mini does the work, so the MacBook can power down.
+- Done by hand that day on Lab B (`~/archive-downloads/fetch.sh`: resumable `curl -f -C -`, md5 check per file, one list per job). **Archive rule: no more than 2–3 downloads at once** (his).
+- ⬜ Asked, unanswered: part of Commander, or its own tool?
+
+### 2026-10-12 ~11:3x — APPLE TV THEATER: ◀︎ ▶︎ TAP vs LONG PRESS (his idea — NOT coded)
+- His words: *"fast forward is or should be right button and long press right button is next file and left button is rewind and previous file if long pressed"*
+- So on the Siri Remote in the TV Theater: **▶︎ tap = fast forward · ▶︎ long press = next file · ◀︎ tap = rewind · ◀︎ long press = previous file.** Today ◀︎ ▶︎ are prev/next file; ▲ 👍 / ▼ 👎 unchanged.
+- Goes with the 10-11 TV list: controls + progress bar inside the existing dark bottom bar with the file name (his design).
+- **One tap skips 5 seconds** (his answer: *"5"*). **iPhone player stays at ±10 s** (his: *"keep the iphone at 10"*).
+
 ### 2026-10-10 ~13:00 — THE PLATFORMS SHEET IS FULLY CODED (builds 123–132) — almost none of it seen on his devices yet
 - 123 Changes from Devices + Undo (Mac, Window menu) · 124 sync copies (Off/Automatic/Manual per device; Mac sends 1 MB pieces; tested 138 MB byte-identical) · 125 iPhone player (two pages, full screen, tap overlay, long-press landscape, ±10 s) · 126 iPad Edit Tags / Scraper / Trash via the Mac · 127–128 Apple TV target (he added the destination; TV = listing only, no copies) · 130 streaming: the Mac answers `GET /media/<path>` with Range on the library port (AVFoundation opened a real video over it) · 131 iCloud copy (he added iCloud + `iCloud.com.lyceum.mediaworks`; private DB, encryptedValues, zlib pieces ≤700 KB, every ≤10 min) · 132 iPhone remote for the TV (`_lyceum-tv._tcp`, framed RemoteCommand/RemoteState; TV answered in the simulator) + TV upkeep (Genre/Kind pick lists, title fix, Thumbs Up on/off).
 - Mac and iPhone/iPad/TV must run the SAME build — the library exchange changed shape at 116 and again since.

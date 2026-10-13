@@ -24,6 +24,11 @@ struct SettingsView: View {
             #if !os(macOS)
             // REM  WHICH MAC — his ask, 2026-10-11 (MacFinder.swift).
             MacPickerSection()
+            // REM  SORTING — on the Mac it is its own Settings tab; here it is a page of its own.
+            Section {
+                NavigationLink("Sorting") { SortingSettingsView().navigationTitle("Sorting") }
+                    .font(.lyceumBody)
+            }
             #endif
             Section {
                 Toggle("Delete instantly (skip the 30-day Trash)", isOn: $instantDelete)

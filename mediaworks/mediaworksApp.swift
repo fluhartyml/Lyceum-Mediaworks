@@ -50,9 +50,16 @@ struct mediaworksApp: App {
         #endif
 
         #if os(macOS)
+        // REM  SORTING — his tabbed settings sheet, 2026-10-12 (SortingSettings.swift). General is the original page.
         Settings {
-            SettingsView()
-                .environment(library)
+            TabView {
+                SettingsView()
+                    .environment(library)
+                    .tabItem { Label("General", systemImage: "gearshape") }
+                SortingSettingsView()
+                    .tabItem { Label("Sorting", systemImage: "arrow.up.arrow.down") }
+            }
+            .frame(minWidth: 720, minHeight: 640)
         }
 
         // REM  PLAYLISTS — rename (renaming Thumbs Up saves it), Check all, Play on Apple TV (platforms PL1–PL9). Window menu.
@@ -97,6 +104,14 @@ struct mediaworksApp: App {
         }
         .defaultSize(width: 1400, height: 1000)
         .windowResizability(.contentMinSize)
+        .restorationBehavior(.disabled)
+
+        // REM  ORGANIZE LIBRARY — files the library into the Settings → Sorting folder tree (LibraryOrganizer.swift).
+        Window("Organize Library", id: "organize") {
+            OrganizeView()
+                .environment(library)
+        }
+        .defaultSize(width: 1100, height: 760)
         .restorationBehavior(.disabled)
 
         Window("About Lyceum Mediaworks", id: "about") {

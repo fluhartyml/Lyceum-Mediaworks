@@ -18,6 +18,25 @@ struct MacPlaylistsView: View {
     @State private var selected: String?
     @State private var renaming = false
     @State private var newName = ""
+    @State private var sortingPlaylist = false
+
+    private func sortByTags(_ name: String) {
+        guard let root = catalog.libraryRoot else { return }
+        let paths = catalog.playlist(name)
+        sortingPlaylist = true
+        Task {
+            var values: [URL: SortValues] = [:]
+            let urls = paths.map { root.appending(path: $0) }
+            for url in urls { values[url] = await SortValueReader.read(url) }
+            let videos = values.values.filter(\.isVideo).count
+            let trunk: SortTrunk = videos * 2 >= values.count ? .video : .audio
+            let tags = SortingStore().settings[trunk].rows.filter(\.on).map(\.tag)
+            let ordered = TagSort.ordered(urls, values: values, by: tags)
+            let byURL = Dictionary(zip(urls, paths), uniquingKeysWith: { a, _ in a })
+            catalog.reorderPlaylist(name, to: ordered.compactMap { byURL[$0] })
+            sortingPlaylist = false
+        }
+    }
 
     var body: some View {
         NavigationSplitView {
@@ -67,6 +86,11 @@ struct MacPlaylistsView: View {
                 Spacer()
                 Button("Rename…") { newName = name; renaming = true }
                     .lyceumHelp("Rename — renaming Thumbs Up saves it as its own playlist")
+                // REM  016 — "the meta tag sort order will be used in making playlists" (Settings → Sorting, Audio or Video tab
+                // REM  by what the playlist mostly holds).
+                Button(sortingPlaylist ? "Sorting…" : "Sort by Sorting Settings") { sortByTags(name) }
+                    .disabled(sortingPlaylist || files.count < 2)
+                    .lyceumHelp("Sort by Sorting Settings — put this playlist in the order of the ticked tags")
                 Button("Check All") { catalog.playlistAction(.checkAll, name) }
                     .lyceumHelp("Check All — put every file in this playlist back in rotation")
                 Button { if let first = checked.first { TVRemote.shared.playOnTV(first, queue: checked) } } label: {

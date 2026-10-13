@@ -297,6 +297,37 @@ final class LibraryCatalog {
         apply(CacheRequest(op: op, path: name, newName: newName))
     }
 
+    // REM  ORGANIZING MOVES FILES (SortingEngine / LibraryOrganizer, 2026-10-12). Checkmarks and playlists are kept by
+    // REM  path, so a move must carry them along or the file silently drops out of every playlist. A copy (a duet's
+    // REM  second folder, 021b) gets the original's checkmark but joins no playlist — playlists point at ONE file (026).
+    /// Re-points checkmarks and playlist entries after files moved; gives each copy its original's checkmark.
+    func filesMoved(_ moves: [(from: URL, to: URL)], copies: [(from: URL, to: URL)] = []) {
+        var changed = false
+        for (from, to) in moves {
+            guard let old = relative(from), let new = relative(to) else { continue }
+            if unchecked.remove(old) != nil { unchecked.insert(new); changed = true }
+            for (name, list) in playlists where list.contains(old) {
+                playlists[name] = list.map { $0 == old ? new : $0 }
+                changed = true
+            }
+        }
+        for (from, to) in copies {
+            guard let old = relative(from), let new = relative(to), unchecked.contains(old) else { continue }
+            unchecked.insert(new); changed = true
+        }
+        if changed { saveMarksAndPublish() }
+    }
+
+    /// A playlist's files in a new order — the same files, nothing added or dropped (016: sort by the ticked tags).
+    func reorderPlaylist(_ name: String, to paths: [String]) {
+        guard let list = playlists[name], Set(list) == Set(paths), list.count == paths.count else { return }
+        playlists[name] = paths
+        saveMarksAndPublish()
+    }
+
+    /// The library folder this catalog is keeping — the root a library-relative path is under.
+    var libraryRoot: URL? { running }
+
     /// The playlists, Thumbs Up first, then by name.
     var playlistNames: [String] {
         _ = marksVersion
