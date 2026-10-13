@@ -195,7 +195,7 @@ final class LibraryStore {
         var stale = false
         guard let url = try? URL(resolvingBookmarkData: data, options: Self.bookmarkResolutionOptions,
                                  relativeTo: nil, bookmarkDataIsStale: &stale) else {
-            errorMessage = "Your library folder could not be found. Is the drive or share connected?"
+            // No alert: the Choose Mediaworks Machines screen (N20) already shows, with Choose Its Folder… on this Mac.
             return
         }
         _ = url.startAccessingSecurityScopedResource()
