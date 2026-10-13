@@ -122,6 +122,14 @@ struct mediaworksApp: App {
         .defaultSize(width: 1000, height: 640)
         .restorationBehavior(.disabled)
 
+        // REM  CLONE & SYNC — one-way backups and two-way syncs, by themselves on a schedule (roadmap 013, CloneSync.swift).
+        Window("Clone & Sync", id: "clonesync") {
+            CloneSyncView()
+                .environment(library)
+        }
+        .defaultSize(width: 1100, height: 760)
+        .restorationBehavior(.disabled)
+
         // REM  HISTORY — every change from the journal, newest first, each with Undo (roadmap 014, HistoryView.swift).
         Window("History", id: "history") {
             HistoryView()
