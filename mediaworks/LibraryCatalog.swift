@@ -40,6 +40,9 @@ final class LibraryCatalog {
     private(set) var lastCaller: String?
     private(set) var lastCallAt: Date?
     @ObservationIgnored private var payload = Data()
+    /// THIS Mac's own listing, before the partner mini's half is merged in (N16) — what `getOwn` answers.
+    @ObservationIgnored private var ownSnapshot: LibrarySnapshot?
+    @ObservationIgnored private var ownPayload = Data()
     /// The last walk, so a checkmark or 👍 can republish at once without walking Nineveh again.
     @ObservationIgnored private var lastFound: Found?
     @ObservationIgnored private var report: (String) -> Void = { _ in }
@@ -178,13 +181,23 @@ final class LibraryCatalog {
             }
             return folder
         }
-        let snapshot = LibrarySnapshot(made: .now, macName: Host.current().localizedName ?? "Mac",
-                                       root: fill(found.folder, base), playlists: playlists)
-        self.snapshot = snapshot
-        guard let data = try? LibraryCache.encoder.encode(snapshot) else { return }
+        let own = LibrarySnapshot(made: .now, macName: Host.current().localizedName ?? "Mac",
+                                  root: fill(found.folder, base), playlists: playlists)
+        ownSnapshot = own
+        ownPayload = (try? LibraryCache.encoder.encode(own)) ?? Data()
+        republishMerged()
+        saveToCloudSoon()
+    }
+
+    /// The listing every device gets: this Mac's own, with the partner mini's half merged in when there is one (N16).
+    func republishMerged() {
+        guard let own = ownSnapshot else { return }
+        let partner = LibraryPartner.shared
+        let merged = PartnerMerge.merge(own, partner.partnerSnapshot, partnerName: partner.partnerName ?? "")
+        snapshot = merged
+        guard let data = try? LibraryCache.encoder.encode(merged) else { return }
         payload = data
         try? data.write(to: LibraryCache.fileURL, options: .atomic)
-        saveToCloudSoon()
     }
 
     // MARK: The iCloud copy (platforms 002a)
@@ -247,7 +260,7 @@ final class LibraryCatalog {
     // REM  a thumbs up playlist" · "thats the point of thumbs downing it to take it out of synch rotation". The Mac keeps
     // REM  the marks (Marks.json), puts them in the cache, and every device sees them on its next look. Nothing is deleted.
     private func apply(_ request: CacheRequest) {
-        guard let path = request.path, !path.isEmpty, ![.get, .file, .setTags, .trash].contains(request.op) else { return }
+        guard let path = request.path, !path.isEmpty, ![.get, .file, .setTags, .trash, .getOwn].contains(request.op) else { return }
         if request.op == .renamePlaylist {
             // REM  A bad or taken name is refused before anything is recorded.
             guard let newName = request.newName?.trimmingCharacters(in: .whitespaces), Self.validName(newName),
@@ -272,7 +285,7 @@ final class LibraryCatalog {
             saveChanges()
         }
         switch request.op {
-        case .get, .file, .setTags, .trash: return
+        case .get, .file, .setTags, .trash, .getOwn: return
         case .check: unchecked.remove(path)
         case .uncheck: unchecked.insert(path)
         case .thumbsUp:
@@ -605,8 +618,16 @@ final class LibraryCatalog {
     func sendFile(_ path: String?, on connection: NWConnection) {
         guard let root = running?.standardizedFileURL, let path,
               case let url = root.appending(path: path).standardizedFileURL,
-              url.path.hasPrefix(root.path + "/"),
-              let handle = try? FileHandle(forReadingFrom: url),
+              url.path.hasPrefix(root.path + "/") else {
+            connection.send(content: Framing.frame(Data()), completion: .contentProcessed { _ in connection.cancel() })
+            return
+        }
+        sendFile(url: url, on: connection)
+    }
+
+    /// The bytes of one file, length first — a library file, or a partner file's finished buffer copy.
+    func sendFile(url: URL, on connection: NWConnection) {
+        guard let handle = try? FileHandle(forReadingFrom: url),
               let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else {
             connection.send(content: Framing.frame(Data()), completion: .contentProcessed { _ in connection.cancel() })
             return
@@ -672,6 +693,12 @@ final class LibraryCatalog {
 
     private func answerOnMain(_ connection: NWConnection, _ data: Data?) {
         if let data, let request = try? LibraryCache.decoder.decode(CacheRequest.self, from: data) {
+            // N16 — the partner mini asks for this Mac's own half only.
+            if request.op == .getOwn {
+                connection.send(content: Framing.frame(ownPayload), completion: .contentProcessed { _ in connection.cancel() })
+                return
+            }
+            if routeToPartner(request, on: connection) { return }
             if request.op == .file { sendFile(request.path, on: connection); return }
             if request.op == .setTags || request.op == .trash {
                 Task { @MainActor in
@@ -736,6 +763,14 @@ final class LibraryCatalog {
             let reply = "HTTP/1.1 \(status)\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
             connection.send(content: Data(reply.utf8), completion: .contentProcessed { _ in connection.cancel() })
         }
+        // N16 — a file the partner mini holds: served here through the buffer (N17).
+        if parts.count >= 2, parts[1].hasPrefix("/media/"),
+           let wanted = String(parts[1].dropFirst("/media/".count)).removingPercentEncoding,
+           libraryFile(wanted).map({ !FileManager.default.fileExists(atPath: $0.path) }) ?? true,
+           let file = snapshot?.file(at: wanted), file.host != nil {
+            servePartner(connection, path: wanted, file: file, lines: lines, isHead: parts[0] == "HEAD", dlna: dlna)
+            return
+        }
         guard parts.count >= 2, parts[1].hasPrefix("/media/"),
               let path = String(parts[1].dropFirst("/media/".count)).removingPercentEncoding,
               let url = libraryFile(path),
@@ -781,6 +816,119 @@ final class LibraryCatalog {
             })
         }
         next()
+    }
+}
+
+// MARK: - The partner mini's files (N16, N17)
+
+extension LibraryCatalog {
+    /// Whether a device's request is about the partner's file or playlist — passed on to the partner, or to both.
+    /// Returns true when it has answered the device itself.
+    fileprivate func routeToPartner(_ request: CacheRequest, on connection: NWConnection) -> Bool {
+        let partner = LibraryPartner.shared
+        guard partner.partnerName != nil, let path = request.path else { return false }
+        let isPartnerFile: Bool = {
+            let local = libraryFile(path).map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+            return !local && snapshot?.file(at: path)?.host != nil
+        }()
+        func answer() { connection.send(content: Framing.frame(payload), completion: .contentProcessed { _ in connection.cancel() }) }
+        switch request.op {
+        case .check, .uncheck, .thumbsUp, .thumbsDown, .unthumb, .setTags, .trash:
+            guard isPartnerFile else { return false }
+            // Shown at once in the answer; the partner's own copy follows from its answer.
+            if let current = snapshot { snapshot = current.applying(request) }
+            Task {
+                _ = await partner.ask(request)
+                await partner.refresh()
+                answer()
+            }
+            return true
+        case .file:
+            guard isPartnerFile, let size = snapshot?.file(at: path)?.size else { return false }
+            // A device's synced copy of a partner file goes out of the buffer once the buffer copy is whole.
+            Task {
+                guard let copy = await PartnerBuffer.shared.copy(path, size: size) else {
+                    report("A device asked for “\((path as NSString).lastPathComponent)” — no room in the buffer; it will ask again.")
+                    connection.send(content: Framing.frame(Data()), completion: .contentProcessed { _ in connection.cancel() }); return
+                }
+                var waited = 0
+                while !copy.complete(), waited < 3600 { try? await Task.sleep(for: .seconds(1)); waited += 1 }
+                if copy.complete() { sendFile(url: copy.url, on: connection) }
+                else { connection.send(content: Framing.frame(Data()), completion: .contentProcessed { _ in connection.cancel() }) }
+            }
+            return true
+        case .renamePlaylist, .checkAll:
+            // A playlist can hold files from both minis — each does its own part.
+            Task { _ = await partner.ask(request); await partner.refresh() }
+            return false
+        case .addToPlaylist, .removeFromPlaylist:
+            guard let name = request.playlist, playlists[name] == nil, partner.partnerSnapshot?.playlists?[name] != nil else { return false }
+            Task { _ = await partner.ask(request); await partner.refresh(); answer() }
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Streams a partner file: from the buffer copy as it fills, or straight from the partner when the guard says no room
+    /// or the player jumps past what has arrived.
+    fileprivate func servePartner(_ connection: NWConnection, path: String, file: CachedFile, lines: [String], isHead: Bool, dlna: Bool) {
+        func fail(_ status: String) {
+            connection.send(content: Data("HTTP/1.1 \(status)\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".utf8),
+                            completion: .contentProcessed { _ in connection.cancel() })
+        }
+        guard file.isChecked else { fail("403 Forbidden"); return }
+        guard let total = file.size, total > 0 else { fail("404 Not Found"); return }
+        var start: Int64 = 0, end = total - 1, partial = false
+        if let range = lines.first(where: { $0.lowercased().hasPrefix("range:") }), let spec = range.split(separator: "=").last {
+            let bounds = spec.split(separator: "-", omittingEmptySubsequences: false)
+            if let a = Int64(bounds.first ?? "") { start = a }
+            if bounds.count > 1, let b = Int64(bounds[1]) { end = min(b, total - 1) }
+            partial = true
+        }
+        guard start <= end, start < total else { fail("416 Range Not Satisfiable"); return }
+        var head = partial ? "HTTP/1.1 206 Partial Content\r\n" : "HTTP/1.1 200 OK\r\n"
+        head += "Content-Type: \(DLNAContent.mime(path) ?? "video/mp4")\r\nAccept-Ranges: bytes\r\nContent-Length: \(end - start + 1)\r\n"
+        if partial { head += "Content-Range: bytes \(start)-\(end)/\(total)\r\n" }
+        if dlna { head += "transferMode.dlna.org: Streaming\r\ncontentFeatures.dlna.org: DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000\r\n" }
+        head += "Connection: close\r\n\r\n"
+        Task {
+            let copy = isHead ? nil : await PartnerBuffer.shared.copy(path, size: total)
+            connection.send(content: Data(head.utf8), completion: .contentProcessed { _ in })
+            if isHead {
+                connection.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { _ in connection.cancel() })
+                return
+            }
+            // No room (N19), or a jump well past what has arrived: straight from the partner.
+            if copy == nil || (!copy!.complete() && start > copy!.have() + (8 << 20)) {
+                guard let source = await LibraryPartner.shared.mediaURL(path) else { connection.cancel(); return }
+                RangeRelay(connection).start(source, from: start, to: end)
+                return
+            }
+            guard let copy, let handle = try? FileHandle(forReadingFrom: copy.url) else { connection.cancel(); return }
+            defer { try? handle.close() }
+            var offset = start
+            var idle = 0
+            while offset <= end {
+                let available = copy.complete() ? total : copy.have()
+                if available > offset {
+                    try? handle.seek(toOffset: UInt64(offset))
+                    let count = Int(min(Int64(1 << 20), available - offset, end + 1 - offset))
+                    guard let chunk = try? handle.read(upToCount: count), !chunk.isEmpty else { break }
+                    let ok = await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
+                        connection.send(content: chunk, completion: .contentProcessed { done.resume(returning: $0 == nil) })
+                    }
+                    guard ok else { connection.cancel(); return }
+                    offset += Int64(chunk.count); idle = 0
+                } else {
+                    // Waiting on the copy — a minute without a byte and the copy has stalled.
+                    idle += 1
+                    if idle > 600 { break }
+                    try? await Task.sleep(for: .milliseconds(100))
+                }
+            }
+            connection.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { _ in connection.cancel() })
+        }
     }
 }
 #endif

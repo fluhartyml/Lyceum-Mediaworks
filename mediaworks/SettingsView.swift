@@ -59,6 +59,8 @@ struct SettingsView: View {
             IntakeSettingsSection()
             // REM  SMART TVs (DLNA, 017 / 018) — DLNAServer.swift.
             DLNASettingsSection()
+            // REM  TWO MACS, ONE LIBRARY + THE BUFFER (N16–N19) — LibraryPartner.swift.
+            PartnerSettingsSection()
             #endif
             Section {
                 LabeledContent("Library folder") {

@@ -71,6 +71,8 @@ struct ContentView: View {
         .task { JobWorker.shared.start() }
         // REM  SMART TVs (DLNA, 017/018) — serves if the user turned it on in Settings.
         .task { DLNAServer.shared.startIfOn() }
+        // REM  TWO MACS, ONE LIBRARY (N16) — keeps the partner's half current if one is named.
+        .task { if LibraryPartner.shared.partnerName != nil { LibraryPartner.shared.start() } }
         // REM  The Mac watches for an Apple TV running Lyceum, for Play on Apple TV and the remote window.
         .task { await TVRemote.shared.keepWatching() }
         #else

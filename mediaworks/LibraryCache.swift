@@ -54,6 +54,8 @@ nonisolated struct CachedFile: Codable, Hashable, Sendable, Identifiable {
     /// The sync checkmark — nil and true both mean checked (iTunes' default). Unchecked files stay off a phone set
     /// to Manual sync; 👎 unchecks, 👍 checks (platforms 001c / 002d).
     var checked: Bool?
+    /// The Mac that holds this file, when it is the partner mini's and not this one's (N16). Nil = this Mac's own.
+    var host: String?
     var id: String { name }
     var isChecked: Bool { checked ?? true }
     var isVideo: Bool { kind == "video" }
@@ -90,7 +92,8 @@ nonisolated struct CacheRequest: Codable, Sendable, Hashable {
     /// his rating rounds, platforms PL1–PL9.
     /// `addToPlaylist` / `removeFromPlaylist` (path = the file, playlist = the playlist's name) — moving a file from one
     /// playlist to another on the TV (004c, N06).
-    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash, unthumb, renamePlaylist, checkAll, addToPlaylist, removeFromPlaylist }
+    /// `getOwn` — the partner mini asking for THIS Mac's own listing, not the merged one (N16).
+    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash, unthumb, renamePlaylist, checkAll, addToPlaylist, removeFromPlaylist, getOwn }
     var op: Op
     /// The file, relative to the library root ("Music Videos/Rock/1990s/Queensryche - Silent Lucidity.mp4").
     var path: String?

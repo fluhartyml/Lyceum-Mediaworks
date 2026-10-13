@@ -77,6 +77,7 @@ struct DeviceChangesView: View {
         case .checkAll: "Checked all in playlist"
         case .addToPlaylist: "Added to a playlist"
         case .removeFromPlaylist: "Taken out of a playlist"
+        case .getOwn: "Partner looked"
         }
     }
 }
