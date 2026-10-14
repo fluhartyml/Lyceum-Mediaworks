@@ -24,9 +24,8 @@ import AVFoundation
 @MainActor
 @Observable
 final class PhonePlayer {
-    /// Library-relative paths, in order; `index` is the one playing.
-    private(set) var queue: [String] = []
-    private(set) var index = 0
+    /// The folder or playlist playing (library-relative paths), in its play order — as listed, or shuffled.
+    private(set) var order = PlayOrder()
     var fullScreen = false
     /// Which page shows — 0 Library, 1 Theater.
     var page = 0
@@ -34,18 +33,23 @@ final class PhonePlayer {
     private(set) var isPlaying = false
     @ObservationIgnored private var endObserver: NSObjectProtocol?
 
-    var current: String? { queue.indices.contains(index) ? queue[index] : nil }
+    var current: String? { order.current }
 
     /// Why the last Play did not start — shown on the Theater page.
     private(set) var problem: String?
 
     /// Plays `path`, with `queue` (the files around it) for Next and Previous.
     func play(_ path: String, in queue: [String]) {
-        self.queue = queue.contains(path) ? queue : [path]
-        index = self.queue.firstIndex(of: path) ?? 0
+        order.start(path, in: queue, shuffle: PlayModes.shared.shuffle)
         load()
         page = 1
         fullScreen = true
+    }
+
+    /// Shuffle switched while playing: the one playing carries on, what follows changes.
+    func setShuffle(_ on: Bool) {
+        PlayModes.shared.shuffle = on
+        order.setShuffle(on)
     }
 
     // REM  THIS DEVICE'S COPY FIRST, OTHERWISE STREAMED FROM THE MAC (platforms 002c, N05).
@@ -70,7 +74,7 @@ final class PhonePlayer {
         player.replaceCurrentItem(with: item)
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { _ in
-            MainActor.assumeIsolated { self.next() }
+            MainActor.assumeIsolated { self.advance(ended: true) }
         }
         player.play()
         isPlaying = true
@@ -89,18 +93,20 @@ final class PhonePlayer {
     /// Asked before moving on — a file unchecked since the queue was made is skipped (PL9).
     var isPlayable: (String) -> Bool = { _ in true }
 
-    func next() {
-        var n = index + 1
-        while n < queue.count, !isPlayable(queue[n]) { n += 1 }
-        guard n < queue.count else { stop(); return }
-        index = n
-        load()
+    func next() { advance(ended: false) }
+
+    /// Shuffle and Repeat decide what comes next (PlayOrder).
+    private func advance(ended: Bool) {
+        switch order.advance(ended: ended, modes: PlayModes.shared, isPlayable: isPlayable) {
+        case .load: load()
+        case .replay: player.seek(to: .zero); player.play(); isPlaying = true
+        case .stop: stop()
+        }
     }
 
     /// Back to the start of this one if it has played a few seconds; otherwise the one before.
     func previous() {
-        if player.currentTime().seconds > 3 || index == 0 { player.seek(to: .zero); return }
-        index -= 1
+        if player.currentTime().seconds > 3 || !order.back() { player.seek(to: .zero); return }
         load()
     }
 
@@ -302,6 +308,7 @@ private struct FullScreenPlayer: View {
     @State private var length: Double = 1
     @State private var scrubbing = false
     @State private var drag: CGFloat = 0
+    private var modes: PlayModes { .shared }
 
     var body: some View {
         GeometryReader { space in
@@ -358,6 +365,16 @@ private struct FullScreenPlayer: View {
                 Button { leave() } label: { Image(systemName: "chevron.down") }
                     .accessibilityLabel("Close the video")
                 Spacer()
+                // REM  SHUFFLE and REPEAT (2026-10-14) — his "play them at random shuffle repeat one or all". Lit when on;
+                // REM  Repeat steps Off → All → One.
+                Button { player.setShuffle(!modes.shuffle); showControls() } label: {
+                    Image(systemName: "shuffle").foregroundStyle(modes.shuffle ? Color.accentColor : .white.opacity(0.5))
+                }
+                .accessibilityLabel(modes.shuffle ? "Shuffle on" : "Shuffle off")
+                Button { modes.repeatMode = modes.repeatMode.next; showControls() } label: {
+                    Image(systemName: modes.repeatMode.symbol).foregroundStyle(modes.repeatMode == .off ? .white.opacity(0.5) : Color.accentColor)
+                }
+                .accessibilityLabel(modes.repeatMode.title)
                 if let path = player.current {
                     Button { library.change(.thumbsUp, path); show(flash: "👍") } label: { Image(systemName: "hand.thumbsup") }
                         .accessibilityLabel("Thumbs up")

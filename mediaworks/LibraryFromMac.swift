@@ -381,8 +381,37 @@ private struct CachedFolderList: View {
     var isTop = false
     @Environment(MacLibrary.self) private var library
 
+    @State private var savedAs: String?
+
+    /// The serving Mac can make a playlist from a folder from build 184 on (LibraryCache.folderRequestsBuild).
+    private var macCanSaveFolder: Bool {
+        (library.snapshot?.serverBuild?.split(separator: " ").first.flatMap { Int($0) } ?? 0) >= LibraryCache.folderRequestsBuild
+    }
+
     var body: some View {
         List {
+            // REM  PLAY ALL / SHUFFLE ALL / SAVE FOLDER AS PLAYLIST — his words, 2026-10-14: "folders are one step away from
+            // REM  being a playlist. i want to be able to save a folder as a playlist and i want to be able to play them at random
+            // REM  shuffle repeat one or all". Everything in the folder and the folders inside it, as the Mac's right-click does.
+            if !isTop {
+                Section {
+                    PlayAllButtons(paths: PlayOrder.media(in: folder, at: path))
+                    Button {
+                        library.send(CacheRequest(op: .playlistFromFolder, path: path))
+                        savedAs = folder.name
+                    } label: {
+                        Label("Save Folder as Playlist", systemImage: "music.note.list")
+                    }
+                    .disabled(!macCanSaveFolder)
+                    if !macCanSaveFolder {
+                        Text("Your Mac needs Mediaworks build \(LibraryCache.folderRequestsBuild) or newer to save a folder as a playlist.")
+                            .foregroundStyle(.secondary)
+                    } else if let savedAs {
+                        Text("Sent to your Mac — the playlist “\(savedAs)” appears at the top of the library.")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
             // REM  THE THUMBS UP PLAYLIST at the top of the library — every file 👍'd on any device (platforms 001c).
             // REM  EVERY PLAYLIST at the top — Thumbs Up first, then by name (platforms PL5).
             if isTop {
@@ -440,6 +469,9 @@ private struct PlaylistList: View {
             // REM  RENAME and CHECK ALL — his rating rounds (PL2, PL6, PL8): renaming Thumbs Up saves it as its own playlist,
             // REM  and the next 👍 starts a new one. Sent to the Mac, which renames the .m3u8 file too.
             Section {
+                PlayAllButtons(paths: paths)
+            }
+            Section {
                 // REM  SAVE AS NEW PLAYLIST — his word, 2026-10-13 (N09): he went to make a new playlist from Thumbs Up on the
                 // REM  TV and couldn't find how — nothing said "new playlist", only Rename. Same action as renaming Thumbs Up.
                 if LibraryCache.isThumbsUp(name) {
@@ -488,6 +520,38 @@ private struct PlaylistList: View {
         } message: {
             Text("Everything in Thumbs Up becomes a playlist with this name. The next 👍 starts a new Thumbs Up.")
         }
+    }
+}
+
+/// Play All and Shuffle All for a folder or playlist (2026-10-14) — on the TV it plays there; on an iPhone or iPad, on
+/// this device. Only checked files play (PL9). Shuffle All turns Shuffle on, as Apple Music's Shuffle button does.
+private struct PlayAllButtons: View {
+    let paths: [String]
+    @Environment(MacLibrary.self) private var library
+    #if os(tvOS)
+    @Environment(TVTheater.self) private var theater
+    #else
+    @Environment(PhonePlayer.self) private var phone: PhonePlayer?
+    #endif
+
+    var body: some View {
+        let playable = library.playable(paths)
+        Button { start(playable, shuffled: false) } label: { Label("Play All", systemImage: "play.fill") }
+            .disabled(playable.isEmpty)
+        Button { start(playable, shuffled: true) } label: { Label("Shuffle All", systemImage: "shuffle") }
+            .disabled(playable.isEmpty)
+    }
+
+    private func start(_ playable: [String], shuffled: Bool) {
+        guard let first = shuffled ? playable.randomElement() : playable.first else { return }
+        #if os(tvOS)
+        theater.setShuffle(shuffled)
+        theater.play(first, in: playable)
+        #else
+        guard let phone else { return }
+        phone.setShuffle(shuffled)
+        phone.play(first, in: playable)
+        #endif
     }
 }
 

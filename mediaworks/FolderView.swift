@@ -182,8 +182,24 @@ struct FolderView: View {
                             newFolder: newFolder,
                             trash: { urls in
                                 trash(urls)
-                            })
+                            },
+                            makePlaylist: makePlaylist)
         }
+    }
+
+    /// "Make Playlist from Folder" — the folder and everything under it, as a playlist named after it.
+    // REM  HIS WORDS, 2026-10-14: "folders are one step away from being a playlist. i want to be able to save a folder as a
+    // REM  playlist". The same change the MacBook's library table and the TV / iPhone send (184), done by this Mac's own catalog.
+    private var makePlaylist: ((URL) -> Void)? {
+        #if os(macOS)
+        return { url in
+            Task {
+                if let problem = await LibraryCatalog.shared.playlistFromFolder(url) { self.problem = problem }
+            }
+        }
+        #else
+        return nil
+        #endif
     }
 
     private func newFolder() {

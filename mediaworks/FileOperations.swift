@@ -189,12 +189,17 @@ struct FileContextMenu: View {
     let trash: ([URL]) -> Void
     /// Commander only: "New Folder with Selection". Nil where it is not offered.
     var newFolderWithItems: (([URL]) -> Void)? = nil
+    /// Library only: "Make Playlist from Folder" (2026-10-14). Nil where it is not offered.
+    var makePlaylist: ((URL) -> Void)? = nil
     @AppStorage("instantDelete") private var instantDelete = false
 
     var body: some View {
         if urls.count == 1, let url = urls.first, let entry = entries.first(where: { $0.url == url }) {
             if entry.isFolder || entry.isMedia {
                 Button(entry.isFolder ? "Open" : "Play") { open(entry) }
+            }
+            if entry.isFolder, let makePlaylist {
+                Button("Make Playlist from Folder") { makePlaylist(url) }
             }
             Button("Rename…") { rename(url) }
             Divider()

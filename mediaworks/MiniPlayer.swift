@@ -61,6 +61,8 @@ final class MiniPlayer {
     @ObservationIgnored private var lists: [Source: [URL]] = [:]
     @ObservationIgnored private var highlighted: [Source: URL] = [:]
     @ObservationIgnored private var lastPlayed: [Source: URL] = [:]
+    /// Shuffle: what each pane has played this time round, so each one plays once before any repeat.
+    @ObservationIgnored private var heard: [Source: Set<URL>] = [:]
     @ObservationIgnored private var timeObserver: Any?
     @ObservationIgnored private var endObserver: NSObjectProtocol?
 
@@ -198,6 +200,7 @@ final class MiniPlayer {
         current = url
         currentSource = source
         lastPlayed[source] = url
+        heard[source, default: []].insert(url)
         elapsed = 0
         duration = 0
         // REM  THE LENGTH IS READ AT ONCE, not when playback starts — a cued video read "0:00 / 0:00"
@@ -211,9 +214,15 @@ final class MiniPlayer {
 
     private func advance() {
         guard let source = currentSource else { isPlaying = false; return }
+        let modes = PlayModes.shared
+        // REM  REPEAT ONE (2026-10-14): the same one again when it ends. Next still moves on.
+        if modes.repeatMode == .one { player.seek(to: .zero); player.play(); return }
         let target: Source
         switch continuous {
-        case .off: isPlaying = false; return
+        case .off:
+            // REM  Shuffle and Repeat All only mean anything moving on — with either on, Continuous Off plays on in the same pane.
+            guard modes.shuffle || modes.repeatMode == .all else { isPlaying = false; return }
+            target = source
         case .samePane: target = source
         case .otherPane: target = other(source)
         }
@@ -239,13 +248,27 @@ final class MiniPlayer {
     private func nextItem(in source: Source) -> URL? {
         let list = lists[source] ?? []
         guard !list.isEmpty else { return nil }
+        let modes = PlayModes.shared
+        // REM  SHUFFLE (2026-10-14): any one in the pane not yet played this time round. When all have played, Repeat All
+        // REM  starts a new round; otherwise it stops.
+        if modes.shuffle {
+            var left = list.filter { !(heard[source] ?? []).contains($0) && $0 != current }
+            if left.isEmpty {
+                guard modes.repeatMode == .all else { return nil }
+                heard[source] = []
+                left = list.filter { $0 != current }
+            }
+            return left.randomElement() ?? list.first
+        }
         guard let last = lastPlayed[source], let index = list.firstIndex(of: last) else {
             return highlighted[source].flatMap { list.contains($0) ? $0 : nil } ?? list.first
         }
         // In Other Pane mode the pane we arrive at has not "used" its highlight yet.
         if source != currentSource, let mark = highlighted[source], mark != last, list.contains(mark) { return mark }
         let nextIndex = index + 1
-        return nextIndex < list.count ? list[nextIndex] : nil
+        if nextIndex < list.count { return list[nextIndex] }
+        // REM  REPEAT ALL: past the last one, back to the top.
+        return modes.repeatMode == .all ? list.first : nil
     }
 }
 
@@ -278,6 +301,7 @@ struct MiniPlayerBar: View {
                         HStack(spacing: 14) {
                             position
                             continuousPicker.frame(width: 220)
+                            modeButtons
                         }
                     }
                 } else {
@@ -286,6 +310,7 @@ struct MiniPlayerBar: View {
                         title(url).frame(minWidth: 200, maxWidth: 360, alignment: .leading)
                         position
                         continuousPicker.frame(width: 260)
+                        modeButtons
                         theaterButton
                     }
                 }
@@ -350,6 +375,27 @@ struct MiniPlayerBar: View {
         }
         .font(.lyceumBody)
         .lyceumHelp("Continuous — what plays when this one ends: Off (stop), Same Pane (the next one below), Other Pane (the next one across)")
+    }
+
+    /// Shuffle and Repeat (2026-10-14) — lit when on; Repeat steps Off → All → One.
+    private var modeButtons: some View {
+        let modes = PlayModes.shared
+        return HStack(spacing: 12) {
+            Button { modes.shuffle.toggle() } label: {
+                Image(systemName: "shuffle")
+                    .foregroundStyle(modes.shuffle ? Color.accentColor : .secondary)
+            }
+            .buttonStyle(.borderless)
+            .lyceumHelp(modes.shuffle ? "Shuffle is on — the next one is picked at random, each once before any repeat. Click to play in order"
+                                      : "Shuffle is off — plays in the order the pane shows. Click to shuffle")
+            Button { modes.repeatMode = modes.repeatMode.next } label: {
+                Image(systemName: modes.repeatMode.symbol)
+                    .foregroundStyle(modes.repeatMode == .off ? .secondary : Color.accentColor)
+            }
+            .buttonStyle(.borderless)
+            .lyceumHelp("\(modes.repeatMode.title) — click for \(modes.repeatMode.next.title)")
+        }
+        .font(.system(size: 18))
     }
 
     private var theaterButton: some View {

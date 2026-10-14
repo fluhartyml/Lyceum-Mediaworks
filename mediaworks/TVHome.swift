@@ -51,7 +51,7 @@ struct TVHome: View {
             }
             .padding(.vertical, 20)
         }
-        .sheet(isPresented: $showSettings) { TVSettingsSheet() }
+        .sheet(isPresented: $showSettings) { TVSettingsSheet().environment(theater) }
         .sheet(isPresented: $showInfo) { AboutView() }
         .environment(theater)
         .task { await library.keepUpToDate() }
@@ -68,14 +68,14 @@ struct TVHome: View {
 @Observable
 final class TVTheater {
     let player = AVPlayer()
-    private(set) var queue: [String] = []
-    private(set) var index = 0
+    /// The folder or playlist playing, in its play order — as listed, or shuffled.
+    private(set) var order = PlayOrder()
     private(set) var problem: String?
     var presented = false
     @ObservationIgnored private var listener: NWListener?
     @ObservationIgnored private var endObserver: NSObjectProtocol?
 
-    var current: String? { queue.indices.contains(index) ? queue[index] : nil }
+    var current: String? { order.current }
     var isPlaying: Bool { player.timeControlStatus != .paused }
 
     /// Where the video is and how long it runs, in seconds — for the time bar (N07). Kept up by a half-second watch.
@@ -98,10 +98,15 @@ final class TVTheater {
     }
 
     func play(_ path: String, in queue: [String]) {
-        self.queue = queue.contains(path) ? queue : [path]
-        index = self.queue.firstIndex(of: path) ?? 0
+        order.start(path, in: queue, shuffle: PlayModes.shared.shuffle)
         presented = true
         load()
+    }
+
+    /// Shuffle switched in Settings while something plays: the one playing carries on, what follows changes.
+    func setShuffle(_ on: Bool) {
+        PlayModes.shared.shuffle = on
+        order.setShuffle(on)
     }
 
     private func load() {
@@ -117,7 +122,7 @@ final class TVTheater {
             publishNowPlaying((path as NSString).deletingPathExtension.components(separatedBy: "/").last ?? path)
             if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
             endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { _ in
-                MainActor.assumeIsolated { self.next() }
+                MainActor.assumeIsolated { self.advance(ended: true) }
             }
             player.play()
         }
@@ -126,18 +131,26 @@ final class TVTheater {
     /// Asked before moving on — a file unchecked since the queue was made (a 👎) is skipped (PL9).
     var isPlayable: (String) -> Bool = { _ in true }
 
-    func next() {
-        var n = index + 1
-        while n < queue.count, !isPlayable(queue[n]) { n += 1 }
-        if n < queue.count { index = n; load() } else { stop() }
+    func next() { advance(ended: false) }
+
+    /// Shuffle and Repeat decide what comes next (PlayOrder).
+    private func advance(ended: Bool) {
+        switch order.advance(ended: ended, modes: PlayModes.shared, isPlayable: isPlayable) {
+        case .load: load()
+        case .replay: player.seek(to: .zero); player.play()
+        case .stop: stop()
+        }
     }
+
     func previous() {
-        if player.currentTime().seconds > 3 || index == 0 { player.seek(to: .zero) } else { index -= 1; load() }
+        if player.currentTime().seconds > 3 { player.seek(to: .zero) }
+        else if order.back() { load() }
+        else { player.seek(to: .zero) }
     }
     func skip(_ seconds: Double) {
         player.seek(to: CMTime(seconds: max(0, player.currentTime().seconds + seconds), preferredTimescale: 600))
     }
-    func stop() { player.pause(); player.replaceCurrentItem(with: nil); queue = []; presented = false }
+    func stop() { player.pause(); player.replaceCurrentItem(with: nil); order = PlayOrder(); presented = false }
 
     // MARK: Forward / reverse buttons — TV remotes over HDMI, Control Center's Apple TV Remote (platforms 004e)
 
@@ -235,6 +248,7 @@ struct TVPlayer: View {
     @State private var flash: String?
     @State private var showInfo = false
     @AppStorage("tvAlwaysShowFileName") private var alwaysShowFileName = false
+    private var modes: PlayModes { .shared }
 
     var body: some View {
         ZStack {
@@ -266,6 +280,13 @@ struct TVPlayer: View {
                                 .foregroundStyle(lit == control ? Color.accentColor : .white)
                                 .scaleEffect(lit == control ? 1.3 : 1)
                         }
+                        // Shuffle and Repeat — shown, not pressed: the bar is display only (N15); they are set in Settings.
+                        Image(systemName: "shuffle")
+                            .font(.system(size: 36))
+                            .foregroundStyle(modes.shuffle ? Color.accentColor : .white.opacity(0.3))
+                        Image(systemName: modes.repeatMode.symbol)
+                            .font(.system(size: 36))
+                            .foregroundStyle(modes.repeatMode == .off ? .white.opacity(0.3) : Color.accentColor)
                     }
                     .padding(.bottom, 6)
                     HStack(spacing: 24) {
@@ -488,10 +509,22 @@ struct TVSettingsSheet: View {
     // REM  HIS ASK, 2026-10-10: "default show the file name for a short period of time but i want a toggle in settings to
     // REM  always show file name at the bottom of the screen". Off = the 5-second default; on = always.
     @AppStorage("tvAlwaysShowFileName") private var alwaysShowFileName = false
+    @Environment(TVTheater.self) private var theater
 
     var body: some View {
+        @Bindable var modes = PlayModes.shared
         NavigationStack {
             Form {
+                // REM  SHUFFLE and REPEAT (2026-10-14, his "play them at random shuffle repeat one or all") — set here, because
+                // REM  the dark bar is display only (N15). The bar shows which are on.
+                Section("Playing a folder or playlist") {
+                    Toggle("Shuffle", isOn: Binding(get: { modes.shuffle }, set: { theater.setShuffle($0) }))
+                    Picker("Repeat", selection: $modes.repeatMode) {
+                        ForEach(RepeatMode.allCases) { Text($0.title).tag($0) }
+                    }
+                    Text("Repeat One plays the same video again when it ends; Next still moves on. Repeat All starts the folder or playlist over.")
+                        .foregroundStyle(.secondary)
+                }
                 Section("While a video plays") {
                     Toggle("Always show the file name", isOn: $alwaysShowFileName)
                     Text(alwaysShowFileName

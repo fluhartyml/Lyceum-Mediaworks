@@ -19,6 +19,19 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-14 ~09:4x — SHUFFLE, REPEAT, SAVE FOLDER AS PLAYLIST — built, NOT yet seen on his devices
+- His words: *"folders are one step away from being a playlist. i want to be able to save a folder as a playlist and i
+  want to be able to play them at random shuffle repeat one or all"* → his "yes build it".
+- `PlayModes.swift`: Shuffle + Repeat Off/All/One per device (UserDefaults `playShuffle` / `playRepeat`), and `PlayOrder`,
+  the shared queue the TV (`TVTheater`) and iPhone (`PhonePlayer`) now use. Repeat One replays only when a video ENDS —
+  Next still moves on. Repeat All goes round again (a fresh shuffle each round). Unchecked files are still skipped (PL9).
+- Mac mini player: Shuffle / Repeat buttons beside Continuous. Shuffle = each one in the pane once before any repeat. With
+  Shuffle or Repeat All on, Continuous Off still plays on in the same pane.
+- TV: the dark bar SHOWS Shuffle / Repeat (display only, N15); they are SET in Settings → "Playing a folder or playlist".
+- TV + iPhone folder screens: Play All · Shuffle All (folder + subfolders) · Save Folder as Playlist (needs the serving Mac
+  on 184+). Playlist screens: Play All · Shuffle All. Mac Library view: right-click a folder → Make Playlist from Folder.
+- Tests not run (they launch the app — warn him first).
+
 ### 2026-10-13 ~11:5x — MAC UPDATES GO THROUGH TESTFLIGHT, ON A SCHEDULE (his rule)
 *"the mac os app will need to be updated on a schedule to shake down because it has to go over testflight the ios and tvos apps dont depend on testflight so they dont have to wait on a schedule"*
 - **macOS:** reaches his Macs (and the minis) by TestFlight → Mac changes are batched and shaken down on a schedule. Builds 158–171 are mostly Mac-side and wait for that round.

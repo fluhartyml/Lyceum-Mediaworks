@@ -234,6 +234,18 @@ final class LibraryCatalog {
     /// Goes up on every mark change, so the Mac's lists redraw their checkboxes.
     private(set) var marksVersion = 0
 
+    /// The Mac's own Library view: a folder's media, subfolders included, as a playlist named after it — the same change a
+    /// device sends (2026-10-14). Nil when it went through; otherwise why not.
+    func playlistFromFolder(_ folder: URL) async -> String? {
+        guard let path = relative(folder) else {
+            return "“\(folder.lastPathComponent)” is not inside the library this Mac serves, so it cannot become a playlist here."
+        }
+        let before = playlists[folder.lastPathComponent]?.count ?? 0
+        await carryOut(CacheRequest(op: .playlistFromFolder, path: path, device: Host.current().localizedName ?? "Mac"))
+        let after = playlists[folder.lastPathComponent]?.count ?? 0
+        return after > before ? nil : "Nothing was added — “\(folder.lastPathComponent)” has no media files that are not already in that playlist."
+    }
+
     /// The file's path inside the library, the key the marks use.
     private func relative(_ url: URL) -> String? {
         guard let base = running?.standardizedFileURL.path else { return nil }
