@@ -305,7 +305,7 @@ struct TVPlayer: View {
                 }
                 // The key line only with a peek — "always" keeps just the file name on screen.
                 if showInfo {
-                    #if DEBUG
+                    #if DEBUG || TESTFLIGHT
                     Text("▲ 👍 + next   ▼ 👎 + next   ◀︎ back 5 s   ▶︎ ahead 5 s   hold ◀︎ previous   hold ▶︎ next   hold ● bar").foregroundStyle(.secondary)
                     #else
                     Text("▲ 👍   ▼ 👎 + next   ◀︎ back 5 s   ▶︎ ahead 5 s   hold ◀︎ previous   hold ▶︎ next   hold ● bar").foregroundStyle(.secondary)
@@ -325,9 +325,9 @@ struct TVPlayer: View {
         case .up:
             if let path = theater.current { library.change(.thumbsUp, path) }
             show("👍")
-            // DEBUG BUILDS ONLY — his ask, 2026-10-11: up = thumbs up AND next, like down, for fast rating rounds.
-            // Left out of every archive (TestFlight / App Store), where up only rates.
-            #if DEBUG
+            // DEBUG AND TESTFLIGHT BUILDS — his ask, 2026-10-11: up = thumbs up AND next, like down, for fast rating rounds.
+            // 2026-10-15 his "yes add it with all three": TestFlight gets it too. Left out of the App Store build, where up only rates.
+            #if DEBUG || TESTFLIGHT
             theater.next()
             #endif
         case .down:

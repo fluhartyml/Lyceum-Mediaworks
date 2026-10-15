@@ -169,10 +169,11 @@ struct mediaworksApp: App {
 }
 
 extension View {
-    /// "Build N" in the title bar, in Debug builds only (what Xcode runs on his devices).
+    /// "Build N" in the title bar, in Debug and TestFlight builds — never in the App Store build.
+    /// (TestFlight configuration: his ask, 2026-10-15, "testflihjt should have its own build phase like debug develop or distribute".)
     @ViewBuilder
     func developmentBuildSubtitle() -> some View {
-        #if DEBUG
+        #if DEBUG || TESTFLIGHT
         self.navigationSubtitle("Build \(BuildStamp.number)")
         #else
         self

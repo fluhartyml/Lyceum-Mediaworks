@@ -326,8 +326,9 @@ struct MacLibraryView: View {
     // REM  THE SERVER'S BUILD, DEVELOPMENT BUILDS ONLY — his ask, 2026-10-13: "during development can the from homelab b date and
     // REM  time stamp also display the server build number?" · "it will show on the macbook as a test server before we push
     // REM  to testflight". App Store builds leave it out, like the title-bar build. A Mac older than 176 never sent it.
+    // REM  2026-10-15: TestFlight builds show it too (the TestFlight configuration, his "yes add it with all three").
     static func serverBuild(_ snapshot: LibrarySnapshot) -> String {
-        #if DEBUG
+        #if DEBUG || TESTFLIGHT
         return " · build " + (snapshot.serverBuild ?? "older than 176")
         #else
         return ""
