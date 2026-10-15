@@ -11,13 +11,13 @@ import Foundation
 
 enum BuildStamp {
     /// Short SHA of HEAD when this build was stamped. "+" suffix = uncommitted changes.
-    static let commit = "8ebc389"
+    static let commit = "959e9c1"
 
     /// Branch HEAD was on when this build was stamped.
     static let branch = "main"
 
     /// Local time the stamp was generated — effectively the build time.
-    static let built = "2026-10-14 09:29"
+    static let built = "2026-10-15 07:01"
 
     /// True when this binary was never stamped. Not a missing answer — it IS the answer:
     /// this build predates stamping, so it is older than any stamped one.

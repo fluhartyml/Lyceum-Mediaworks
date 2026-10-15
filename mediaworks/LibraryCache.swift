@@ -98,8 +98,9 @@ nonisolated struct CacheRequest: Codable, Sendable, Hashable {
     /// `getOwn` — the partner mini asking for THIS Mac's own listing, not the merged one (N16).
     /// `takeIn` — the partner's Import Drive handing over a file for this Mac's trunk (I01a): path = where it goes in the
     /// library, newName = the one-time address to download it from. Only accepted from the partner's own address.
+    /// `uncheckAll` (path = the playlist's name) — every file in it out of rotation; the other half of the Check All toggle.
     /// `deletePlaylist` (path = the playlist's name) — its .m3u8 goes to the library's Trash; the media files are not touched.
-    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash, unthumb, renamePlaylist, checkAll, addToPlaylist, removeFromPlaylist, getOwn, takeIn, renameFolder, playlistFromFolder, deletePlaylist }
+    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash, unthumb, renamePlaylist, checkAll, addToPlaylist, removeFromPlaylist, getOwn, takeIn, renameFolder, playlistFromFolder, deletePlaylist, uncheckAll }
     var op: Op
     /// The file, relative to the library root ("Music Videos/Rock/1990s/Queensryche - Silent Lucidity.mp4").
     var path: String?
@@ -146,6 +147,8 @@ nonisolated struct DeviceChange: Codable, Sendable, Hashable, Identifiable {
     var playlistWasNew: Bool?
     /// A playlist delete: the files it held, in order — what Undo puts back.
     var deletedList: [String]?
+    /// An Uncheck all: the files that were checked before it, to check again on Undo.
+    var checkedBefore: [String]?
 }
 
 nonisolated enum LibraryCache {
@@ -157,6 +160,10 @@ nonisolated enum LibraryCache {
     // REM  HIS ASK, 2026-10-14: "i am unable to delete a playlist" — and 2026-10-15 "i thiyght you should have done this when
     // REM  i asked you to yesterday". Delete Playlist arrives in build 188; an older server would answer as if it had deleted.
     static let deletePlaylistBuild = 188
+
+    // REM  HIS ASK, 2026-10-15: make Check All "a toggle to check all songs in the playlist that are unchecked and if you press
+    // REM  it again it toggles every check to uncheck every song in the playlist". Uncheck All arrives in build 189.
+    static let uncheckAllBuild = 189
     /// The Bonjour service the Mac announces on the home network.
     static let serviceType = "_lyceum._tcp"
 
@@ -319,6 +326,10 @@ nonisolated extension LibrarySnapshot {
             copy.playlists = lists
         case .deletePlaylist:
             copy.playlists?[path] = nil
+        case .uncheckAll:
+            for file in copy.playlists?[path] ?? [] {
+                copy.root = Self.editingFile(copy.root, file.split(separator: "/").map(String.init)) { var f = $0; f.checked = false; return f }
+            }
         case .checkAll:
             for file in copy.playlists?[path] ?? [] {
                 copy.root = Self.editingFile(copy.root, file.split(separator: "/").map(String.init)) { var f = $0; f.checked = nil; return f }

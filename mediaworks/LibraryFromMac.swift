@@ -465,6 +465,14 @@ private struct PlaylistList: View {
 
     private var paths: [String] { library.snapshot?.playlists?[name] ?? [] }
 
+    /// Every file in the playlist is checked — the Check All toggle then offers Uncheck All.
+    private var allChecked: Bool { paths.allSatisfy { library.isPlayable($0) } }
+
+    /// The serving Mac can uncheck a whole playlist from build 189 on (LibraryCache.uncheckAllBuild).
+    private var macCanUncheckAll: Bool {
+        (library.snapshot?.serverBuild?.split(separator: " ").first.flatMap { Int($0) } ?? 0) >= LibraryCache.uncheckAllBuild
+    }
+
     /// The serving Mac can delete a playlist from build 188 on (LibraryCache.deletePlaylistBuild).
     private var macCanDelete: Bool {
         (library.snapshot?.serverBuild?.split(separator: " ").first.flatMap { Int($0) } ?? 0) >= LibraryCache.deletePlaylistBuild
@@ -484,8 +492,15 @@ private struct PlaylistList: View {
                     Button { newName = ""; saving = true } label: { Label("Save as New Playlist…", systemImage: "plus.rectangle.on.rectangle") }
                 }
                 Button { newName = name; renaming = true } label: { Label("Rename…", systemImage: "pencil") }
-                Button { library.send(CacheRequest(op: .checkAll, path: name)) } label: {
-                    Label("Check All — back in rotation", systemImage: "checkmark.square")
+                // REM  CHECK ALL IS A TOGGLE — his ask, 2026-10-15: any unchecked → Check All; all checked → Uncheck All.
+                Button { library.send(CacheRequest(op: allChecked ? .uncheckAll : .checkAll, path: name)) } label: {
+                    Label(allChecked ? "Uncheck All — out of rotation" : "Check All — back in rotation",
+                          systemImage: allChecked ? "square" : "checkmark.square")
+                }
+                .disabled(allChecked && !macCanUncheckAll)
+                if allChecked && !macCanUncheckAll {
+                    Text("Your Mac needs Mediaworks build \(LibraryCache.uncheckAllBuild) or newer to uncheck a whole playlist.")
+                        .foregroundStyle(.secondary)
                 }
                 Button(role: .destructive) { deleting = true } label: { Label("Delete Playlist…", systemImage: "trash") }
                     .disabled(!macCanDelete)
@@ -604,25 +619,32 @@ private struct FileLink: View {
     // REM  and press play pause it doesnt play and if i press center button it does a more info or inspector ... then you have
     // REM  to press play again". Center click AND Play/Pause play it (then the rest of the folder). Long-press center = the
     // REM  menu: Info, check / uncheck, and Genre, Kind, Title & Playlist.
+    // REM  THE CHECKBOX IS ITS OWN BUTTON — his ask, 2026-10-15: "each individual song needs to be able to be toggle the check
+    // REM  on or off". Swipe left onto the box and click: one step, like the iPhone. Clicking the song still plays it.
     private var tvRow: some View {
-        Button { play() } label: {
-            HStack(spacing: 14) {
-                if file.isMedia {
+        HStack(spacing: 14) {
+            if file.isMedia {
+                Button { library.change(file.isChecked ? .uncheck : .check, path) } label: {
                     Image(systemName: file.isChecked ? "checkmark.square.fill" : "square")
                         .foregroundStyle(file.isChecked ? Color.accentColor : .secondary)
                 }
-                CachedFileRow(file: file)
-                Spacer()
+                .accessibilityLabel(file.isChecked ? "Checked — click to uncheck" : "Unchecked — click to check")
             }
-            // REM  UNCHECKED = NOT SYNCHRONIZED = NOT PLAYABLE (PL9) — dimmed, and play() refuses it.
-            .opacity(file.isMedia && !file.isChecked ? 0.45 : 1)
-        }
-        .onPlayPauseCommand { play() }
-        .contextMenu {
-            Button("Info") { showInfo = true }
-            if file.isMedia {
-                Button(file.isChecked ? "Uncheck" : "Check") { library.change(file.isChecked ? .uncheck : .check, path) }
-                Button("Genre, Kind, Title & Playlist…") { editing = true }
+            Button { play() } label: {
+                HStack(spacing: 14) {
+                    CachedFileRow(file: file)
+                    Spacer()
+                }
+                // REM  UNCHECKED = NOT SYNCHRONIZED = NOT PLAYABLE (PL9) — dimmed, and play() refuses it, silently.
+                .opacity(file.isMedia && !file.isChecked ? 0.45 : 1)
+            }
+            .onPlayPauseCommand { play() }
+            .contextMenu {
+                Button("Info") { showInfo = true }
+                if file.isMedia {
+                    Button(file.isChecked ? "Uncheck" : "Check") { library.change(file.isChecked ? .uncheck : .check, path) }
+                    Button("Genre, Kind, Title & Playlist…") { editing = true }
+                }
             }
         }
         .navigationDestination(isPresented: $showInfo) { CachedFileView(path: path, fallback: fallback) }
