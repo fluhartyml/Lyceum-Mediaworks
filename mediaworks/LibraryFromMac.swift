@@ -80,6 +80,13 @@ final class MacLibrary {
         Task { await fetch() }
     }
 
+    /// Waits until the Mac has taken this file's waiting changes, up to `seconds` — true when it has.
+    func waitUntilTaken(_ path: String, seconds: Double = 10) async -> Bool {
+        let end = Date.now.addingTimeInterval(seconds)
+        while pending.contains(where: { $0.path == path }), Date.now < end { try? await Task.sleep(for: .milliseconds(100)) }
+        return !pending.contains { $0.path == path }
+    }
+
     /// A change for the Mac: shown here at once, sent now, kept until the Mac takes it.
     func change(_ op: CacheRequest.Op, _ path: String) {
         pending.append(CacheRequest(op: op, path: path, device: Self.deviceName))
@@ -635,7 +642,7 @@ private struct FileLink: View {
                     CachedFileRow(file: file)
                     Spacer()
                 }
-                // REM  UNCHECKED = NOT SYNCHRONIZED = NOT PLAYABLE (PL9) — dimmed, and play() refuses it, silently.
+                // REM  UNCHECKED = NOT SYNCHRONIZED (PL9) — dimmed; skipped when a list plays; played on purpose, it is checked first.
                 .opacity(file.isMedia && !file.isChecked ? 0.45 : 1)
             }
             .onPlayPauseCommand { play() }
@@ -651,9 +658,18 @@ private struct FileLink: View {
         .sheet(isPresented: $editing) { TVEditSheet(path: path, file: file).environment(library) }
     }
 
+    // REM  PLAYING AN UNCHECKED SONG CHECKS IT FIRST — his ruling, 2026-10-15: "if a user highlights a media file and pressed
+    // REM  play they want to check the sonh before playing and pring it back in rotation, they will see the check box turned
+    // REM  back on so if they want to uncheck it again they can". PL9 holds: the Mac streams only checked files, so the
+    // REM  check goes to the Mac first and the song plays once the Mac has taken it. No message either way.
     private func play() {
         guard file.isMedia else { showInfo = true; return }
-        guard file.isChecked else { return }   // PL9: unchecked is not synchronized — it does not play
+        guard !file.isChecked else { start(); return }
+        library.change(.check, path)
+        Task { if await library.waitUntilTaken(path) { start() } }
+    }
+
+    private func start() {
         theater.play(path, in: library.playable(queue ?? library.snapshot?.siblings(of: path) ?? [path]))
     }
     #endif
