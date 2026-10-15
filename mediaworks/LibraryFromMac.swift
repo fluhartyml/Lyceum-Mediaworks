@@ -666,7 +666,13 @@ private struct FileLink: View {
         guard file.isMedia else { showInfo = true; return }
         guard !file.isChecked else { start(); return }
         library.change(.check, path)
-        Task { if await library.waitUntilTaken(path) { start() } }
+        Task {
+            guard await library.waitUntilTaken(path) else { return }
+            // REM  HIS ASK, 2026-10-15: "put a delay in it so it has time to process thhe checked back in song" — one more
+            // REM  second after the Mac has taken the check, before the stream is asked for.
+            try? await Task.sleep(for: .seconds(1))
+            start()
+        }
     }
 
     private func start() {
