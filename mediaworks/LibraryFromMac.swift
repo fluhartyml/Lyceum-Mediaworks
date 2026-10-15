@@ -396,6 +396,11 @@ private struct CachedFolderList: View {
         (library.snapshot?.serverBuild?.split(separator: " ").first.flatMap { Int($0) } ?? 0) >= LibraryCache.folderRequestsBuild
     }
 
+    /// The serving Mac can check or uncheck a whole folder from build 196 on (LibraryCache.folderCheckBuild).
+    private var macCanCheckFolder: Bool {
+        (library.snapshot?.serverBuild?.split(separator: " ").first.flatMap { Int($0) } ?? 0) >= LibraryCache.folderCheckBuild
+    }
+
     var body: some View {
         List {
             // REM  PLAY ALL / SHUFFLE ALL / SAVE FOLDER AS PLAYLIST — his words, 2026-10-14: "folders are one step away from
@@ -416,6 +421,19 @@ private struct CachedFolderList: View {
                             .foregroundStyle(.secondary)
                     } else if let savedAs {
                         Text("Sent to your Mac — the playlist “\(savedAs)” appears at the top of the library.")
+                            .foregroundStyle(.secondary)
+                    }
+                    // REM  CHECK ALL / UNCHECK ALL ON A FOLDER — his catch, 2026-10-15: "i cant do the check mark all
+                    // REM  uncheckmark all within a folder only a playlist". The playlist toggle, subfolders included.
+                    let media = PlayOrder.media(in: folder, at: path)
+                    let allChecked = media.allSatisfy { library.isPlayable($0) }
+                    Button { library.send(CacheRequest(op: allChecked ? .uncheckFolder : .checkFolder, path: path)) } label: {
+                        Label(allChecked ? "Uncheck All — out of rotation" : "Check All — back in rotation",
+                              systemImage: allChecked ? "square" : "checkmark.square")
+                    }
+                    .disabled(media.isEmpty || !macCanCheckFolder)
+                    if !macCanCheckFolder {
+                        Text("Your Mac needs Mediaworks build \(LibraryCache.folderCheckBuild) or newer to check or uncheck a whole folder.")
                             .foregroundStyle(.secondary)
                     }
                 }

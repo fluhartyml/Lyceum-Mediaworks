@@ -144,7 +144,7 @@ final class TVTheater {
 
     func previous() {
         if player.currentTime().seconds > 3 { player.seek(to: .zero) }
-        else if order.back() { load() }
+        else if order.back(isPlayable: isPlayable) { load() }
         else { player.seek(to: .zero) }
     }
     func skip(_ seconds: Double) {
@@ -301,8 +301,11 @@ struct TVPlayer: View {
                 }
                 // REM  THE FILE NAME — his ask, 2026-10-10 13:25 watching #NSYNC on the Living Room TV: "can it show the file name
                 // REM  at the bottom of the screen?" Shown for 5 s when each video starts and after any press; hold center shows / hides it.
+                // REM  ITS CHECKMARK BESIDE IT — his words, 2026-10-15: "i dont know how the checkmark was". Checked = in rotation.
                 if let path = theater.current {
-                    Text((path as NSString).lastPathComponent).font(.lyceumHeadline)
+                    Label((path as NSString).lastPathComponent,
+                          systemImage: library.isPlayable(path) ? "checkmark.square.fill" : "square")
+                        .font(.lyceumHeadline)
                 }
                 // The key line only with a peek — "always" keeps just the file name on screen.
                 if showInfo {

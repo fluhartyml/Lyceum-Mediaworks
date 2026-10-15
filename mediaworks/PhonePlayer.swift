@@ -106,7 +106,7 @@ final class PhonePlayer {
 
     /// Back to the start of this one if it has played a few seconds; otherwise the one before.
     func previous() {
-        if player.currentTime().seconds > 3 || !order.back() { player.seek(to: .zero); return }
+        if player.currentTime().seconds > 3 || !order.back(isPlayable: isPlayable) { player.seek(to: .zero); return }
         load()
     }
 

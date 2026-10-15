@@ -100,7 +100,8 @@ nonisolated struct CacheRequest: Codable, Sendable, Hashable {
     /// library, newName = the one-time address to download it from. Only accepted from the partner's own address.
     /// `uncheckAll` (path = the playlist's name) — every file in it out of rotation; the other half of the Check All toggle.
     /// `deletePlaylist` (path = the playlist's name) — its .m3u8 goes to the library's Trash; the media files are not touched.
-    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash, unthumb, renamePlaylist, checkAll, addToPlaylist, removeFromPlaylist, getOwn, takeIn, renameFolder, playlistFromFolder, deletePlaylist, uncheckAll }
+    /// `checkFolder` / `uncheckFolder` (path = the folder) — every media file in it and the folders inside it, in or out of rotation.
+    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash, unthumb, renamePlaylist, checkAll, addToPlaylist, removeFromPlaylist, getOwn, takeIn, renameFolder, playlistFromFolder, deletePlaylist, uncheckAll, checkFolder, uncheckFolder }
     var op: Op
     /// The file, relative to the library root ("Music Videos/Rock/1990s/Queensryche - Silent Lucidity.mp4").
     var path: String?
@@ -164,6 +165,10 @@ nonisolated enum LibraryCache {
     // REM  HIS ASK, 2026-10-15: make Check All "a toggle to check all songs in the playlist that are unchecked and if you press
     // REM  it again it toggles every check to uncheck every song in the playlist". Uncheck All arrives in build 189.
     static let uncheckAllBuild = 189
+
+    // REM  HIS CATCH, 2026-10-15: "i cant do the check mark all uncheckmark all within a folder only a playlist". The same
+    // REM  toggle on a folder, subfolders included, arrives in build 196.
+    static let folderCheckBuild = 196
     /// The Bonjour service the Mac announces on the home network.
     static let serviceType = "_lyceum._tcp"
 
@@ -264,6 +269,19 @@ nonisolated extension LibrarySnapshot {
         return folder.files.first { $0.name == name }
     }
 
+    /// Every media file in a folder and the folders inside it, as library-relative paths.
+    func media(under folderPath: String) -> [String] {
+        func walk(_ folder: CachedFolder, _ at: String) -> [String] {
+            folder.files.filter(\.isMedia).map { at + "/" + $0.name } + folder.folders.flatMap { walk($0, at + "/" + $0.name) }
+        }
+        var folder = root
+        for part in folderPath.split(separator: "/").map(String.init) {
+            guard let next = folder.folders.first(where: { $0.name == part }) else { return [] }
+            folder = next
+        }
+        return walk(folder, folderPath)
+    }
+
     /// The media files in the folder holding `path`, as library-relative paths, in the folder's order.
     func siblings(of path: String) -> [String] {
         var parts = path.split(separator: "/").map(String.init)
@@ -333,6 +351,12 @@ nonisolated extension LibrarySnapshot {
         case .checkAll:
             for file in copy.playlists?[path] ?? [] {
                 copy.root = Self.editingFile(copy.root, file.split(separator: "/").map(String.init)) { var f = $0; f.checked = nil; return f }
+            }
+        case .checkFolder, .uncheckFolder:
+            for file in copy.media(under: path) {
+                copy.root = Self.editingFile(copy.root, file.split(separator: "/").map(String.init)) { original in
+                    var f = original; f.checked = request.op == .checkFolder ? nil : false; return f
+                }
             }
         case .trash:
             copy.root = Self.removingFile(copy.root, path.split(separator: "/").map(String.init))

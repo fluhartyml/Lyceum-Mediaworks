@@ -80,6 +80,8 @@ struct DeviceChangesView: View {
         case .deletePlaylist: "Deleted playlist"
         case .checkAll: "Checked all in playlist"
         case .uncheckAll: "Unchecked all in playlist"
+        case .checkFolder: "Checked all in folder"
+        case .uncheckFolder: "Unchecked all in folder"
         case .addToPlaylist: "Added to a playlist"
         case .removeFromPlaylist: "Taken out of a playlist"
         case .getOwn: "Partner looked"

@@ -290,6 +290,10 @@ final class LibraryCatalog {
             // REM  The media files in it are never touched — a playlist only points at them (026).
             guard playlists[path] != nil, trashPlaylistFile(path) else { return }
         }
+        // REM  CHECK / UNCHECK A FOLDER (2026-10-15) — this Mac's own files under it; a partner does its own half.
+        let folderFiles: [String] = [.checkFolder, .uncheckFolder].contains(request.op)
+            ? snapshot.flatMap { DLNAContent.folder($0.root, path) }.map { Self.ownMedia(in: $0, at: path) } ?? []
+            : []
         // REM  A DEVICE'S CHANGE IS RECORDED WITH WHAT IT WAS BEFORE — his rule, 2026-10-10 (platforms 002e/f): "the change should
         // REM  need to be able to be reversed if the mac (user) disaproves." The Mac's own checkbox is not a device change.
         if let device = request.device {
@@ -300,6 +304,8 @@ final class LibraryCatalog {
             if request.op == .deletePlaylist { change.deletedList = playlists[path] }
             if request.op == .uncheckAll { change.checkedBefore = (playlists[path] ?? []).filter { !unchecked.contains($0) } }
             if request.op == .checkAll { change.wasUnchecked = (playlists[path] ?? []).filter { unchecked.contains($0) } }
+            if request.op == .uncheckFolder { change.checkedBefore = folderFiles.filter { !unchecked.contains($0) } }
+            if request.op == .checkFolder { change.wasUnchecked = folderFiles.filter { unchecked.contains($0) } }
             if [.addToPlaylist, .removeFromPlaylist].contains(request.op) {
                 // REM  Only a real change is recorded — already in (or already out of) the playlist is nothing to undo.
                 guard let name = request.playlist, let list = playlists[name],
@@ -336,6 +342,10 @@ final class LibraryCatalog {
             for file in playlists[path] ?? [] { unchecked.remove(file) }
         case .uncheckAll:
             for file in playlists[path] ?? [] { unchecked.insert(file) }
+        case .checkFolder:
+            for file in folderFiles { unchecked.remove(file) }
+        case .uncheckFolder:
+            for file in folderFiles { unchecked.insert(file) }
         // REM  MOVING A FILE BETWEEN PLAYLISTS — his words, 2026-10-10 (004c): "just mantenance and upkeep. moving from one
         // REM  playlist to another." Out of one, into another; the file itself never moves (026). Only playlists that exist.
         case .addToPlaylist:
@@ -552,14 +562,14 @@ final class LibraryCatalog {
             saveMarksAndPublish()
             return
         }
-        if change.op == .uncheckAll {
+        if change.op == .uncheckAll || change.op == .uncheckFolder {
             for file in change.checkedBefore ?? [] { unchecked.remove(file) }
             deviceChanges[index].undone = .now
             saveChanges()
             saveMarksAndPublish()
             return
         }
-        if change.op == .checkAll {
+        if change.op == .checkAll || change.op == .checkFolder {
             for file in change.wasUnchecked ?? [] { unchecked.insert(file) }
             deviceChanges[index].undone = .now
             saveChanges()
@@ -1041,8 +1051,8 @@ extension LibraryCatalog {
                 else { connection.send(content: Framing.frame(Data()), completion: .contentProcessed { _ in connection.cancel() }) }
             }
             return true
-        case .renamePlaylist, .checkAll, .uncheckAll, .deletePlaylist:
-            // A playlist can hold files from both minis — each does its own part.
+        case .renamePlaylist, .checkAll, .uncheckAll, .deletePlaylist, .checkFolder, .uncheckFolder:
+            // A playlist or a folder can hold files from both minis — each does its own part.
             Task { for name in partner.servers { _ = await partner.ask(request, to: name) }; await partner.refresh() }
             return false
         case .addToPlaylist, .removeFromPlaylist:

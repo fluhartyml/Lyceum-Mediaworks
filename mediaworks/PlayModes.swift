@@ -62,11 +62,24 @@ struct PlayOrder {
 
     var current: String? { items.indices.contains(index) ? items[index] : nil }
 
+    // REM  PREVIOUS GOES BACK TO WHAT PLAYED — his catch, 2026-10-15 on the Living Room TV: "i tried going to the previous
+    // REM  media file and it went to a shuffle file and not the previous file". Previous used to step back one place in the
+    // REM  play order, and that place could be an unchecked file Next had skipped — one he never saw. Now it walks this.
+    /// What actually played, oldest first.
+    private(set) var played: [String] = []
+
     /// Starts at `path`. Shuffled, the one chosen plays first and the rest follow at random.
     mutating func start(_ path: String, in queue: [String], shuffle: Bool) {
         listed = queue.contains(path) ? queue : [path]
         items = shuffle ? [path] + listed.filter { $0 != path }.shuffled() : listed
         index = items.firstIndex(of: path) ?? 0
+        played = [path]
+    }
+
+    private mutating func remember() {
+        guard let now = current else { return }
+        played.append(now)
+        if played.count > 500 { played.removeFirst(played.count - 500) }
     }
 
     /// Shuffle switched while playing: the one playing carries on, and what follows it changes.
@@ -90,18 +103,22 @@ struct PlayOrder {
         if ended, modes.repeatMode == .one, current != nil { return .replay }
         var n = index + 1
         while n < items.count, !isPlayable(items[n]) { n += 1 }
-        if n < items.count { index = n; return .load }
+        if n < items.count { index = n; remember(); return .load }
         guard modes.repeatMode != .off else { return .stop }
         if modes.shuffle { items = listed.shuffled() }
         guard let first = items.firstIndex(where: isPlayable) else { return .stop }
         index = first
+        remember()
         return .load
     }
 
-    /// One back, if there is one before this.
-    mutating func back() -> Bool {
-        guard index > 0 else { return false }
-        index -= 1
+    /// The one that played before this, if there is one — passing over any unchecked since, which the Mac will not stream.
+    mutating func back(isPlayable: (String) -> Bool) -> Bool {
+        var earlier = played.dropLast()
+        while let last = earlier.last, !isPlayable(last) || !items.contains(last) { earlier.removeLast() }
+        guard let previous = earlier.last, let at = items.firstIndex(of: previous) else { return false }
+        played = Array(earlier)
+        index = at
         return true
     }
 
