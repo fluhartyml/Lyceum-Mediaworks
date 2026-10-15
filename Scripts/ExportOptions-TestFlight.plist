@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Upload to TestFlight (internal testing only):
+    xcodebuild -exportArchive -archivePath <archive> -exportOptionsPlist Scripts/ExportOptions-TestFlight.plist -exportPath <tmp> -allowProvisioningUpdates
+  manageAppVersionAndBuildNumber is OFF on purpose (2026-10-15): with it on, Xcode silently
+  renumbered a duplicate 191 upload to 192, so the build number no longer named its commit.
+  Off, a duplicate upload FAILS instead of being renamed.
+-->
+<plist version="1.0"><dict>
+<key>method</key><string>app-store-connect</string>
+<key>destination</key><string>upload</string>
+<key>teamID</key><string>3X3F6UJ44H</string>
+<key>signingStyle</key><string>automatic</string>
+<key>testFlightInternalTestingOnly</key><true/>
+<key>manageAppVersionAndBuildNumber</key><false/>
+</dict></plist>
