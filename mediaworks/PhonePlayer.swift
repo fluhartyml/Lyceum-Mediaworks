@@ -136,22 +136,23 @@ struct PhoneHome: View {
                 MacLibraryView(library: library)
                     .transition(.move(edge: .leading))
             } else {
+                // The Theater's remote fills only the top half; this lets a swipe land anywhere on the page. Only here —
+                // a whole-screen contentShape over the Library took its rows' taps again (tested 2026-10-15).
                 TheaterPage()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .contentShape(Rectangle())
                     .transition(.move(edge: .trailing))
             }
         }
         // The whole screen — without this the ZStack measured zero high, so the swipe had nothing to land on.
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .contentShape(Rectangle())
-        .simultaneousGesture(DragGesture(minimumDistance: 40)
-            .onEnded { value in
-                let dx = value.translation.width, dy = value.translation.height
-                guard abs(dx) > abs(dy) * 1.5, abs(dx) > 80 else { return }
-                withAnimation(.snappy) {
-                    if player.page == 0, dx < 0 { player.page = 1 }
-                    else if player.page == 1, dx > 0 { player.page = 0 }
-                }
-            })
+        // REM  FIXED 2026-10-15 — his report on build 192: "none of the playlists or folders expand when tapped". The swipe was
+        // REM  a SwiftUI DragGesture over the whole screen; as .simultaneousGesture AND as .gesture it took every tap from the
+        // REM  Library's rows — removing it made them open (testPhoneFolderOpensWhenTapped, run all three ways). UIKit's own
+        // REM  swipe recognizer, told never to cancel or delay touches, leaves the taps alone. (TabView(.page) retried the same
+        // REM  day: still draws the Library blank on iOS 27 — the 10-10 note stands.)
+        .gesture(PageSwipe(direction: .left) { if player.page == 0 { withAnimation(.snappy) { player.page = 1 } } })
+        .gesture(PageSwipe(direction: .right) { if player.page == 1 { withAnimation(.snappy) { player.page = 0 } } })
         // REM  THE DOTS ARE AN OVERLAY, NOT A SAFE-AREA BAR: as a bar, its frosted background stretched over the WHOLE screen and
         // REM  hid the pages — that, not the pagers, was why the Library looked blank in three earlier tries.
         // Under the clock, so they never cover the "From your Mac" line at the bottom of the Library.
@@ -181,6 +182,33 @@ struct PhoneHome: View {
                 .environment(player)
                 .environment(library)
         }
+    }
+}
+
+/// A sideways swipe that never takes a tap: UIKit's swipe recognizer, recognized alongside the list's own gestures,
+/// with touches neither cancelled nor delayed — so a row's tap still opens it.
+private struct PageSwipe: UIGestureRecognizerRepresentable {
+    let direction: UISwipeGestureRecognizer.Direction
+    let action: () -> Void
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
+
+    func makeUIGestureRecognizer(context: Context) -> UISwipeGestureRecognizer {
+        let swipe = UISwipeGestureRecognizer()
+        swipe.direction = direction
+        swipe.cancelsTouchesInView = false
+        swipe.delaysTouchesBegan = false
+        swipe.delaysTouchesEnded = false
+        swipe.delegate = context.coordinator
+        return swipe
+    }
+
+    func handleUIGestureRecognizerAction(_ recognizer: UISwipeGestureRecognizer, context: Context) {
+        if recognizer.state == .ended { action() }
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
     }
 }
 
