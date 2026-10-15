@@ -248,6 +248,7 @@ struct TVPlayer: View {
     @State private var flash: String?
     @State private var showInfo = false
     @AppStorage("tvAlwaysShowFileName") private var alwaysShowFileName = false
+    @AppStorage("tvMediaProcessing") private var processing = false
     private var modes: PlayModes { .shared }
 
     var body: some View {
@@ -305,11 +306,8 @@ struct TVPlayer: View {
                 }
                 // The key line only with a peek — "always" keeps just the file name on screen.
                 if showInfo {
-                    #if DEBUG || TESTFLIGHT
-                    Text("▲ 👍 + next   ▼ 👎 + next   ◀︎ back 5 s   ▶︎ ahead 5 s   hold ◀︎ previous   hold ▶︎ next   hold ● bar").foregroundStyle(.secondary)
-                    #else
-                    Text("▲ 👍   ▼ 👎 + next   ◀︎ back 5 s   ▶︎ ahead 5 s   hold ◀︎ previous   hold ▶︎ next   hold ● bar").foregroundStyle(.secondary)
-                    #endif
+                    Text((processing ? "Processing   ▲ 👍 uncheck + next   ▼ 👎 uncheck + next" : "▲ 👍   ▼ 👎 + next")
+                         + "   ◀︎ back 5 s   ▶︎ ahead 5 s   hold ◀︎ previous   hold ▶︎ next   hold ● bar").foregroundStyle(.secondary)
                 }
             }
             .font(.lyceumBody)
@@ -322,14 +320,18 @@ struct TVPlayer: View {
 
     private func handle(_ press: RemotePress) {
         switch press {
+        // REM  MEDIA FILE PROCESSING — his design, 2026-10-15: "a 'media file processing' mode where when toggled ... when
+        // REM  toggled on it uncheckes for up and down when toggled off it unchecks only when thumbs downed" · "both skip forward
+        // REM  also". On: ▲ = 👍 + uncheck + next, ▼ = 👎 + next — every rated file leaves rotation, so what is left is unrated.
+        // REM  Off: ▲ only rates, ▼ = 👎 + next. Replaces the Debug/TestFlight-only "▲ + next" of 2026-10-11 — a setting now,
+        // REM  in every build. The 👍 goes to the Mac first, then the uncheck, in that order (one waiting list).
         case .up:
-            if let path = theater.current { library.change(.thumbsUp, path) }
+            if let path = theater.current {
+                library.change(.thumbsUp, path)
+                if processing { library.change(.uncheck, path) }
+            }
             show("👍")
-            // DEBUG AND TESTFLIGHT BUILDS — his ask, 2026-10-11: up = thumbs up AND next, like down, for fast rating rounds.
-            // 2026-10-15 his "yes add it with all three": TestFlight gets it too. Left out of the App Store build, where up only rates.
-            #if DEBUG || TESTFLIGHT
-            theater.next()
-            #endif
+            if processing { theater.next() }
         case .down:
             if let path = theater.current { library.change(.thumbsDown, path) }
             show("👎")
@@ -509,6 +511,7 @@ struct TVSettingsSheet: View {
     // REM  HIS ASK, 2026-10-10: "default show the file name for a short period of time but i want a toggle in settings to
     // REM  always show file name at the bottom of the screen". Off = the 5-second default; on = always.
     @AppStorage("tvAlwaysShowFileName") private var alwaysShowFileName = false
+    @AppStorage("tvMediaProcessing") private var processing = false
     @Environment(TVTheater.self) private var theater
 
     var body: some View {
@@ -523,6 +526,13 @@ struct TVSettingsSheet: View {
                         ForEach(RepeatMode.allCases) { Text($0.title).tag($0) }
                     }
                     Text("Repeat One plays the same video again when it ends; Next still moves on. Repeat All starts the folder or playlist over.")
+                        .foregroundStyle(.secondary)
+                }
+                Section("Rating with the remote") {
+                    Toggle("Media File Processing", isOn: $processing)
+                    Text(processing
+                         ? "▲ 👍 and ▼ 👎 both uncheck the file and go to the next one — everything you rate leaves rotation, so only unrated files are left to play."
+                         : "▲ 👍 rates and keeps playing. ▼ 👎 unchecks the file and goes to the next one.")
                         .foregroundStyle(.secondary)
                 }
                 Section("While a video plays") {
