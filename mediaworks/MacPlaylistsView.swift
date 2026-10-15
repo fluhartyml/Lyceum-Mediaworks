@@ -18,6 +18,7 @@ struct MacPlaylistsView: View {
     @State private var selected: String?
     @State private var renaming = false
     @State private var saving = false
+    @State private var deleting = false
     @State private var newName = ""
     @State private var sortingPlaylist = false
 
@@ -75,6 +76,17 @@ struct MacPlaylistsView: View {
                  ? "Renaming \(selected ?? "") saves it as its own playlist. The next 👍 of that kind starts a new one."
                  : "The playlist's file in the Playlists folder is renamed too.")
         }
+        .alert("Delete “\(selected ?? "")”?", isPresented: $deleting) {
+            Button("Delete", role: .destructive) {
+                if let name = selected {
+                    catalog.playlistAction(.deletePlaylist, name)
+                    selected = nil
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The playlist's file goes to the library's Trash. The media files in it are not touched.")
+        }
         .alert("Save as New Playlist", isPresented: $saving) {
             TextField("Playlist name", text: $newName)
             Button("Save") {
@@ -104,6 +116,8 @@ struct MacPlaylistsView: View {
                 }
                 Button("Rename…") { newName = name; renaming = true }
                     .lyceumHelp("Rename — renaming Thumbs Up saves it as its own playlist")
+                Button("Delete…", role: .destructive) { deleting = true }
+                    .lyceumHelp("Delete — the playlist goes to the library's Trash; its files stay where they are")
                 // REM  016 — "the meta tag sort order will be used in making playlists" (Settings → Sorting, Audio or Video tab
                 // REM  by what the playlist mostly holds).
                 Button(sortingPlaylist ? "Sorting…" : "Sort by Sorting Settings") { sortByTags(name) }

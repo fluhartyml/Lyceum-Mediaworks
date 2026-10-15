@@ -98,7 +98,8 @@ nonisolated struct CacheRequest: Codable, Sendable, Hashable {
     /// `getOwn` — the partner mini asking for THIS Mac's own listing, not the merged one (N16).
     /// `takeIn` — the partner's Import Drive handing over a file for this Mac's trunk (I01a): path = where it goes in the
     /// library, newName = the one-time address to download it from. Only accepted from the partner's own address.
-    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash, unthumb, renamePlaylist, checkAll, addToPlaylist, removeFromPlaylist, getOwn, takeIn, renameFolder, playlistFromFolder }
+    /// `deletePlaylist` (path = the playlist's name) — its .m3u8 goes to the library's Trash; the media files are not touched.
+    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash, unthumb, renamePlaylist, checkAll, addToPlaylist, removeFromPlaylist, getOwn, takeIn, renameFolder, playlistFromFolder, deletePlaylist }
     var op: Op
     /// The file, relative to the library root ("Music Videos/Rock/1990s/Queensryche - Silent Lucidity.mp4").
     var path: String?
@@ -143,6 +144,8 @@ nonisolated struct DeviceChange: Codable, Sendable, Hashable, Identifiable {
     /// A playlist made from a folder: the files it added, and whether the playlist was new — what Undo takes back.
     var added: [String]?
     var playlistWasNew: Bool?
+    /// A playlist delete: the files it held, in order — what Undo puts back.
+    var deletedList: [String]?
 }
 
 nonisolated enum LibraryCache {
@@ -151,6 +154,9 @@ nonisolated enum LibraryCache {
     // REM  if all went well — so a Mac asks only servers at this build or later.
     static let folderRequestsBuild = 184
 
+    // REM  HIS ASK, 2026-10-14: "i am unable to delete a playlist" — and 2026-10-15 "i thiyght you should have done this when
+    // REM  i asked you to yesterday". Delete Playlist arrives in build 188; an older server would answer as if it had deleted.
+    static let deletePlaylistBuild = 188
     /// The Bonjour service the Mac announces on the home network.
     static let serviceType = "_lyceum._tcp"
 
@@ -311,6 +317,8 @@ nonisolated extension LibrarySnapshot {
             lists[newName] = list
             lists[path] = nil
             copy.playlists = lists
+        case .deletePlaylist:
+            copy.playlists?[path] = nil
         case .checkAll:
             for file in copy.playlists?[path] ?? [] {
                 copy.root = Self.editingFile(copy.root, file.split(separator: "/").map(String.init)) { var f = $0; f.checked = nil; return f }

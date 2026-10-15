@@ -285,6 +285,11 @@ final class LibraryCatalog {
             guard let newName = request.newName?.trimmingCharacters(in: .whitespaces), Self.validName(newName),
                   playlists[path] != nil, playlists[newName] == nil else { return }
         }
+        if request.op == .deletePlaylist {
+            // REM  DELETE PLAYLIST — the .m3u8 goes to the library's Trash first; if it cannot, nothing is deleted.
+            // REM  The media files in it are never touched — a playlist only points at them (026).
+            guard playlists[path] != nil, trashPlaylistFile(path) else { return }
+        }
         // REM  A DEVICE'S CHANGE IS RECORDED WITH WHAT IT WAS BEFORE — his rule, 2026-10-10 (platforms 002e/f): "the change should
         // REM  need to be able to be reversed if the mac (user) disaproves." The Mac's own checkbox is not a device change.
         if let device = request.device {
@@ -292,6 +297,7 @@ final class LibraryCatalog {
                                       wasChecked: !unchecked.contains(path),
                                       wasThumbedUp: thumbedUp(path))
             if request.op == .renamePlaylist { change.newName = request.newName?.trimmingCharacters(in: .whitespaces) }
+            if request.op == .deletePlaylist { change.deletedList = playlists[path] }
             if request.op == .checkAll { change.wasUnchecked = (playlists[path] ?? []).filter { unchecked.contains($0) } }
             if [.addToPlaylist, .removeFromPlaylist].contains(request.op) {
                 // REM  Only a real change is recorded — already in (or already out of) the playlist is nothing to undo.
@@ -323,6 +329,8 @@ final class LibraryCatalog {
             playlists[newName] = list
             playlists[path] = nil
             renamePlaylistFile(path, to: newName)
+        case .deletePlaylist:
+            playlists[path] = nil
         case .checkAll:
             for file in playlists[path] ?? [] { unchecked.remove(file) }
         // REM  MOVING A FILE BETWEEN PLAYLISTS — his words, 2026-10-10 (004c): "just mantenance and upkeep. moving from one
@@ -475,6 +483,15 @@ final class LibraryCatalog {
         writtenPlaylists = Set(playlists.keys)
     }
 
+    /// Moves a playlist's file into the library's Trash. True when it went, or when there was no file to move.
+    private func trashPlaylistFile(_ name: String) -> Bool {
+        guard let file = playlistFile(name), FileManager.default.fileExists(atPath: file.path) else { return true }
+        guard let root = running, let trash = store?.trashFolder,
+              (try? LibraryStore.moveToTrash([file], libraryRoot: root, trash: trash)) != nil else { return false }
+        writtenPlaylists.remove(name)
+        return true
+    }
+
     private func renamePlaylistFile(_ old: String, to new: String) {
         guard let from = playlistFile(old), let to = playlistFile(new), FileManager.default.fileExists(atPath: from.path) else { return }
         try? FileManager.default.moveItem(at: from, to: to)
@@ -508,6 +525,15 @@ final class LibraryCatalog {
             playlists[change.path] = list
             playlists[newName] = nil
             renamePlaylistFile(newName, to: change.path)
+            deviceChanges[index].undone = .now
+            saveChanges()
+            saveMarksAndPublish()
+            return
+        }
+        if change.op == .deletePlaylist, let list = change.deletedList {
+            // REM  Undo puts the playlist back from what was recorded, and writes its file again.
+            guard playlists[change.path] == nil else { return }
+            playlists[change.path] = list
             deviceChanges[index].undone = .now
             saveChanges()
             saveMarksAndPublish()
@@ -1005,7 +1031,7 @@ extension LibraryCatalog {
                 else { connection.send(content: Framing.frame(Data()), completion: .contentProcessed { _ in connection.cancel() }) }
             }
             return true
-        case .renamePlaylist, .checkAll:
+        case .renamePlaylist, .checkAll, .deletePlaylist:
             // A playlist can hold files from both minis — each does its own part.
             Task { for name in partner.servers { _ = await partner.ask(request, to: name) }; await partner.refresh() }
             return false

@@ -54,6 +54,7 @@ struct HybridLibraryView: View {
     // REM  HIS WORD, 2026-10-13: "yes right click to rename on the mac" — the same rename the TV's Rename… row sends (PL2).
     @State private var renaming: String?
     @State private var newName = ""
+    @State private var deletingPlaylist: String?
     // REM  HIS ASK, 2026-10-13: "can i right click a folder to either rename the folder or make a playlist from folder?" ·
     // REM  "yes build both include subfolders".
     @State private var renamingFolder: String?
@@ -77,7 +78,10 @@ struct HybridLibraryView: View {
                         ForEach(lists.keys.sorted(by: LibraryCache.playlistOrder), id: \.self) { name in
                             Label("\(name)  (\(lists[name]?.count ?? 0))", systemImage: LibraryCache.isThumbsUp(name) ? "hand.thumbsup.fill" : "music.note.list")
                                 .tag(Place.playlist(name))
-                                .contextMenu { Button("Rename…") { newName = name; renaming = name } }
+                                .contextMenu {
+                                    Button("Rename…") { newName = name; renaming = name }
+                                    Button("Delete Playlist…", role: .destructive) { deletingPlaylist = name }
+                                }
                         }
                     }
                 }
@@ -154,6 +158,12 @@ struct HybridLibraryView: View {
             TextField("Name", text: $newName)
             Button("Rename") { if let old = renaming { rename(old, to: newName) }; renaming = nil }
             Button("Cancel", role: .cancel) { renaming = nil }
+        }
+        .alert("Delete “\(deletingPlaylist ?? "")”?", isPresented: Binding(get: { deletingPlaylist != nil }, set: { if !$0 { deletingPlaylist = nil } })) {
+            Button("Delete", role: .destructive) { if let name = deletingPlaylist { deletePlaylist(name) }; deletingPlaylist = nil }
+            Button("Cancel", role: .cancel) { deletingPlaylist = nil }
+        } message: {
+            Text("The playlist's file goes to the library's Trash. The media files in it are not touched.")
         }
         .alert("Rename Folder", isPresented: Binding(get: { renamingFolder != nil }, set: { if !$0 { renamingFolder = nil } })) {
             TextField("Name", text: $newName)
@@ -253,6 +263,27 @@ struct HybridLibraryView: View {
                 if await partner.ask(request, to: host) == nil { problem = "\(host) did not answer — “\(old)” was not renamed there." }
             }
             if place == .playlist(old) { place = .playlist(name) }
+            await partner.refresh()
+        }
+    }
+
+    /// Every server holding the playlist deletes its part. None is asked unless all can read the request, so a playlist
+    /// is never deleted on one mini and left on the other.
+    private func deletePlaylist(_ name: String) {
+        let holders = partner.servers.filter { partner.snapshots[$0]?.playlists?[name] != nil }
+        let old = holders.filter { host in
+            (partner.snapshots[host]?.serverBuild?.split(separator: " ").first.flatMap { Int($0) } ?? 0) < LibraryCache.deletePlaylistBuild
+        }
+        guard old.isEmpty else {
+            problem = old.joined(separator: " and ") + " is on a build older than \(LibraryCache.deletePlaylistBuild), which cannot delete a playlist yet. It arrives with the TestFlight update. Nothing was changed."
+            return
+        }
+        Task {
+            for host in holders {
+                let request = CacheRequest(op: .deletePlaylist, path: name, device: Host.current().localizedName ?? "Mac")
+                if await partner.ask(request, to: host) == nil { problem = "\(host) did not answer — “\(name)” was not deleted there." }
+            }
+            if place == .playlist(name) { place = nil }
             await partner.refresh()
         }
     }

@@ -459,10 +459,16 @@ private struct PlaylistList: View {
     @Environment(MacLibrary.self) private var library
     @State private var renaming = false
     @State private var saving = false
+    @State private var deleting = false
     @State private var newName = ""
     @Environment(\.dismiss) private var dismiss
 
     private var paths: [String] { library.snapshot?.playlists?[name] ?? [] }
+
+    /// The serving Mac can delete a playlist from build 188 on (LibraryCache.deletePlaylistBuild).
+    private var macCanDelete: Bool {
+        (library.snapshot?.serverBuild?.split(separator: " ").first.flatMap { Int($0) } ?? 0) >= LibraryCache.deletePlaylistBuild
+    }
 
     var body: some View {
         List {
@@ -480,6 +486,12 @@ private struct PlaylistList: View {
                 Button { newName = name; renaming = true } label: { Label("Rename…", systemImage: "pencil") }
                 Button { library.send(CacheRequest(op: .checkAll, path: name)) } label: {
                     Label("Check All — back in rotation", systemImage: "checkmark.square")
+                }
+                Button(role: .destructive) { deleting = true } label: { Label("Delete Playlist…", systemImage: "trash") }
+                    .disabled(!macCanDelete)
+                if !macCanDelete {
+                    Text("Your Mac needs Mediaworks build \(LibraryCache.deletePlaylistBuild) or newer to delete a playlist.")
+                        .foregroundStyle(.secondary)
                 }
             }
             Section {
@@ -507,6 +519,15 @@ private struct PlaylistList: View {
             Text(LibraryCache.isThumbsUp(name)
                  ? "Renaming \(name) saves it as its own playlist. The next 👍 of that kind starts a new one."
                  : "Your Mac renames the playlist and its file.")
+        }
+        .alert("Delete “\(name)”?", isPresented: $deleting) {
+            Button("Delete", role: .destructive) {
+                library.send(CacheRequest(op: .deletePlaylist, path: name))
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your Mac moves the playlist's file to the library's Trash. The media files in it are not touched.")
         }
         .alert("Save as New Playlist", isPresented: $saving) {
             TextField("Playlist name", text: $newName)
