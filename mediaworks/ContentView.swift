@@ -84,6 +84,8 @@ struct ContentView: View {
         .task { JobWorker.shared.start() }
         // REM  IMPORTS THROUGH THE MASTER (ImportJobs.swift) — originals still waiting are offered again; the master's list resumes.
         .task { ImportOutbox.shared.resume(); if !ImportMaster.shared.open.isEmpty { ImportMaster.shared.start() } }
+        // REM  A Mac with no library folder of its own still watches its drop folder — and sends to the master.
+        .task { if library.root == nil { LibraryIntake.shared.start(store: library) } }
         // REM  SMART TVs (DLNA, 017/018) — serves if the user turned it on in Settings.
         .task { DLNAServer.shared.startIfOn() }
         // REM  TWO MACS, ONE LIBRARY (N16) — keeps the partner's half current if one is named.

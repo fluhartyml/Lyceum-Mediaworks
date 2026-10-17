@@ -417,6 +417,8 @@ final class ImportOutbox {
         var server: String
         /// A Commander COPY keeps the original; a move or Send to Server lets it go once the master says DONE.
         var keep: Bool?
+        /// Where the original is — so a drop folder never sends the same file twice.
+        var path: String?
     }
 
     private(set) var entries: [Entry] = {
@@ -446,7 +448,7 @@ final class ImportOutbox {
         guard let bookmark = try? url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil) else { return nil }
         var job = ImportJob(id: UUID().uuidString, name: name, size: size, origin: ImportDesk.me, token: UUID().uuidString)
         job.destination = destination
-        let entry = Entry(job: job, bookmark: bookmark, server: server, keep: keep ? true : nil)
+        let entry = Entry(job: job, bookmark: bookmark, server: server, keep: keep ? true : nil, path: url.path)
         entries.append(entry)
         offer(entry)
         return job

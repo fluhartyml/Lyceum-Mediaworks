@@ -69,6 +69,52 @@ final class LibraryIntake {
 
     private init() { restore() }
 
+    // MARK: A Mac with no library of its own — the drop goes to the master
+
+    // REM  HIS HYBRID, 2026-10-17: "you could drop them to a drop folder and mediaworks can process a finder file > import can
+    // REM  zero in on a local drive or folder" — on ANY Mac. With no library here, each new file that has finished arriving
+    // REM  becomes an import job for the master (ImportJobs.swift); the master files it by its tags. Nothing here is deleted
+    // REM  until the master says it arrived.
+    private func sendToMaster(from drop: URL) async {
+        working = true
+        defer { working = false; lastLook = .now }
+        guard FileManager.default.fileExists(atPath: drop.path) else { status = "\(drop.lastPathComponent) is not connected."; return }
+        let partner = LibraryPartner.shared
+        guard let server = partner.decidedMaster ?? partner.servers.sorted().first else {
+            status = "No server to send to — tick one in Settings → General → Mediaworks Machines."; return
+        }
+        let files = await Task.detached { Self.mediaFiles(under: drop) }.value
+        let waiting = Set(ImportOutbox.shared.entries.compactMap(\.path))
+        var ready: [URL] = [], stillComing = 0
+        var nowSeen: [String: [Double]] = [:]
+        for url in files where !waiting.contains(url.path) {
+            let v = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+            let mark = [Double(v?.fileSize ?? -1), v?.contentModificationDate?.timeIntervalSince1970 ?? 0]
+            nowSeen[url.path] = mark
+            if seen[url.path] == mark, Date.now.timeIntervalSince1970 - mark[1] > 20 { ready.append(url) } else { stillComing += 1 }
+        }
+        seen = nowSeen
+        var sent = 0, problems: [String] = []
+        for url in ready {
+            guard let job = ImportOutbox.shared.add(url, name: url.lastPathComponent, size: Int64(Self.size(url)), server: server) else {
+                problems.append("“\(url.lastPathComponent)” could not be offered"); continue
+            }
+            var request = CacheRequest(op: .importRegister, device: ImportDesk.me)
+            request.picture = try? JSONEncoder().encode([job])
+            guard let data = await partner.ask(request, to: server, timeout: 30),
+                  let reply = try? JSONDecoder().decode(ImportReply.self, from: data), reply.ok else {
+                ImportOutbox.shared.forget(job.id)
+                problems.append("\(server) did not take “\(url.lastPathComponent)”"); continue
+            }
+            sent += 1
+        }
+        if sent > 0 { ImportOutbox.shared.start() }
+        let base = sent > 0 ? "Sent \(sent) file\(sent == 1 ? "" : "s") to \(server)"
+            : stillComing > 0 ? "Watching \(drop.lastPathComponent) — \(stillComing) file\(stillComing == 1 ? "" : "s") still arriving"
+            : "Watching \(drop.lastPathComponent) — nothing new"
+        status = problems.isEmpty ? base : base + " · " + problems.prefix(2).joined(separator: "; ")
+    }
+
     // MARK: Choosing the drive
 
     func choose(_ url: URL) {
@@ -110,7 +156,9 @@ final class LibraryIntake {
 
     /// Starts watching for the open library. Survives the main window closing (it is the app's, not the window's).
     func start(store: LibraryStore) {
-        guard let root = store.root?.url, watchedRoot != root else { return }
+        // A Mac with no library of its own watches too — it sends what arrives to the master (sendToMaster).
+        let root = store.root?.url ?? URL(fileURLWithPath: "/", isDirectory: true)
+        guard watchedRoot != root else { return }
         watchedRoot = root
         watchTask?.cancel()
         watchTask = Task { [weak store] in
@@ -123,7 +171,8 @@ final class LibraryIntake {
 
     /// One pass over the drive. Safe to call any time; a pass already running is not doubled.
     func look(store: LibraryStore) async {
-        guard isOn, !working, let drop, let root = store.root?.url else { return }
+        guard isOn, !working, let drop else { return }
+        guard let root = store.root?.url else { await sendToMaster(from: drop); return }
         working = true
         defer { working = false; lastLook = .now }
         guard FileManager.default.fileExists(atPath: drop.path) else {
@@ -408,7 +457,9 @@ struct IntakeSettingsSection: View {
         } header: {
             Text("Import Drive").font(.lyceumHeadline)
         } footer: {
-            Text("Any audio or video file put anywhere on this drive is moved into the library by its tags, using Settings → Sorting. Duplicates go to the 30-day Trash; a file that cannot be placed waits for you in Window → Import Drive.")
+            Text(library.root == nil
+                 ? "This Mac has no library folder of its own: any audio or video file put anywhere on this drive or folder is sent to the master, which files it by its tags. Each file here goes once the master says it arrived (Settings → Delete instantly decides Trash or gone)."
+                 : "Any audio or video file put anywhere on this drive is moved into the library by its tags, using Settings → Sorting. Duplicates go to the 30-day Trash; a file that cannot be placed waits for you in Window → Import Drive.")
                 .foregroundStyle(.secondary)
         }
         .fileImporter(isPresented: $choosing, allowedContentTypes: [.folder]) { result in

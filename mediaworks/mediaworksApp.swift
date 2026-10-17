@@ -45,7 +45,8 @@ struct mediaworksApp: App {
             }
             // REM  SEND TO SERVER — his ask, 2026-10-17 (SendToServer.swift).
             CommandGroup(after: .newItem) {
-                Button("Send to Server…") { openWindow(id: "sendtoserver") }
+                // REM  "a finder file > import can zero in on a local drive or folder" — his name for it, 2026-10-17.
+                Button("Import…") { openWindow(id: "sendtoserver") }
                     .keyboardShortcut("u", modifiers: [.command, .shift])
             }
             CommandMenu("Commander") {
@@ -135,7 +136,7 @@ struct mediaworksApp: App {
         .restorationBehavior(.disabled)
 
         // REM  SEND TO SERVER — files picked on this Mac, sent to a server's Import Drive (SendToServer.swift). File menu.
-        Window("Send to Server", id: "sendtoserver") {
+        Window("Import", id: "sendtoserver") {
             SendToServerView()
         }
         .defaultSize(width: 1000, height: 640)

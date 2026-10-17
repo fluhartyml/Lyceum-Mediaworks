@@ -61,7 +61,7 @@ struct SendersSettingsSection: View {
     var body: some View {
         Section {
             if approvals.approved.isEmpty && approvals.waiting.isEmpty {
-                Text("None yet. A Mac using File → Send to Server…, or an iPhone with Relay Imports on, shows up here the first time, for you to approve.")
+                Text("None yet. A Mac using File → Import…, Commander or its drop folder, or an iPhone with Relay Imports on, shows up here the first time, for you to approve.")
                     .foregroundStyle(.secondary)
             }
             ForEach(approvals.waiting, id: \.self) { name in
