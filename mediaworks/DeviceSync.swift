@@ -40,12 +40,39 @@ final class DeviceSync {
             stopRequested = running
         }
     }
+    // REM  FOLDER SWITCHES, PER DEVICE — his words, 2026-10-17: "he doesnt want to uncheck them because unchecking will remove
+    // REM  from other devices he only wants to toggle folders to synch" · "all folders probably should get a toggle on or off" ·
+    // REM  "first synch off". The checkmark stays one mark for every device; these switches are THIS device's alone.
+    // REM  A folder never switched follows the folder above it; the top of the library starts OFF, so a new device copies
+    // REM  nothing until a folder is switched on.
+    /// Folders switched on or off for this device, by path ("" = the whole library).
+    var folderChoices: [String: Bool] = (UserDefaults.standard.dictionary(forKey: "deviceSyncFolders") as? [String: Bool]) ?? [:] {
+        didSet {
+            UserDefaults.standard.set(folderChoices, forKey: "deviceSyncFolders")
+            stopRequested = running
+        }
+    }
+
+    /// Whether this folder's files come to this device: its own switch, else the nearest folder above that has one.
+    func syncsFolder(_ path: String) -> Bool {
+        var path = path
+        while true {
+            if let choice = folderChoices[path] { return choice }
+            if path.isEmpty { return false }
+            path = (path as NSString).deletingLastPathComponent
+        }
+    }
+
+    func setFolder(_ path: String, on: Bool) { folderChoices[path] = on }
+
     /// One line for the bottom of the Library: what syncing is doing.
     private(set) var status = ""
     private(set) var running = false
     /// Goes up when copies arrive or leave, so rows redraw their "on this device" mark.
     private(set) var copiesVersion = 0
     @ObservationIgnored private var stopRequested = false
+    /// A run asked for while one is going — taken up as soon as that one ends, so a switch flipped mid-copy acts at once.
+    @ObservationIgnored private var nextSnapshot: LibrarySnapshot?
 
     /// Where this device keeps its copies — never backed up to iCloud (the Mac has the originals).
     static let folder: URL = {
@@ -67,17 +94,30 @@ final class DeviceSync {
 
     /// Brings this device's copies in line with the library and its mode. Safe to call often — one run at a time.
     func run(_ snapshot: LibrarySnapshot) async {
-        guard !running else { return }
+        guard !running else { nextSnapshot = snapshot; return }
         running = true
-        stopRequested = false
         defer { running = false }
+        var next: LibrarySnapshot? = snapshot
+        while let snapshot = next {
+            stopRequested = false
+            nextSnapshot = nil
+            await pass(snapshot)
+            next = nextSnapshot
+        }
+    }
 
-        // What this device should hold.
+    private func pass(_ snapshot: LibrarySnapshot) async {
+        // What this device should hold: media files in the folders switched on here — all of them on Automatic, the
+        // checked ones on Manual.
         var wanted: [(path: String, size: Int64)] = []
+        var anyFolderOn = false
         func walk(_ folder: CachedFolder, _ path: String) {
-            for file in folder.files where file.isMedia {
-                if mode == .automatic || (mode == .manual && file.isChecked) {
-                    wanted.append((path.isEmpty ? file.name : path + "/" + file.name, file.size ?? 0))
+            if syncsFolder(path) {
+                anyFolderOn = true
+                for file in folder.files where file.isMedia {
+                    if mode == .automatic || (mode == .manual && file.isChecked) {
+                        wanted.append((path.isEmpty ? file.name : path + "/" + file.name, file.size ?? 0))
+                    }
                 }
             }
             for sub in folder.folders { walk(sub, path.isEmpty ? sub.name : path + "/" + sub.name) }
@@ -88,6 +128,11 @@ final class DeviceSync {
         // Copies no longer wanted come off this device (never off the library).
         let removed = removeUnwanted(keeping: wantedPaths)
 
+        if mode != .off && !anyFolderOn {
+            status = (removed > 0 ? "Removed \(removed) copies from this device · " : "")
+                + "No folders are switched on for this device — open a folder and turn on Sync to This Device"
+            return
+        }
         let missing = wanted.filter { !hasCopy($0.path, size: $0.size) }
         // REM  THE COUNT LEADS EVERY LINE — his ask, 2026-10-17: "it should show a a total number of media files slash how many
         // REM  files are on your device with a how many are left to synchronize at the bottom". Total = what THIS device should

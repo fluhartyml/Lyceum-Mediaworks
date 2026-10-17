@@ -403,6 +403,19 @@ private struct CachedFolderList: View {
 
     var body: some View {
         List {
+            // REM  SYNC THIS FOLDER — his ask, 2026-10-17: "he only wants to toggle folders to synch" · "all folders probably
+            // REM  should get a toggle on or off" · "first synch off". THIS device only; checkmarks are untouched (DeviceSync.swift).
+            #if os(iOS)
+            Section {
+                Toggle(isTop ? "Sync Everything to This Device" : "Sync to This Device", isOn: Binding(
+                    get: { library.sync.syncsFolder(path) },
+                    set: { library.sync.setFolder(path, on: $0); library.syncNow() }))
+                if library.sync.mode == .off {
+                    Text("Sync is Off — choose Automatic or Manual from the Sync button at the top of the Library.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            #endif
             // REM  PLAY ALL / SHUFFLE ALL / SAVE FOLDER AS PLAYLIST — his words, 2026-10-14: "folders are one step away from
             // REM  being a playlist. i want to be able to save a folder as a playlist and i want to be able to play them at random
             // REM  shuffle repeat one or all". Everything in the folder and the folders inside it, as the Mac's right-click does.
@@ -461,6 +474,11 @@ private struct CachedFolderList: View {
                     HStack {
                         Label(sub.name, systemImage: "folder")
                         Spacer()
+                        #if os(iOS)
+                        if library.sync.mode != .off && library.sync.syncsFolder(join(sub.name)) {
+                            Image(systemName: "iphone").foregroundStyle(.secondary).accessibilityLabel("Syncs to this device")
+                        }
+                        #endif
                         Text("\(sub.fileCount)").foregroundStyle(.secondary).monospacedDigit()
                     }
                 }
