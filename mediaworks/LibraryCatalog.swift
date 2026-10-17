@@ -41,6 +41,18 @@ final class LibraryCatalog {
     private(set) var activeStreams = 0
     private(set) var lastCaller: String?
     private(set) var lastCallAt: Date?
+    // REM  WHO CALLS, BY NAME — for the Network window (his ask, 2026-10-17: "shows the clients and import activity").
+    // REM  A device names itself in its requests; a video player only has an address, matched to the name it last used.
+    struct SeenClient: Identifiable, Hashable {
+        var name: String
+        var address: String?
+        var lastSeen: Date
+        var lastWhat: String
+        var id: String { name }
+    }
+    private(set) var clients: [String: SeenClient] = [:]
+    /// Streams open now, by the caller's address.
+    private(set) var streamsByAddress: [String: Int] = [:]
     @ObservationIgnored private var payload = Data()
     /// THIS Mac's own listing, before the partner mini's half is merged in (N16) — what `getOwn` answers.
     @ObservationIgnored private var ownSnapshot: LibrarySnapshot?
@@ -902,6 +914,7 @@ final class LibraryCatalog {
 
     private func answerOnMain(_ connection: NWConnection, _ data: Data?) {
         if let data, let request = try? LibraryCache.decoder.decode(CacheRequest.self, from: data) {
+            noteCaller(connection, request)
             // N16 — the partner mini asks for this Mac's own half only.
             if request.op == .getOwn {
                 connection.send(content: Framing.frame(ownPayload), completion: .contentProcessed { _ in connection.cancel() })
@@ -931,13 +944,20 @@ final class LibraryCatalog {
     // REM  http://<mac>:<port>/media/<library path> with "Range" headers, and gets just those bytes back (206) — that is
     // REM  how it starts quickly and skips around. Only files inside the library; one response per connection.
     private func streamHTTP(_ connection: NWConnection, first: Data) {
-        // Counted while open, for the menu-bar status.
+        // Counted while open, for the menu-bar status and the Network window (by caller).
         activeStreams += 1
+        var address: String?
+        if case .hostPort(let host, _) = connection.endpoint { address = "\(host)".components(separatedBy: "%").first }
+        if let address { streamsByAddress[address, default: 0] += 1 }
         connection.stateUpdateHandler = { state in
             switch state {
             case .cancelled, .failed:
                 DispatchQueue.main.async {
-                    MainActor.assumeIsolated { LibraryCatalog.shared.activeStreams = max(0, LibraryCatalog.shared.activeStreams - 1) }
+                    MainActor.assumeIsolated {
+                        let catalog = LibraryCatalog.shared
+                        catalog.activeStreams = max(0, catalog.activeStreams - 1)
+                        if let address { catalog.streamsByAddress[address] = max(0, (catalog.streamsByAddress[address] ?? 1) - 1) }
+                    }
                 }
             default: break
             }
@@ -1506,5 +1526,25 @@ extension LibraryCatalog {
             reply(ImportReply(ok: true, jobs: desk.jobs))
         }
     }
+}
+
+// MARK: - Callers by name (NetworkView.swift)
+
+extension LibraryCatalog {
+    fileprivate func noteCaller(_ connection: NWConnection, _ request: CacheRequest) {
+        guard let name = request.device, !name.isEmpty else { return }
+        var address: String?
+        if case .hostPort(let host, _) = connection.endpoint { address = "\(host)".components(separatedBy: "%").first }
+        clients[name] = SeenClient(name: name, address: address, lastSeen: .now, lastWhat: DeviceChangesView.what(request.op))
+    }
+
+    /// The name a streaming address last called under, if any.
+    func clientName(at address: String) -> String? {
+        clients.values.filter { $0.address == address }.max { $0.lastSeen < $1.lastSeen }?.name
+    }
+
+    /// This Mac's own top folders — its part of the Lyceum.
+    var ownFolders: [String] { ownSnapshot?.root.folders.map(\.name) ?? [] }
+    var ownFileCount: Int { ownSnapshot?.root.fileCount ?? 0 }
 }
 #endif

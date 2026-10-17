@@ -28,6 +28,11 @@ struct ServingMenu: View {
             Text("Last call: \(caller) at \(at.formatted(date: .omitted, time: .shortened))")
         }
         Divider()
+        // REM  His idea, 2026-10-17 — the network, from the "waiting for caller" status (NetworkView.swift).
+        Button("Show Network…") {
+            openWindow(id: "network")
+            NSApp.activate()
+        }
         Button("Open Lyceum Mediaworks") {
             openWindow(id: "main")
             NSApp.activate()

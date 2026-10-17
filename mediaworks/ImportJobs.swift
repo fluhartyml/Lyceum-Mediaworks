@@ -38,6 +38,8 @@ nonisolated struct ImportJob: Codable, Sendable, Identifiable, Hashable {
     var problem: String?
     var finished: Date?
     var landedAs: String?
+    /// The holder the master is pulling from right now — for the Network window's lines.
+    var pulling: String?
 }
 
 /// The master's answer to an import request.
@@ -308,7 +310,7 @@ final class ImportMaster {
                 guard let base = await ImportSource.base(of: name),
                       let url = URL(string: base.absoluteString + "/outbox/" + token) else { continue }
                 reached = true
-                set(job.id) { $0.state = .receiving; $0.problem = nil }
+                set(job.id) { $0.state = .receiving; $0.problem = nil; $0.pulling = name }
                 let id = job.id
                 let ok = await ResumingFetch.fetch(url, onto: partial) { have in
                     Task { @MainActor in ImportMaster.shared.set(id) { $0.have = have } }
@@ -319,7 +321,7 @@ final class ImportMaster {
                     break
                 }
                 if have > job.size { try? FileManager.default.removeItem(at: partial) }   // wrong bytes — start over, never file it
-                set(job.id) { $0.state = .waiting; $0.have = min(have, job.size) }
+                set(job.id) { $0.state = .waiting; $0.have = min(have, job.size); $0.pulling = nil }
             }
             if !reached {
                 let names = (job.holders + [job.origin]).joined(separator: " or ")
@@ -340,7 +342,7 @@ final class ImportMaster {
         }
         do {
             try FileManager.default.moveItem(at: partial, to: target)
-            set(job.id) { $0.state = .done; $0.have = job.size; $0.finished = .now; $0.landedAs = target.lastPathComponent; $0.problem = nil }
+            set(job.id) { $0.state = .done; $0.have = job.size; $0.finished = .now; $0.landedAs = target.lastPathComponent; $0.problem = nil; $0.pulling = nil }
             LibraryCatalog.shared.importReport("Received “\(job.name)” from \(job.origin)")
         } catch {
             setProblem(job.id, "Arrived, but could not be put in the Import Drive: \(error.localizedDescription)")

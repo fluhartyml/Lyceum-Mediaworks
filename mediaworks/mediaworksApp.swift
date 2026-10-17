@@ -127,6 +127,13 @@ struct mediaworksApp: App {
         .defaultSize(width: 1000, height: 640)
         .restorationBehavior(.disabled)
 
+        // REM  THE MEDIAWORKS NETWORK — servers, devices, imports (NetworkView.swift). Menu-bar status and Window menu.
+        Window("Mediaworks Network", id: "network") {
+            NetworkView()
+        }
+        .defaultSize(width: 1100, height: 760)
+        .restorationBehavior(.disabled)
+
         // REM  SEND TO SERVER — files picked on this Mac, sent to a server's Import Drive (SendToServer.swift). File menu.
         Window("Send to Server", id: "sendtoserver") {
             SendToServerView()

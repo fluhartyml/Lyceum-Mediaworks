@@ -65,7 +65,7 @@ struct DeviceChangesView: View {
         return "Before: \(change.wasChecked ? "checked" : "unchecked")\(change.wasThumbedUp ? ", in Thumbs Up" : "")"
     }
 
-    private static func what(_ op: CacheRequest.Op) -> String {
+    static func what(_ op: CacheRequest.Op) -> String {
         switch op {
         case .get: "Looked"
         case .check: "Checked"
