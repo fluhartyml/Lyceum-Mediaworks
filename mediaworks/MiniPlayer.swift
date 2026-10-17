@@ -196,6 +196,28 @@ final class MiniPlayer {
 
     private func load(_ url: URL, from source: Source) {
         guard url != current else { return }
+        #if os(macOS)
+        // REM  A LYCEUM FILE (LyceumPlace.swift) plays from where it really is — this Mac's library, or streamed from
+        // REM  the server holding it. The row's own address stays `current`, so the highlight still follows playback.
+        if LyceumPlace.isInside(url) {
+            player.replaceCurrentItem(with: nil)
+            current = url
+            currentSource = source
+            lastPlayed[source] = url
+            heard[source, default: []].insert(url)
+            elapsed = 0
+            duration = 0
+            Task { [weak self] in
+                guard let real = await LyceumPlace.playURL(url), let self, self.current == url else { return }
+                self.player.replaceCurrentItem(with: AVPlayerItem(url: real))
+                if self.isPlaying { self.player.play() }
+                if let seconds = try? await AVURLAsset(url: real).load(.duration).seconds, seconds.isFinite, self.current == url {
+                    self.duration = seconds
+                }
+            }
+            return
+        }
+        #endif
         player.replaceCurrentItem(with: AVPlayerItem(url: url))
         current = url
         currentSource = source

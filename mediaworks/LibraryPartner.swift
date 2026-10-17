@@ -323,7 +323,7 @@ final class LibraryPartner {
     /// Asks every server for its own slice; a server silent for a minute drops out until it answers again.
     func refresh() async {
         for name in servers {
-            if let data = await ask(CacheRequest(op: .getOwn), to: name),
+            if let data = await ask(CacheRequest(op: .getOwn, device: me), to: name),
                let snap = try? LibraryCache.decoder.decode(LibrarySnapshot.self, from: data) {
                 snapshots[name] = snap; heard[name] = .now; problems[name] = nil
             } else {
@@ -406,6 +406,18 @@ final class LibraryPartner {
     func mediaURL(_ path: String, on name: String) async -> URL? {
         guard let base = await baseURL(name) else { return nil }
         return URL(string: base.absoluteString + "/media/" + (path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path))
+    }
+
+    /// The same file, whatever its checkmark — for Commander on this Mac (LyceumPlace.swift). The server answers only
+    /// a Mac it trusts.
+    func previewURL(_ path: String, on name: String) async -> URL? {
+        guard let base = await baseURL(name) else { return nil }
+        return URL(string: base.absoluteString + "/preview/" + (path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path))
+    }
+
+    /// An address one of the ticked servers was last reached at (no new lookup — the streaming path must not wait).
+    func isKnownServerAddress(_ host: String) -> Bool {
+        bases.values.contains { b in b.url.host().map { $0 == host || host.hasSuffix($0) } ?? false }
     }
 
     /// Whether an address belongs to one of the ticked servers — the only Macs whose files this Mac takes in.

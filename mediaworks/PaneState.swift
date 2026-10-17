@@ -72,7 +72,8 @@ enum Drives {
         let keys: [URLResourceKey] = [.volumeNameKey, .volumeIsLocalKey]
         let urls = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: keys,
                                                           options: [.skipHiddenVolumes]) ?? []
-        return urls.map { url in
+        // REM  THE LYCEUM FIRST — the whole library across every server, in either pane (LyceumPlace.swift).
+        return [LyceumPlace.drive] + urls.map { url in
             let values = try? url.resourceValues(forKeys: Set(keys))
             return Drive(url: url, name: values?.volumeName ?? url.lastPathComponent,
                          isLocal: values?.volumeIsLocal ?? true)
@@ -479,6 +480,10 @@ final class PaneState {
 
     /// True when (^).. cannot go up inside what he has granted — at a drive's or grant's top.
     func isAtTop(library: URL?) -> Bool {
+        #if os(macOS)
+        // The Lyceum is its own drive: its top is the top.
+        if LyceumPlace.isInside(folder) { return folder.standardizedFileURL == LyceumPlace.root.standardizedFileURL }
+        #endif
         let parent = folder.deletingLastPathComponent().standardizedFileURL
         return parent == folder || !Grants.isGranted(parent, library: library)
     }

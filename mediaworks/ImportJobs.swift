@@ -40,6 +40,8 @@ nonisolated struct ImportJob: Codable, Sendable, Identifiable, Hashable {
     var landedAs: String?
     /// The holder the master is pulling from right now — for the Network window's lines.
     var pulling: String?
+    /// A Lyceum folder to put it in exactly (a Commander copy onto that folder); nil = the Import Drive, filed by tags.
+    var destination: String?
 }
 
 /// The master's answer to an import request.
@@ -304,6 +306,11 @@ final class ImportMaster {
             let staging = drop.appending(path: ".Lyceum Incoming", directoryHint: .isDirectory)
             try? FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
             let partial = staging.appending(path: job.id + ".partial")
+            // Already here whole (a landing that failed last time) — only the landing is tried again.
+            if Int64((try? partial.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? -1) == job.size {
+                await land(job, partial: partial, drop: drop)
+                continue
+            }
             let sources = job.holders.map { ($0, job.id) } + [(job.origin, job.token)]
             var reached = false
             for (name, token) in sources {
@@ -317,7 +324,7 @@ final class ImportMaster {
                 }
                 let have = Int64((try? partial.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
                 if ok, have == job.size {
-                    land(job, partial: partial, drop: drop)
+                    await land(job, partial: partial, drop: drop)
                     break
                 }
                 if have > job.size { try? FileManager.default.removeItem(at: partial) }   // wrong bytes — start over, never file it
@@ -330,7 +337,17 @@ final class ImportMaster {
         }
     }
 
-    private func land(_ job: ImportJob, partial: URL, drop: URL) {
+    private func land(_ job: ImportJob, partial: URL, drop: URL) async {
+        // A folder he chose in Commander: exactly there, on whichever server holds it.
+        if let destination = job.destination {
+            if let problem = await LibraryCatalog.shared.placeImported(partial, into: destination, name: job.name) {
+                setProblem(job.id, "Arrived, but could not be put in “\(destination)”: \(problem) — tried again shortly.")
+            } else {
+                set(job.id) { $0.state = .done; $0.have = job.size; $0.finished = .now; $0.landedAs = destination + "/" + job.name; $0.problem = nil; $0.pulling = nil }
+                LibraryCatalog.shared.importReport("Received “\(job.name)” from \(job.origin) into \(destination)")
+            }
+            return
+        }
         let folder = drop.appending(path: "Sent from \(job.origin)", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         var target = folder.appending(path: job.name)
@@ -398,6 +415,8 @@ final class ImportOutbox {
         var job: ImportJob
         var bookmark: Data
         var server: String
+        /// A Commander COPY keeps the original; a move or Send to Server lets it go once the master says DONE.
+        var keep: Bool?
     }
 
     private(set) var entries: [Entry] = {
@@ -423,10 +442,11 @@ final class ImportOutbox {
         if !entries.isEmpty { start() }
     }
 
-    func add(_ url: URL, name: String, size: Int64, server: String) -> ImportJob? {
+    func add(_ url: URL, name: String, size: Int64, server: String, destination: String? = nil, keep: Bool = false) -> ImportJob? {
         guard let bookmark = try? url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil) else { return nil }
-        let job = ImportJob(id: UUID().uuidString, name: name, size: size, origin: ImportDesk.me, token: UUID().uuidString)
-        let entry = Entry(job: job, bookmark: bookmark, server: server)
+        var job = ImportJob(id: UUID().uuidString, name: name, size: size, origin: ImportDesk.me, token: UUID().uuidString)
+        job.destination = destination
+        let entry = Entry(job: job, bookmark: bookmark, server: server, keep: keep ? true : nil)
         entries.append(entry)
         offer(entry)
         return job
@@ -481,7 +501,8 @@ final class ImportOutbox {
     private func remove(_ entry: Entry) {
         let url = opened[entry.job.id]
         ImportSource.shared.withdraw(entry.job.token)
-        if let url {
+        if let url, entry.keep == true { url.stopAccessingSecurityScopedResource() }
+        else if let url {
             let instant = UserDefaults.standard.bool(forKey: "instantDelete")
             do {
                 if instant { try FileManager.default.removeItem(at: url) } else { try FileManager.default.trashItem(at: url, resultingItemURL: nil) }

@@ -536,6 +536,13 @@ struct CommanderView: View {
         // REM  One folder highlighted there → into it. Nothing highlighted, a file, or several → the folder
         // REM  that pane has open, as before.
         let destination = otherDestination
+        #if os(macOS)
+        // REM  INTO, OUT OF, OR WITHIN THE LYCEUM — imports, downloads and server-side moves (LyceumPlace.swift).
+        if LyceumPlace.isInside(destination) || sources.contains(where: { LyceumPlace.isInside($0) }) {
+            lyceumTransfer(sources, to: destination, move: move)
+            return
+        }
+        #endif
         // REM  "Already there" is judged per FILE, by the folder it really sits in — a revealed row lives in
         // REM  its own subfolder, not in the pane's open folder.
         let alreadyThere = sources.filter { $0.deletingLastPathComponent().standardizedFileURL == destination.standardizedFileURL }
@@ -591,6 +598,52 @@ struct CommanderView: View {
         }
     }
 
+    #if os(macOS)
+    /// Copy or Move with the Lyceum on either side — his design, 2026-10-17 (LyceumPlace.swift).
+    private func lyceumTransfer(_ sources: [URL], to destination: URL, move: Bool) {
+        let toLyceum = LyceumPlace.isInside(destination)
+        let fromLyceum = sources.contains(where: { LyceumPlace.isInside($0) })
+        guard !fromLyceum || sources.allSatisfy({ LyceumPlace.isInside($0) }) else {
+            problem = "Lyceum items and this Mac's items go separately — highlight only one kind."
+            return
+        }
+        let folder = toLyceum ? LyceumPlace.relative(destination) : ""
+        // Never over a name already there — the same rule as everywhere in Commander.
+        let clashes = sources.filter { source in
+            toLyceum ? LyceumPlace.exists(folder.isEmpty ? source.lastPathComponent : folder + "/" + source.lastPathComponent)
+                     : FileManager.default.fileExists(atPath: destination.appendingPathComponent(source.lastPathComponent).path)
+        }
+        if !clashes.isEmpty {
+            problem = "Already in “\(destination.lastPathComponent)”: " + clashes.map(\.lastPathComponent).joined(separator: ", ") + ". Nothing was \(move ? "moved" : "copied")."
+            return
+        }
+        let rels = sources.map { LyceumPlace.relative($0) }
+        let pane = active
+        let count = "\(sources.count) item\(sources.count == 1 ? "" : "s")"
+        if move { mini.letGo(of: sources) }
+        busy = "\(move ? "Moving" : "Copying") \(count) \(toLyceum ? "to" : "out of") the Lyceum…"
+        Task {
+            var report: String?
+            switch (fromLyceum, toLyceum) {
+            case (true, true):
+                problem = move ? await LyceumPlace.move(rels, to: folder) : await LyceumPlace.copyWithin(rels, to: folder)
+                if problem == nil { report = "\(move ? "Moved" : "Copied") \(count) to \(destination.lastPathComponent)" }
+            case (true, false):
+                // Move out = copied out and checked first; only then does the library's copy go to its Trash.
+                problem = move ? await LyceumPlace.moveOut(rels, to: destination) : await LyceumPlace.export(rels, to: destination).problem
+                if problem == nil { report = "\(move ? "Moved" : "Copied") \(count) out of the Lyceum to \(destination.lastPathComponent)" }
+            default:
+                let line = await LyceumPlace.importFiles(sources, into: folder, keep: !move)
+                if line.hasPrefix("Sent"), !line.contains(". ") { report = line } else { problem = line }
+            }
+            busy = nil
+            if let report { library.report(report) }
+            if move { pane.selection = [] }
+            finished()
+        }
+    }
+    #endif
+
     /// The row to highlight once these rows are moved or deleted: the next one below them in the same folder,
     /// else the one above them, else the next row of any kind.
     // REM  HIS ASK, 2026-10-09: "i am going file by file, if i press command 8 to delete or command 6 to move it
@@ -623,11 +676,29 @@ struct CommanderView: View {
     }
 
     private func play(_ url: URL) {
-        library.nowPlaying = url
-        library.mode = .theater
+        // REM  COMMANDER STAYS COMMANDER — his rule, 2026-10-17: "when in the commander mode its not supposed to be in
+        // REM  theater mode, theater mode is theater mode and commander mode is commander mode. commander panes have mini
+        // REM  players and quicklooks". A double-click plays in the mini player of the pane it was in.
+        let side: MiniPlayer.Source = left.rows.contains(where: { $0.id == url }) ? .left : .right
+        mini.cue(url, from: side)
+        if !mini.isPlaying { mini.playPause() }
     }
 
     private func newFolder() {
+        #if os(macOS)
+        if LyceumPlace.isInside(active.folder) {
+            let pane = active, parent = active.folder
+            busy = "Making a folder in the Lyceum…"
+            Task {
+                switch await LyceumPlace.newFolder(in: parent) {
+                case .success(let made): finished(); pane.selection = [made]; pane.renamingURL = made
+                case .failure(let why): problem = why.text
+                }
+                busy = nil
+            }
+            return
+        }
+        #endif
         guard !active.showingDrives else { return }
         do {
             let url = try FileOperations.newFolder(in: active.folder, library: library)
@@ -681,6 +752,19 @@ struct CommanderView: View {
 
     private func rename(_ url: URL, to name: String) {
         for state in [left, right] where state.renamingURL == url { state.renamingURL = nil }
+        #if os(macOS)
+        if LyceumPlace.isInside(url) {
+            let name = name.trimmingCharacters(in: .whitespaces)
+            guard !name.isEmpty, name != url.lastPathComponent else { return }
+            busy = "Renaming in the Lyceum…"
+            Task {
+                problem = await LyceumPlace.rename(url, to: name)
+                busy = nil
+                finished()
+            }
+            return
+        }
+        #endif
         // REM  Unchanged or emptied → nothing happens, as in Finder (an empty name is put back).
         let name = name.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty, name != url.lastPathComponent else { return }
@@ -700,6 +784,18 @@ struct CommanderView: View {
 
     private func trash(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
+        #if os(macOS)
+        if urls.contains(where: { LyceumPlace.isInside($0) }) {
+            guard urls.allSatisfy({ LyceumPlace.isInside($0) }) else { problem = "Delete Lyceum items and this Mac's items separately."; return }
+            busy = "Asking the servers to put \(urls.count) item\(urls.count == 1 ? "" : "s") in the Lyceum Trash…"
+            Task {
+                problem = await LyceumPlace.trash(urls.map { LyceumPlace.relative($0) })
+                busy = nil
+                finished()
+            }
+            return
+        }
+        #endif
         let pane = active
         let next = nextRow(after: Set(urls), in: pane)
         // An open file cannot really be deleted from a network share — the player lets go first.
@@ -1160,7 +1256,14 @@ private struct CommanderPane: View {
             // REM  The folder AND every revealed folder under it are read together, off the main thread,
             // REM  so a revealed folder stays as current as the folder itself.
             let read = {
-                await Task.detached {
+                #if os(macOS)
+                // The Lyceum is read from the library listing, not a drive (LyceumPlace.swift).
+                if LyceumPlace.isInside(url) {
+                    return (LyceumPlace.entries(in: url),
+                            open.reduce(into: [String: [FolderEntry]]()) { $0[$1] = LyceumPlace.entries(in: URL(fileURLWithPath: $1, isDirectory: true)) })
+                }
+                #endif
+                return await Task.detached {
                     (FolderListing.entries(in: url, showHidden: hidden, sort: sort),
                      open.reduce(into: [String: [FolderEntry]]()) {
                          $0[$1] = FolderListing.entries(in: URL(fileURLWithPath: $1, isDirectory: true), showHidden: hidden, sort: sort)

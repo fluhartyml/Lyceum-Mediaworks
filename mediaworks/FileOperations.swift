@@ -90,7 +90,19 @@ enum FileOperations {
     /// 30-day Trash by default; instant delete if the user turned it on in Settings.
     /// `quiet`: no status messages — a tag save puts its old copy away without announcing it (his ruling).
     static func trash(_ urls: [URL], instant: Bool, library: LibraryStore, quiet: Bool = false) async throws {
-        guard let libraryRoot = library.root?.url, let trashFolder = library.trashFolder else { return }
+        // REM  A MAC WITH NO LIBRARY FOLDER OF ITS OWN (a client, 2026-10-17) — this used to return without deleting and
+        // REM  without a word. Outside any library: the Mac's own Trash, or gone at once if Settings says so.
+        guard let libraryRoot = library.root?.url, let trashFolder = library.trashFolder else {
+            try await Task.detached {
+                for url in urls {
+                    if instant { try FileManager.default.removeItem(at: url) }
+                    else { try FileManager.default.trashItem(at: url, resultingItemURL: nil) }
+                }
+            }.value
+            urls.forEach { library.journal(instant ? "delete" : "trash", from: $0, to: nil) }
+            if !quiet { library.report(instant ? "Deleted \(urls.count) item\(urls.count == 1 ? "" : "s")" : "Moved \(urls.count) item\(urls.count == 1 ? "" : "s") to the Trash") }
+            return
+        }
         let what = urls.count == 1 ? "“\(urls[0].lastPathComponent)”" : "\(urls.count) items"
         if !quiet { library.report(instant ? "Deleting \(what)…" : "Moving \(what) to the Trash…", working: true) }
         // REM  WHERE A DELETED ITEM GOES, decided 2026-10-07 when Commander panes became able to leave

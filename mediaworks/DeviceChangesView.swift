@@ -93,6 +93,9 @@ struct DeviceChangesView: View {
         case .importRegister: "Sent files to import"
         case .importList: "Asked about imports"
         case .importHold: "Holds a copy of an import"
+        case .renameFile: "Renamed a file"
+        case .newFolder: "Made a folder"
+        case .moveItem: "Moved to another folder"
         case .renameFolder: "Renamed folder"
         case .playlistFromFolder: "Made a playlist from a folder"
         }

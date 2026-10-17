@@ -302,7 +302,7 @@ final class LibraryCatalog {
     // REM  the marks (Marks.json), puts them in the cache, and every device sees them on its next look. Nothing is deleted.
     private func apply(_ request: CacheRequest) {
         guard let path = request.path, !path.isEmpty,
-              ![.get, .file, .setTags, .trash, .getOwn, .takeIn, .renameFolder, .playlistFromFolder, .sendCheck, .sendIn, .sendReplace, .marksPatch, .importRegister, .importList, .importHold].contains(request.op) else { return }
+              ![.get, .file, .setTags, .trash, .getOwn, .takeIn, .renameFolder, .playlistFromFolder, .sendCheck, .sendIn, .sendReplace, .marksPatch, .importRegister, .importList, .importHold, .renameFile, .newFolder, .moveItem].contains(request.op) else { return }
         if request.op == .renamePlaylist {
             // REM  A bad or taken name is refused before anything is recorded.
             guard let newName = request.newName?.trimmingCharacters(in: .whitespaces), Self.validName(newName),
@@ -340,7 +340,7 @@ final class LibraryCatalog {
             saveChanges()
         }
         switch request.op {
-        case .get, .file, .setTags, .trash, .getOwn, .takeIn, .renameFolder, .playlistFromFolder, .sendCheck, .sendIn, .sendReplace, .marksPatch, .importRegister, .importList, .importHold: return
+        case .get, .file, .setTags, .trash, .getOwn, .takeIn, .renameFolder, .playlistFromFolder, .sendCheck, .sendIn, .sendReplace, .marksPatch, .importRegister, .importList, .importHold, .renameFile, .newFolder, .moveItem: return
         case .check: unchecked.remove(path)
         case .uncheck: unchecked.insert(path)
         case .thumbsUp:
@@ -625,7 +625,9 @@ final class LibraryCatalog {
     // REM  delete" (003b). The tags are written by TagWriter — the same code the Mac's Inspector uses — and a delete is
     // REM  ALWAYS a move into the 30-day Lyceum Trash, whatever the Mac's own instant-delete setting says.
     func carryOut(_ request: CacheRequest) async {
-        guard let url = libraryFile(request.path), let path = request.path, let store, let root = running else { return }
+        // A new folder at the very top of the library (a new trunk) has the library itself as its place.
+        let place = libraryFile(request.path) ?? (request.op == .newFolder && request.path == "" ? running : nil)
+        guard let url = place, let path = request.path, let store, let root = running else { return }
         let who = request.device ?? "A device"
         var change = DeviceChange(when: .now, device: who, op: request.op, path: path,
                                   wasChecked: !unchecked.contains(path),
@@ -689,6 +691,39 @@ final class LibraryCatalog {
             saveMarksAndPublish()
             report("\(who) made the playlist “\(name)” from its folder — \(added.count) file\(added.count == 1 ? "" : "s")")
             return
+        // REM  COMMANDER IN THE LYCEUM — his "you are not supposed to do coming soon placeholders", 2026-10-17. Rename,
+        // REM  new folder and move are carried out by the server holding the item; checkmarks and playlists follow it.
+        case .renameFile:
+            var isFolder: ObjCBool = false
+            guard let newName = request.newName?.trimmingCharacters(in: .whitespaces), Self.validName(newName),
+                  newName != url.lastPathComponent,
+                  FileManager.default.fileExists(atPath: url.path, isDirectory: &isFolder), !isFolder.boolValue else { return }
+            let target = url.deletingLastPathComponent().appending(path: newName)
+            guard !FileManager.default.fileExists(atPath: target.path) else {
+                report("\(who): “\(newName)” already exists — “\(url.lastPathComponent)” was not renamed"); return
+            }
+            do { try FileManager.default.moveItem(at: url, to: target) } catch {
+                report("\(who): “\(url.lastPathComponent)” was not renamed — \(error.localizedDescription)"); return
+            }
+            filesMoved([(from: url, to: target)])
+            change.newName = newName
+            report("\(who) renamed “\(url.lastPathComponent)” to “\(newName)”")
+        case .newFolder:
+            guard let newName = request.newName?.trimmingCharacters(in: .whitespaces), Self.validName(newName) else { return }
+            let target = url.appending(path: newName, directoryHint: .isDirectory)
+            guard !FileManager.default.fileExists(atPath: target.path) else { report("\(who): “\(newName)” already exists"); return }
+            do { try FileManager.default.createDirectory(at: target, withIntermediateDirectories: false) } catch {
+                report("\(who): the folder “\(newName)” was not made — \(error.localizedDescription)"); return
+            }
+            change.newName = newName
+            report("\(who) made the folder “\(newName)” in “\(url.lastPathComponent)”")
+        case .moveItem:
+            guard let destination = request.newName, !destination.isEmpty else { return }
+            if let problem = await moveInLyceum(url, path: path, to: destination, root: root, store: store) {
+                report("\(who): “\(url.lastPathComponent)” was not moved — \(problem)"); return
+            }
+            change.newName = destination
+            report("\(who) moved “\(url.lastPathComponent)” to “\(destination)”")
         case .trash:
             guard let trash = store.trashFolder,
                   let moved = try? LibraryStore.moveToTrash([url], libraryRoot: root, trash: trash).first else { return }
@@ -926,7 +961,7 @@ final class LibraryCatalog {
             if [.sendCheck, .sendIn, .sendReplace].contains(request.op) { receiveSend(request, on: connection); return }
             if routeToPartner(request, on: connection) { return }
             if request.op == .file { sendFile(request.path, on: connection); return }
-            if [.setTags, .trash, .renameFolder, .playlistFromFolder].contains(request.op) {
+            if [.setTags, .trash, .renameFolder, .playlistFromFolder, .renameFile, .newFolder, .moveItem].contains(request.op) {
                 Task { @MainActor in
                     await carryOut(request)
                     connection.send(content: Framing.frame(payload), completion: .contentProcessed { _ in connection.cancel() })
@@ -1009,13 +1044,27 @@ final class LibraryCatalog {
             servePartner(connection, path: wanted, file: file, lines: lines, isHead: parts[0] == "HEAD", dlna: dlna)
             return
         }
-        guard parts.count >= 2, parts[1].hasPrefix("/media/"),
-              let path = String(parts[1].dropFirst("/media/".count)).removingPercentEncoding,
+        // REM  /preview/ — the same bytes for Commander on another Mac, WHATEVER THE CHECKMARK: maintenance has to hear an
+        // REM  unchecked file (his "commander panes have mini players and quicklooks", 2026-10-17). Only for the servers
+        // REM  and devices he approved; phones and TVs keep /media/, where unchecked = not streamed (PL9).
+        var preview = false
+        if parts.count >= 2, parts[1].hasPrefix("/preview/") {
+            var caller: String?
+            if case .hostPort(let host, _) = connection.endpoint { caller = "\(host)".components(separatedBy: "%").first }
+            guard let caller, previewAllowed(caller) else {
+                if let caller, let name = clientName(at: caller) { SendApprovals.shared.asked(name) }
+                fail("403 Forbidden"); return
+            }
+            preview = true
+        }
+        let prefix = preview ? "/preview/" : "/media/"
+        guard parts.count >= 2, parts[1].hasPrefix(prefix),
+              let path = String(parts[1].dropFirst(prefix.count)).removingPercentEncoding,
               let url = libraryFile(path),
               let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 0 else { fail("404 Not Found"); return }
         // REM  UNCHECKED = NOT SYNCHRONIZED = NOT STREAMED — his rule, 2026-10-10 (PL9): "the apple tv does not physically
         // REM  synchronize media only streaming and if you cant stream an unchecked file then it is 'not synchronized'."
-        guard !unchecked.contains(path) else { fail("403 Forbidden"); return }
+        guard preview || !unchecked.contains(path) else { fail("403 Forbidden"); return }
         guard let handle = try? FileHandle(forReadingFrom: url) else { fail("404 Not Found"); return }
         var start = 0, end = size - 1, partial = false
         if let range = lines.first(where: { $0.lowercased().hasPrefix("range:") }),
@@ -1538,6 +1587,12 @@ extension LibraryCatalog {
         clients[name] = SeenClient(name: name, address: address, lastSeen: .now, lastWhat: DeviceChangesView.what(request.op))
     }
 
+    /// A server ticked here, or a device he approved, calling from this address.
+    func previewAllowed(_ address: String) -> Bool {
+        if let name = clientName(at: address), SendApprovals.shared.isApproved(name) || LibraryPartner.shared.servers.contains(name) { return true }
+        return LibraryPartner.shared.isKnownServerAddress(address)
+    }
+
     /// The name a streaming address last called under, if any.
     func clientName(at address: String) -> String? {
         clients.values.filter { $0.address == address }.max { $0.lastSeen < $1.lastSeen }?.name
@@ -1546,5 +1601,91 @@ extension LibraryCatalog {
     /// This Mac's own top folders — its part of the Lyceum.
     var ownFolders: [String] { ownSnapshot?.root.folders.map(\.name) ?? [] }
     var ownFileCount: Int { ownSnapshot?.root.fileCount ?? 0 }
+}
+
+// MARK: - An import into a chosen Lyceum folder (Commander, 2026-10-17)
+
+extension LibraryCatalog {
+    /// Puts an arrived file into `folder` (Lyceum-relative): here if this Mac holds that folder's trunk, else handed to the
+    /// server that does. Never overwrites — a name already there gets " 2". Nil when it went; otherwise why not.
+    func placeImported(_ file: URL, into folder: String, name: String) async -> String? {
+        let trunk = folder.split(separator: "/").first.map(String.init) ?? ""
+        if let root = running, !trunk.isEmpty, FileManager.default.fileExists(atPath: root.appending(path: trunk).path) {
+            let dir = root.appending(path: folder, directoryHint: .isDirectory)
+            guard dir.standardizedFileURL.path.hasPrefix(root.standardizedFileURL.path + "/") else { return "Not a place in this library." }
+            do {
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                var target = dir.appending(path: name)
+                var n = 2
+                while FileManager.default.fileExists(atPath: target.path) {
+                    let base = (name as NSString).deletingPathExtension, ext = (name as NSString).pathExtension
+                    target = dir.appending(path: ext.isEmpty ? "\(base) \(n)" : "\(base) \(n).\(ext)")
+                    n += 1
+                }
+                try FileManager.default.moveItem(at: file, to: target)
+                store?.journal("imported into \(folder)", from: file, to: target)
+                await rescan()
+                return nil
+            } catch { return error.localizedDescription }
+        }
+        guard let holder = LibraryPartner.shared.server(holding: trunk) else { return "No server holds “\(trunk)”." }
+        if let problem = await LibraryPartner.shared.sendIntake(file, to: folder + "/" + name, server: holder) { return problem }
+        try? FileManager.default.removeItem(at: file)
+        return nil
+    }
+}
+
+// MARK: - Moving inside the Lyceum (Commander, 2026-10-17)
+
+extension LibraryCatalog {
+    /// Moves a file or folder of this server to `destination` (a Lyceum folder): here if this server holds that folder's
+    /// trunk; otherwise each file is handed to the server that does, and this server's copy goes to its Lyceum Trash only
+    /// once the other server's listing shows the file there (fail-safe). Nil when done; otherwise why not.
+    fileprivate func moveInLyceum(_ url: URL, path: String, to destination: String, root: URL, store: LibraryStore) async -> String? {
+        let name = url.lastPathComponent
+        let trunk = destination.split(separator: "/").first.map(String.init) ?? ""
+        var isFolder: ObjCBool = false
+        FileManager.default.fileExists(atPath: url.path, isDirectory: &isFolder)
+        if !trunk.isEmpty, FileManager.default.fileExists(atPath: root.appending(path: trunk).path) {
+            let dir = root.appending(path: destination, directoryHint: .isDirectory)
+            let target = dir.appending(path: name, directoryHint: isFolder.boolValue ? .isDirectory : .notDirectory)
+            guard target.standardizedFileURL.path.hasPrefix(root.standardizedFileURL.path + "/") else { return "not a place in this library" }
+            guard !target.standardizedFileURL.path.hasPrefix(url.standardizedFileURL.path + "/") else { return "a folder cannot go inside itself" }
+            guard !FileManager.default.fileExists(atPath: target.path) else { return "“\(name)” is already in “\(destination)”" }
+            do {
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                try FileManager.default.moveItem(at: url, to: target)
+            } catch { return error.localizedDescription }
+            store.journal("move", from: url, to: target)
+            if isFolder.boolValue { folderMoved(from: path, to: destination + "/" + name) } else { filesMoved([(from: url, to: target)]) }
+            return nil
+        }
+        guard let holder = LibraryPartner.shared.server(holding: trunk) else { return "no server holds “\(trunk)”" }
+        // Another server: file by file, each one trashed here only after it shows there.
+        let files: [URL] = isFolder.boolValue
+            ? (FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles])?
+                .compactMap { $0 as? URL }.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) != true } ?? [])
+            : [url]
+        let base = url.deletingLastPathComponent().standardizedFileURL.path
+        var problems: [String] = []
+        for file in files {
+            let inner = String(file.standardizedFileURL.path.dropFirst(base.count + 1))
+            let there = destination + "/" + inner
+            if let problem = await LibraryPartner.shared.sendIntake(file, to: there, server: holder) { problems.append(problem); continue }
+            guard let trash = store.trashFolder, (try? LibraryStore.moveToTrash([file], libraryRoot: root, trash: trash)) != nil else {
+                problems.append("“\(file.lastPathComponent)” reached \(holder) but the copy here could not go to the Trash"); continue
+            }
+            if let old = relative(file) { remapMark(old, there) }
+        }
+        return problems.isEmpty ? nil : problems.prefix(3).joined(separator: "; ")
+    }
+
+    /// Checkmark and playlist entries re-pointed from one Lyceum path to another (a file that changed servers).
+    fileprivate func remapMark(_ old: String, _ new: String) {
+        var changed = false
+        if unchecked.remove(old) != nil { unchecked.insert(new); changed = true }
+        for (name, list) in playlists where list.contains(old) { playlists[name] = list.map { $0 == old ? new : $0 }; changed = true }
+        if changed { saveMarksAndPublish() }
+    }
 }
 #endif
