@@ -16,6 +16,8 @@
 import SwiftUI
 
 struct NetworkView: View {
+    /// Shown in the main window's empty area (the "waiting for caller" page) instead of its own window.
+    var embedded = false
     @State private var partner = LibraryPartner.shared
     @State private var imports = ImportMaster.shared
     @State private var outbox = ImportOutbox.shared
@@ -85,7 +87,17 @@ struct NetworkView: View {
             }
         }
         .font(.lyceumBody)
-        .frame(minWidth: 900, minHeight: 600)
+        .frame(minWidth: embedded ? 0 : 900, minHeight: embedded ? 0 : 600)
+    }
+
+    // REM  WHAT THIS MAC IS, IN PLAIN WORDS — his catch, 2026-10-17: "not all macs will be servers. the screen says this
+    // REM  mac is a server and asks for a folder or playlist."
+    private var role: String {
+        if partner.thisMacServes {
+            return "\(me) is a server" + (partner.isMasterHere ? " and the master." : ".")
+        }
+        let of = partner.servers.sorted()
+        return "\(me) is a client" + (of.isEmpty ? " — no servers ticked yet (Settings → General → Mediaworks Machines)." : " of \(of.joined(separator: ", ")).")
     }
 
     // MARK: Lines
@@ -126,6 +138,7 @@ struct NetworkView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Mediaworks Network").font(.lyceumTitle)
+            Text(role).font(.lyceumHeadline)
             Text(partner.decidedMaster.map { "Master: \($0)" }
                  ?? (partner.claimants.count > 1 ? "More than one Mac says it is the master: \(partner.claimants.joined(separator: ", "))"
                      : "No master — each server keeps the marks for its own files"))

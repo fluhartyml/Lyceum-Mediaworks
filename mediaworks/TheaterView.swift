@@ -19,10 +19,12 @@ struct TheaterView: View {
 
     @State private var player: AVPlayer?
     @State private var choosingFile = false
+    /// The file now in the player, by path — kept apart from the stream's own address, so resuming works for both.
+    @State private var playingKey: String?
 
     var body: some View {
         Group {
-            if let url = library.nowPlaying, FileManager.default.fileExists(atPath: url.path) {
+            if let url = library.nowPlaying, Self.playable(url) {
                 VideoPlayer(player: player)
                     .overlay(alignment: .center) {
                         if isAudio(url) {
@@ -69,13 +71,39 @@ struct TheaterView: View {
         .onDisappear { savePosition(); player?.pause() }
     }
 
+    /// A file on this Mac, or a file in the Lyceum on any server.
+    static func playable(_ url: URL) -> Bool {
+        #if os(macOS)
+        if LyceumPlace.isInside(url) { return true }
+        #endif
+        return FileManager.default.fileExists(atPath: url.path)
+    }
+
     private func start() {
         savePosition()
-        guard let url = library.nowPlaying, FileManager.default.fileExists(atPath: url.path) else {
+        guard let url = library.nowPlaying, Self.playable(url) else {
             player = nil
             return
         }
-        let newPlayer = AVPlayer(url: url)
+        #if os(macOS)
+        // REM  A LYCEUM FILE streams from the server holding it — checked first if it was unchecked (his rule for playing,
+        // REM  2026-10-15: "if a user highlights a media file and pressed play they want to check the sonh before playing").
+        if LyceumPlace.isInside(url) {
+            player = nil
+            Task {
+                guard let real = await LyceumPlace.theaterURL(url), library.nowPlaying == url else { return }
+                begin(AVPlayer(url: real), key: url.path)
+            }
+            return
+        }
+        #endif
+        begin(AVPlayer(url: url), key: url.path)
+    }
+
+    /// Plays, resuming where this file was left unless it was nearly finished. `key` names the file for the resume.
+    private func begin(_ newPlayer: AVPlayer, key: String) {
+        playingKey = key
+        let url = URL(fileURLWithPath: key)
         // Resume where this file was left, unless it was nearly finished.
         if positionPath == url.path, position > 5 {
             newPlayer.seek(to: CMTime(seconds: position, preferredTimescale: 600))
@@ -88,15 +116,15 @@ struct TheaterView: View {
     }
 
     private func savePosition() {
-        guard let player, let url = (player.currentItem?.asset as? AVURLAsset)?.url else { return }
+        guard let player, let key = playingKey else { return }
         let seconds = player.currentTime().seconds
         guard seconds.isFinite else { return }
-        positionPath = url.path
+        positionPath = key
         position = seconds
     }
 
     private func isAudio(_ url: URL) -> Bool {
-        (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType?.conforms(to: .audio)) ?? false
+        UTType(filenameExtension: url.pathExtension)?.conforms(to: .audio) ?? false
     }
 }
 #endif

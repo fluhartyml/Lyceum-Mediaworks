@@ -285,6 +285,20 @@ enum LyceumPlace {
         return [problem, report.flatMap { $0.hasPrefix("Sent") ? nil : $0 }].compactMap { $0 }.joined(separator: "; ").nilIfEmpty
     }
 
+    // MARK: Playing a Lyceum file in the Theater
+
+    /// HIS RULE (2026-10-15): playing an unchecked file checks it first, so it comes back into rotation; then it streams
+    /// from the server holding it (or plays from this Mac's own library).
+    static func theaterURL(_ url: URL) async -> URL? {
+        let rel = relative(url)
+        guard let host = holder(of: rel) else { return LibraryCatalog.shared.libraryRoot?.appending(path: rel) }
+        if LibraryCatalog.shared.snapshot?.file(at: rel)?.checked == false {
+            _ = await send(CacheRequest(op: .check, path: rel, device: ImportDesk.me), to: host)
+            await LibraryPartner.shared.refresh()
+        }
+        return await LibraryPartner.shared.mediaURL(rel, on: host)
+    }
+
     // MARK: Playing a Lyceum file in a pane's mini player
 
     /// Where the mini player plays a Lyceum file from: this Mac's own copy, or the server holding it — whatever its

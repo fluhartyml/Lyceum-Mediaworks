@@ -49,7 +49,7 @@ struct HybridLibraryView: View {
     @State private var partner = LibraryPartner.shared
     @State private var place: Place?
     @State private var selection = Set<String>()
-    @State private var playing: (url: URL, title: String)?
+    @Environment(LibraryStore.self) private var library
     @State private var problem: String?
     // REM  HIS WORD, 2026-10-13: "yes right click to rename on the mac" — the same rename the TV's Rename… row sends (PL2).
     @State private var renaming: String?
@@ -98,10 +98,12 @@ struct HybridLibraryView: View {
             .navigationSplitViewColumnWidth(min: 280, ideal: 340)
         } detail: {
             VStack(spacing: 0) {
-                if rows.isEmpty {
-                    ContentUnavailableView(place == nil ? "Choose a folder or playlist" : "Nothing here",
-                                           systemImage: "rectangle.stack",
-                                           description: Text(serversLine))
+                if rows.isEmpty && place == nil {
+                    // REM  THE "WAITING FOR CALLER" PAGE — his idea, 2026-10-17: the network, where nothing is chosen yet.
+                    NetworkView(embedded: true)
+                } else if rows.isEmpty {
+                    ContentUnavailableView("Nothing here", systemImage: "rectangle.stack",
+                                           description: Text("This folder or playlist has no media files."))
                 } else {
                     Table(rows, selection: $selection, sortOrder: $sortOrder, columnCustomization: $columns) {
                         TableColumn("✓", value: \.checkOrder) { row in Text(cellText(row, "✓")) }.width(30).customizationID("check")
@@ -132,7 +134,7 @@ struct HybridLibraryView: View {
                         }
                     } primaryAction: { paths in play(paths.first) }
                     Divider()
-                    Text(serversLine).foregroundStyle(.secondary).padding(8).frame(maxWidth: .infinity, alignment: .leading)
+                    Text(roleLine).foregroundStyle(.secondary).padding(8).frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             .toolbar {
@@ -145,14 +147,6 @@ struct HybridLibraryView: View {
         .onAppear {
             if let saved = try? JSONDecoder().decode(TableColumnCustomization<Row>.self, from: savedColumns) { columns = saved }
             restoreSort()
-        }
-        .sheet(isPresented: Binding(get: { playing != nil }, set: { if !$0 { playing = nil } })) {
-            if let playing {
-                VStack(spacing: 0) {
-                    VideoPlayer(player: AVPlayer(url: playing.url)).frame(minWidth: 960, minHeight: 540)
-                    HStack { Text(playing.title); Spacer(); Button("Done") { self.playing = nil }.keyboardShortcut(.cancelAction) }.padding(10)
-                }
-            }
         }
         .alert("Rename Playlist", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Name", text: $newName)
@@ -233,21 +227,24 @@ struct HybridLibraryView: View {
         return rows.reduce(width(title) + 24) { max($0, width(cellText($1, title)) + 16) }
     }
 
-    private var serversLine: String {
-        let me = partner.thisMacServes ? "This Mac is a server" : "This Mac is not a server"
-        let list = partner.servers.map { name in
-            partner.snapshots[name] != nil ? "\(name) ✓" : "\(name) — \(partner.problems[name] ?? "asking…")"
+    // REM  WHAT THIS MAC IS, IN PLAIN WORDS — his catch, 2026-10-17: "not all macs will be servers. the screen says this
+    // REM  mac is a server". Each server with ✓ when it answers.
+    private var roleLine: String {
+        let me = Host.current().localizedName ?? "This Mac"
+        let role = partner.thisMacServes ? "\(me) is a server\(partner.isMasterHere ? " and the master" : "")" : "\(me) is a client"
+        let list = partner.servers.sorted().map { name in
+            (partner.snapshots[name] != nil ? "\(name) ✓" : "\(name) — \(partner.problems[name] ?? "asking…")")
+                + (partner.decidedMaster == name ? " (master)" : "")
         }
-        return list.isEmpty ? "\(me). No servers ticked — Settings → General → Mediaworks Machines."
-                            : "\(me). Servers: " + list.joined(separator: " · ")
+        return list.isEmpty ? role + "." : role + " · " + list.joined(separator: " · ")
     }
 
+    // REM  PLAY GOES TO THE THEATER TAB — the same as on a Mac with its own library (his "theater mode is theater mode",
+    // REM  2026-10-17). The Theater streams it from the server holding it (LyceumPlace.swift).
     private func play(_ path: String?) {
-        guard let path, let file = snapshot?.file(at: path), let host = file.host else { return }
-        Task {
-            guard let url = await partner.mediaURL(path, on: host) else { problem = "\(host) is out of reach."; return }
-            playing = (url, file.info?.title ?? file.name)
-        }
+        guard let path, snapshot?.file(at: path) != nil else { return }
+        library.nowPlaying = LyceumPlace.url(path)
+        library.mode = .theater
     }
 
     /// A playlist of the same name on several servers shows as one list, so every server that has it renames it.

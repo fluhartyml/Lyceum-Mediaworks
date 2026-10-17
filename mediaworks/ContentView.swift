@@ -50,7 +50,13 @@ struct ContentView: View {
                 OnboardingView()
             } else if !LibraryPartner.shared.servers.isEmpty {
                 // REM  N20 — a Mac with no library folder of its own: the hybrid library from the servers.
-                HybridLibraryView()
+                // REM  THE SAME THREE TABS ON EVERY MAC — his word, 2026-10-17: "it should also list the tabs library commander
+                // REM  and theater. on all servers and clients". Commander starts in the Lyceum (LyceumPlace.swift).
+                switch library.mode {
+                case .library: HybridLibraryView().toolbar { modeSwitch }
+                case .commander: NavigationStack { CommanderView(root: LyceumPlace.root).toolbar { modeSwitch } }
+                case .theater: NavigationStack { TheaterView().toolbar { modeSwitch } }
+                }
             } else {
                 // REM  N20 — "the choose library folder to be choose media works machines". Shown whenever this Mac has no
                 // REM  folder of its own AND no servers ticked — there is nothing to show until it has one or the other.
@@ -176,9 +182,14 @@ struct ContentView: View {
                                library.mode = .theater
                            })
             } else {
+                #if os(macOS)
+                // REM  THE "WAITING FOR CALLER" PAGE — his idea, 2026-10-17: the network, where nothing is chosen yet.
+                NetworkView(embedded: true)
+                #else
                 Text("Choose a folder in the sidebar")
                     .font(.lyceumBody)
                     .foregroundStyle(.secondary)
+                #endif
             }
         }
         .toolbar { modeSwitch }
