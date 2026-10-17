@@ -355,10 +355,17 @@ private struct FullScreenPlayer: View {
             }
             .offset(y: max(0, drag))
             // P06: swipe down leaves the full-screen video.
+            // REM  SWIPE RIGHT 👍, SWIPE LEFT 👎 — his words, 2026-10-17, about the corner buttons: "that is too intense i just
+            // REM  want to swipr right or swipe left to thumbs up or thumbs down". Sideways must clearly beat up-and-down, so a
+            // REM  slanted swipe down still closes the video.
             .gesture(DragGesture(minimumDistance: 30)
                 .onChanged { if $0.translation.height > 0 && abs($0.translation.width) < 80 { drag = $0.translation.height } }
                 .onEnded { value in
-                    if value.translation.height > space.size.height * 0.2 { leave() }
+                    let across = value.translation.width, down = value.translation.height
+                    if abs(across) > 80 && abs(across) > abs(down) * 2, let path = player.current {
+                        library.change(across > 0 ? .thumbsUp : .thumbsDown, path)
+                        show(flash: across > 0 ? "👍" : "👎")
+                    } else if down > space.size.height * 0.2 { leave() }
                     withAnimation { drag = 0 }
                 })
             // P03: long press flips landscape / portrait, whatever the phone's own rotation lock says.
