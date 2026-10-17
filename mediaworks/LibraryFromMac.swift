@@ -355,11 +355,10 @@ struct MacLibraryView: View {
                                 Text("\(library.pending.count) change\(library.pending.count == 1 ? "" : "s") waiting for your Mac")
                             }
                             if let progress = library.sync.progress {
+                                // REM  HIS COMMAS ARE THE LINE BREAKS — "i used a comma to indicate a line feed".
                                 Group {
-                                    Text("\(progress.onDevice.formatted()) / \(progress.total.formatted()) on this device")
-                                    Text("\(progress.left.formatted()) left to sync")
-                                    Text("\(Self.size(progress.copiedBytes)) copied")
-                                    Text("\(Self.size(progress.totalBytes)) total")
+                                    Text("\(progress.onDevice.formatted()) / \(progress.total.formatted()) on this device · \(progress.left.formatted()) left to sync")
+                                    Text("\(Self.size(progress.copiedBytes)) copied · \(Self.size(progress.totalBytes)) total")
                                     Text("\(Self.size(progress.freeBytes)) free")
                                 }
                                 .monospacedDigit()
