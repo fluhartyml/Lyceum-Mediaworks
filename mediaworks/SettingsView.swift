@@ -61,6 +61,8 @@ struct SettingsView: View {
             DLNASettingsSection()
             // REM  MEDIAWORKS MACHINES + THE BUFFER (N16–N20) — MediaworksMachines.swift.
             MachinesSettingsSection()
+            // REM  WHO MAY SEND FILES TO THIS MAC (Send to Server) — SendToServer.swift.
+            SendersSettingsSection()
             #endif
             Section {
                 LabeledContent("Library folder") {

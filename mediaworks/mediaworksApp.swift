@@ -43,6 +43,11 @@ struct mediaworksApp: App {
             CommandGroup(replacing: .appInfo) {
                 Button("About Lyceum Mediaworks") { openWindow(id: "about") }
             }
+            // REM  SEND TO SERVER — his ask, 2026-10-17 (SendToServer.swift).
+            CommandGroup(after: .newItem) {
+                Button("Send to Server…") { openWindow(id: "sendtoserver") }
+                    .keyboardShortcut("u", modifiers: [.command, .shift])
+            }
             CommandMenu("Commander") {
                 CommanderMenu()
             }
@@ -118,6 +123,13 @@ struct mediaworksApp: App {
         Window("Import Drive", id: "intake") {
             IntakeView()
                 .environment(library)
+        }
+        .defaultSize(width: 1000, height: 640)
+        .restorationBehavior(.disabled)
+
+        // REM  SEND TO SERVER — files picked on this Mac, sent to a server's Import Drive (SendToServer.swift). File menu.
+        Window("Send to Server", id: "sendtoserver") {
+            SendToServerView()
         }
         .defaultSize(width: 1000, height: 640)
         .restorationBehavior(.disabled)

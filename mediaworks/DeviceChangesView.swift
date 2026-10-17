@@ -86,6 +86,9 @@ struct DeviceChangesView: View {
         case .removeFromPlaylist: "Taken out of a playlist"
         case .getOwn: "Partner looked"
         case .takeIn: "Taken in from the partner's Import Drive"
+        case .sendCheck: "Asked whether a file is a duplicate"
+        case .sendIn: "Sent a file to the Import Drive"
+        case .sendReplace: "Replaced a file by Send to Server"
         case .renameFolder: "Renamed folder"
         case .playlistFromFolder: "Made a playlist from a folder"
         }

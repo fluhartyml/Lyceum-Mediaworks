@@ -101,7 +101,11 @@ nonisolated struct CacheRequest: Codable, Sendable, Hashable {
     /// `uncheckAll` (path = the playlist's name) — every file in it out of rotation; the other half of the Check All toggle.
     /// `deletePlaylist` (path = the playlist's name) — its .m3u8 goes to the library's Trash; the media files are not touched.
     /// `checkFolder` / `uncheckFolder` (path = the folder) — every media file in it and the folders inside it, in or out of rotation.
-    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash, unthumb, renamePlaylist, checkAll, addToPlaylist, removeFromPlaylist, getOwn, takeIn, renameFolder, playlistFromFolder, deletePlaylist, uncheckAll, checkFolder, uncheckFolder }
+    /// `sendCheck` (path = a file of this server's own slice) — a Mac sending files asks for its SHA-256, for the duplicate
+    /// prompt. `sendIn` (path = the file's name, newName = the one-time address) — a Mac's Send to Server: downloaded into
+    /// this server's Import Drive, where intake files it. `sendReplace` (path = the library file it replaces) — the same,
+    /// straight into that place, the old one to the Trash. All three only from a Mac approved in Settings (SendToServer.swift).
+    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash, unthumb, renamePlaylist, checkAll, addToPlaylist, removeFromPlaylist, getOwn, takeIn, renameFolder, playlistFromFolder, deletePlaylist, uncheckAll, checkFolder, uncheckFolder, sendCheck, sendIn, sendReplace }
     var op: Op
     /// The file, relative to the library root ("Music Videos/Rock/1990s/Queensryche - Silent Lucidity.mp4").
     var path: String?
@@ -169,6 +173,8 @@ nonisolated enum LibraryCache {
     // REM  HIS CATCH, 2026-10-15: "i cant do the check mark all uncheckmark all within a folder only a playlist". The same
     // REM  toggle on a folder, subfolders included, arrives in build 196.
     static let folderCheckBuild = 196
+    /// A server takes files from a Mac's Send to Server from build 206 on (SendToServer.swift).
+    static let sendInBuild = 206
     /// The Bonjour service the Mac announces on the home network.
     static let serviceType = "_lyceum._tcp"
 

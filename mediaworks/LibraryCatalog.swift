@@ -279,7 +279,7 @@ final class LibraryCatalog {
     // REM  the marks (Marks.json), puts them in the cache, and every device sees them on its next look. Nothing is deleted.
     private func apply(_ request: CacheRequest) {
         guard let path = request.path, !path.isEmpty,
-              ![.get, .file, .setTags, .trash, .getOwn, .takeIn, .renameFolder, .playlistFromFolder].contains(request.op) else { return }
+              ![.get, .file, .setTags, .trash, .getOwn, .takeIn, .renameFolder, .playlistFromFolder, .sendCheck, .sendIn, .sendReplace].contains(request.op) else { return }
         if request.op == .renamePlaylist {
             // REM  A bad or taken name is refused before anything is recorded.
             guard let newName = request.newName?.trimmingCharacters(in: .whitespaces), Self.validName(newName),
@@ -317,7 +317,7 @@ final class LibraryCatalog {
             saveChanges()
         }
         switch request.op {
-        case .get, .file, .setTags, .trash, .getOwn, .takeIn, .renameFolder, .playlistFromFolder: return
+        case .get, .file, .setTags, .trash, .getOwn, .takeIn, .renameFolder, .playlistFromFolder, .sendCheck, .sendIn, .sendReplace: return
         case .check: unchecked.remove(path)
         case .uncheck: unchecked.insert(path)
         case .thumbsUp:
@@ -885,6 +885,7 @@ final class LibraryCatalog {
                 return
             }
             if request.op == .takeIn { takeIn(request, on: connection); return }
+            if [.sendCheck, .sendIn, .sendReplace].contains(request.op) { receiveSend(request, on: connection); return }
             if routeToPartner(request, on: connection) { return }
             if request.op == .file { sendFile(request.path, on: connection); return }
             if [.setTags, .trash, .renameFolder, .playlistFromFolder].contains(request.op) {
@@ -1141,6 +1142,17 @@ extension LibraryCatalog {
     func offer(_ url: URL) -> String { let token = UUID().uuidString; outbox[token] = url; return token }
     func withdraw(_ token: String) { outbox[token] = nil }
 
+    /// Send to Server: the sending Mac's private listener hands an /outbox/ request here (SendToServer.swift).
+    func serveOutboxRequest(_ connection: NWConnection, header: String) {
+        let lines = header.components(separatedBy: "\r\n")
+        let parts = (lines.first ?? "").split(separator: " ")
+        guard parts.count >= 2, parts[1].hasPrefix("/outbox/"), let url = outbox[String(parts[1].dropFirst("/outbox/".count))] else {
+            connection.send(content: Data("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n".utf8), completion: .contentProcessed { _ in connection.cancel() })
+            return
+        }
+        serveOutbox(connection, url: url, lines: lines)
+    }
+
     /// Adds library-relative paths (this Mac's or the partner's) to a playlist, making it if new.
     func addToPlaylist(_ name: String, paths: [String]) {
         let name = name.trimmingCharacters(in: .whitespaces)
@@ -1208,6 +1220,91 @@ extension LibraryCatalog {
                 reply(nil)
             } catch {
                 reply(error.localizedDescription)
+            }
+        }
+    }
+}
+
+// MARK: - Send to Server, the receiving end (SendToServer.swift)
+
+extension LibraryCatalog {
+    // REM  HIS ASK, 2026-10-17: "i want the app to take the queued media files i select on my macbook and have media works
+    // REM  transfer them to the designated servers remote library so all the imported songs get processed and filed away".
+    // REM  A file comes in only from a Mac he approved here, and only downloaded from THAT Mac's own address — never from an
+    // REM  address someone else names. It lands in this Mac's Import Drive, and intake files it by its tags as usual.
+    fileprivate func receiveSend(_ request: CacheRequest, on connection: NWConnection) {
+        func reply(_ fields: [String: Any]) {
+            let body = (try? JSONSerialization.data(withJSONObject: fields)) ?? Data()
+            connection.send(content: Framing.frame(body), completion: .contentProcessed { _ in connection.cancel() })
+        }
+        func fail(_ problem: String) { reply(["ok": false, "problem": problem]) }
+        let me = Host.current().localizedName ?? "this Mac"
+        guard let sender = request.device, !sender.isEmpty else { fail("The sending Mac did not say who it is."); return }
+        guard SendApprovals.shared.isApproved(sender) else {
+            SendApprovals.shared.asked(sender)
+            fail("Waiting for you to approve “\(sender)” on \(me): Settings → General → Macs That May Send Files.")
+            return
+        }
+        var caller: String?
+        if case .hostPort(let host, _) = connection.endpoint { caller = "\(host)".components(separatedBy: "%").first }
+
+        if request.op == .sendCheck {
+            guard let url = libraryFile(request.path), FileManager.default.fileExists(atPath: url.path) else {
+                fail("\(me) does not hold that file."); return
+            }
+            Task {
+                let digest = await Task.detached { SendHash.sha256(url) }.value
+                reply(["ok": true, "sha": digest ?? ""])
+            }
+            return
+        }
+
+        guard let address = request.newName, let source = URL(string: address), let sourceHost = source.host(),
+              let caller, sourceHost == caller || caller.hasSuffix(sourceHost) else {
+            fail("\(me) only downloads a file from the Mac that is sending it."); return
+        }
+        let target: URL
+        if request.op == .sendReplace {
+            guard let place = libraryFile(request.path), FileManager.default.fileExists(atPath: place.path) else {
+                fail("\(me) does not hold the file to replace."); return
+            }
+            target = place
+        } else {
+            guard let drop = LibraryIntake.shared.drop else { fail("\(me) has no Import Drive chosen (Settings → General)."); return }
+            guard let name = request.path.map({ ($0 as NSString).lastPathComponent }), !name.isEmpty else { fail("No file name."); return }
+            let folder = drop.appending(path: "Sent from \(sender)", directoryHint: .isDirectory)
+            var candidate = folder.appending(path: name)
+            var n = 2
+            while FileManager.default.fileExists(atPath: candidate.path) {
+                let base = (name as NSString).deletingPathExtension, ext = (name as NSString).pathExtension
+                candidate = folder.appending(path: ext.isEmpty ? "\(base) \(n)" : "\(base) \(n).\(ext)")
+                n += 1
+            }
+            target = candidate
+        }
+        Task {
+            do {
+                let (temp, response) = try await URLSession.shared.download(from: source)
+                let expected = response.expectedContentLength
+                if expected > 0, LibraryIntake.size(temp) != Int(expected) {
+                    try? FileManager.default.removeItem(at: temp); fail("The file arrived incomplete."); return
+                }
+                try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+                // REM  Written under a .partial name and renamed when whole — intake never takes a half-written file.
+                let partial = target.appendingPathExtension("partial")
+                try? FileManager.default.removeItem(at: partial)
+                try FileManager.default.moveItem(at: temp, to: partial)
+                if request.op == .sendReplace, let trash = store?.trashFolder, let root = running {
+                    _ = try LibraryStore.moveToTrash([target], libraryRoot: root, trash: trash)
+                }
+                try FileManager.default.moveItem(at: partial, to: target)
+                store?.journal(request.op == .sendReplace ? "replaced by Send to Server from \(sender)" : "sent from \(sender)",
+                               from: source, to: target)
+                report("Received “\(target.lastPathComponent)” from \(sender)")
+                if request.op == .sendReplace { await rescan() }
+                reply(["ok": true])
+            } catch {
+                fail(error.localizedDescription)
             }
         }
     }
