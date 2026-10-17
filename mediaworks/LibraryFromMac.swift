@@ -335,18 +335,37 @@ struct MacLibraryView: View {
         #endif
     }
 
+    static func size(_ bytes: Int64) -> String { ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) }
+
     var body: some View {
         if let snapshot = library.snapshot {
             NavigationStack {
                 CachedFolderList(folder: snapshot.root, path: "", isTop: true)
                     .safeAreaInset(edge: .bottom, spacing: 0) {
+                        // REM  ONE THING PER LINE — his layout, 2026-10-17, after "the status / feedback to user is disorganized
+                        // REM  and doesnt look good": "from homelab b, build ca7b105, oct 17 2026 10:18, 69/2280 on this device
+                        // REM  2206 left to synch, 8.62 gb copied 218.42 gb total, 418.16gb free, dadasda.mp4, build 199".
                         VStack(spacing: 2) {
-                            Text("From \(snapshot.macName)\(Self.serverBuild(snapshot)) · \(snapshot.made.formatted(date: .abbreviated, time: .shortened))\(library.fromCloud ? " · from iCloud" : library.heard == nil ? " · saved copy" : "")")
+                            Text("From \(snapshot.macName)")
+                            let server = Self.serverBuild(snapshot)
+                            if !server.isEmpty { Text(server.replacingOccurrences(of: " · build ", with: "Build ")).monospacedDigit() }
+                            Text(snapshot.made.formatted(date: .abbreviated, time: .shortened)
+                                 + (library.fromCloud ? " · from iCloud" : library.heard == nil ? " · saved copy" : ""))
                             if !library.pending.isEmpty {
                                 Text("\(library.pending.count) change\(library.pending.count == 1 ? "" : "s") waiting for your Mac")
                             }
+                            if let progress = library.sync.progress {
+                                Group {
+                                    Text("\(progress.onDevice.formatted()) / \(progress.total.formatted()) on this device")
+                                    Text("\(progress.left.formatted()) left to sync")
+                                    Text("\(Self.size(progress.copiedBytes)) copied")
+                                    Text("\(Self.size(progress.totalBytes)) total")
+                                    Text("\(Self.size(progress.freeBytes)) free")
+                                }
+                                .monospacedDigit()
+                            }
                             if !library.sync.status.isEmpty {
-                                Text(library.sync.status)
+                                Text(library.sync.status).lineLimit(1).truncationMode(.middle)
                             }
                             // REM  THE BUILD NUMBER ON EVERY SCREEN — his rule (BUILD-NUMBER-STANDARD), caught 2026-10-10 12:59 on
                             // REM  the iPhone: "it doesnt show the build number". It was only on the waiting-for-your-Mac screen.

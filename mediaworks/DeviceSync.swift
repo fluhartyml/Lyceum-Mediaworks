@@ -65,7 +65,17 @@ final class DeviceSync {
 
     func setFolder(_ path: String, on: Bool) { folderChoices[path] = on }
 
-    /// One line for the bottom of the Library: what syncing is doing.
+    /// The numbers behind the bar at the bottom of the Library — nil when there is nothing to count.
+    struct Progress: Equatable {
+        var onDevice: Int
+        var total: Int
+        var copiedBytes: Int64
+        var totalBytes: Int64
+        var freeBytes: Int64
+        var left: Int { total - onDevice }
+    }
+    private(set) var progress: Progress?
+    /// What syncing is doing, in a few words — "Copying …", "Up to date", "Not enough room …".
     private(set) var status = ""
     private(set) var running = false
     /// Goes up when copies arrive or leave, so rows redraw their "on this device" mark.
@@ -128,6 +138,7 @@ final class DeviceSync {
         // Copies no longer wanted come off this device (never off the library).
         let removed = removeUnwanted(keeping: wantedPaths)
 
+        if mode == .off || !anyFolderOn { progress = nil }
         if mode != .off && !anyFolderOn {
             status = (removed > 0 ? "Removed \(removed) copies from this device · " : "")
                 + "No folders are switched on for this device — open a folder and turn on Sync to This Device"
@@ -143,7 +154,6 @@ final class DeviceSync {
         let totalBytes = wanted.reduce(Int64(0)) { $0 + $1.size }
         let need = missing.reduce(Int64(0)) { $0 + $1.size }
         var copiedBytes: Int64 = 0
-        func gb(_ bytes: Int64) -> String { ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) }
         func freeNow() -> Int64 {
             #if os(tvOS)
             Int64((try? Self.folder.resourceValues(forKeys: [.volumeAvailableCapacityKey]).volumeAvailableCapacity) ?? 0)
@@ -152,34 +162,40 @@ final class DeviceSync {
                 .volumeAvailableCapacityForImportantUsage) ?? 0
             #endif
         }
-        func tally(_ copied: Int) -> String {
-            "\(alreadyHere + copied) / \(wanted.count) on this device · \(missing.count - copied) left to sync · "
-                + "\(gb(totalBytes - need + copiedBytes)) copied of \(gb(totalBytes)) total \(gb(freeNow())) free"
+        // REM  NUMBERS AND WORDS KEPT APART — his catch on build 199, 2026-10-17: "the status / feedback to user is
+        // REM  disorganized and doesnt look good". The numbers go to `progress` (a bar and two lined-up rows); `status` keeps
+        // REM  only a few words.
+        func report(_ copied: Int, _ words: String) {
+            if mode != .off {
+                progress = Progress(onDevice: alreadyHere + copied, total: wanted.count,
+                                    copiedBytes: totalBytes - need + copiedBytes, totalBytes: totalBytes, freeBytes: freeNow())
+            }
+            status = words
         }
         guard !missing.isEmpty else {
-            status = mode == .off ? (removed > 0 ? "Removed \(removed) copies from this device" : "")
-                                  : "\(tally(0)) — up to date"
+            if mode == .off { status = removed > 0 ? "Removed \(removed) copies from this device" : "" }
+            else { report(0, "Up to date") }
             return
         }
         let free = freeNow()
         guard need < free - 2_000_000_000 else {
             // REM  Leaves 2 GB free for the phone itself.
-            status = "\(tally(0)) — not enough room: \(ByteCountFormatter.string(fromByteCount: need, countStyle: .file)) to copy, \(ByteCountFormatter.string(fromByteCount: free, countStyle: .file)) free. Switch to Manual and check fewer files."
+            report(0, "Not enough room: \(ByteCountFormatter.string(fromByteCount: need, countStyle: .file)) to copy. Switch fewer folders on, or check fewer files.")
             return
         }
         var done = 0
         for item in missing {
-            if stopRequested { status = "\(tally(done)) — sync stopped"; return }
-            status = "\(tally(done)) — copying \((item.path as NSString).lastPathComponent)"
+            if stopRequested { report(done, "Sync stopped"); return }
+            report(done, (item.path as NSString).lastPathComponent)
             guard await MacLibrary.download(item.path, to: Self.localURL(item.path)) else {
-                status = "\(tally(done)) — your Mac is out of reach; the rest come next time"
+                report(done, "Your Mac is out of reach — the rest come next time")
                 return
             }
             done += 1
             copiedBytes += item.size
             copiesVersion += 1
         }
-        status = "\(tally(done)) — up to date"
+        report(done, "Up to date")
     }
 
     /// Deletes this device's copies that are not wanted, and empty folders. Returns how many files went.
