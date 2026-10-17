@@ -390,7 +390,13 @@ private struct FullScreenPlayer: View {
         Color.clear
             .contentShape(Rectangle())
             .onTapGesture(count: 2) { player.skip(back ? -10 : 10); show(flash: back ? "⏪" : "⏩") }
-            .onTapGesture { controls ? hide() : showControls() }
+            // REM  TAP = PAUSE / PLAY — his words, 2026-10-17: "and tap to pause or play". Paused, the controls stay up (scrubber,
+            // REM  close, 👍/👎) until the next tap plays and hides them.
+            .onTapGesture {
+                player.togglePlay()
+                show(flash: player.isPlaying ? "▶︎" : "⏸︎")
+                if player.isPlaying { hide() } else { hideTask?.cancel(); withAnimation { controls = true } }
+            }
     }
 
     /// The overlay a tap brings up: 👍/👎 top corner, the six buttons and the scrubber at the bottom.
