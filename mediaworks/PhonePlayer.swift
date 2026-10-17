@@ -390,12 +390,13 @@ private struct FullScreenPlayer: View {
         Color.clear
             .contentShape(Rectangle())
             .onTapGesture(count: 2) { player.skip(back ? -10 : 10); show(flash: back ? "⏪" : "⏩") }
-            // REM  TAP = PAUSE / PLAY — his words, 2026-10-17: "and tap to pause or play". Paused, the controls stay up (scrubber,
-            // REM  close, 👍/👎) until the next tap plays and hides them.
+            // REM  ONE TAP BRINGS THE CONTROLS; WITH THEM UP, A TAP ANYWHERE PAUSES OR PLAYS — his words, 2026-10-17: "tap once to
+            // REM  bring up controls and tap anywhere to pause or play". Paused, the controls stay up; playing, they hide after ~3 s.
             .onTapGesture {
+                guard controls else { showControls(); return }
                 player.togglePlay()
                 show(flash: player.isPlaying ? "▶︎" : "⏸︎")
-                if player.isPlaying { hide() } else { hideTask?.cancel(); withAnimation { controls = true } }
+                if player.isPlaying { showControls() } else { hideTask?.cancel() }
             }
     }
 
