@@ -92,22 +92,31 @@ final class DeviceSync {
         // REM  THE COUNT LEADS EVERY LINE — his ask, 2026-10-17: "it should show a a total number of media files slash how many
         // REM  files are on your device with a how many are left to synchronize at the bottom". Total = what THIS device should
         // REM  hold (every media file on Automatic, the checked ones on Manual).
+        // REM  AND THE SIZE AND THE ROOM — his words, 2026-10-17: "120 GB copieed of 428 GB total 40 GB free". Free is read
+        // REM  again for every line, so it counts down as files arrive.
         let alreadyHere = wanted.count - missing.count
+        let totalBytes = wanted.reduce(Int64(0)) { $0 + $1.size }
+        let need = missing.reduce(Int64(0)) { $0 + $1.size }
+        var copiedBytes: Int64 = 0
+        func gb(_ bytes: Int64) -> String { ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) }
+        func freeNow() -> Int64 {
+            #if os(tvOS)
+            Int64((try? Self.folder.resourceValues(forKeys: [.volumeAvailableCapacityKey]).volumeAvailableCapacity) ?? 0)
+            #else
+            (try? Self.folder.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+                .volumeAvailableCapacityForImportantUsage) ?? 0
+            #endif
+        }
         func tally(_ copied: Int) -> String {
-            "\(alreadyHere + copied) / \(wanted.count) on this device · \(missing.count - copied) left to sync"
+            "\(alreadyHere + copied) / \(wanted.count) on this device · \(missing.count - copied) left to sync · "
+                + "\(gb(totalBytes - need + copiedBytes)) copied of \(gb(totalBytes)) total \(gb(freeNow())) free"
         }
         guard !missing.isEmpty else {
             status = mode == .off ? (removed > 0 ? "Removed \(removed) copies from this device" : "")
                                   : "\(tally(0)) — up to date"
             return
         }
-        let need = missing.reduce(Int64(0)) { $0 + $1.size }
-        #if os(tvOS)
-        let free = Int64((try? Self.folder.resourceValues(forKeys: [.volumeAvailableCapacityKey]).volumeAvailableCapacity) ?? 0)
-        #else
-        let free = (try? Self.folder.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
-            .volumeAvailableCapacityForImportantUsage) ?? 0
-        #endif
+        let free = freeNow()
         guard need < free - 2_000_000_000 else {
             // REM  Leaves 2 GB free for the phone itself.
             status = "\(tally(0)) — not enough room: \(ByteCountFormatter.string(fromByteCount: need, countStyle: .file)) to copy, \(ByteCountFormatter.string(fromByteCount: free, countStyle: .file)) free. Switch to Manual and check fewer files."
@@ -122,6 +131,7 @@ final class DeviceSync {
                 return
             }
             done += 1
+            copiedBytes += item.size
             copiesVersion += 1
         }
         status = "\(tally(done)) — up to date"
