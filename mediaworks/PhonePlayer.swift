@@ -176,6 +176,8 @@ struct PhoneHome: View {
         .environment(library)
         .environment(remote)
         .task { await remote.keepWatching() }
+        // REM  THE iPHONE RELAY for imports (ImportJobs.swift) — while the app is open.
+        .task { ImportRelay.shared.start() }
         .onAppear { player.isPlayable = { [library] in library.isPlayable($0) } }
         .fullScreenCover(isPresented: $player.fullScreen) {
             FullScreenPlayer()

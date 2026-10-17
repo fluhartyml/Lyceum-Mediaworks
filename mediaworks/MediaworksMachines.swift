@@ -63,10 +63,13 @@ struct MachinesList: View {
                 // REM  more tham a keysyone. it is cerimonial" (LibraryPartner).
                 if partner.thisMacServes {
                     Toggle(isOn: $partner.thisMacIsMaster) {
-                        Text("Master — the tie-breaker for checkmarks and playlists")
+                        Text("Master — the tie-breaker for checkmarks, playlists and imports")
                     }
                     .toggleStyle(.checkbox)
                     .padding(.leading, 26)
+                    // REM  His word, 2026-10-17: "master is recommended to be online 24x7 with UPS backup".
+                    Text("Recommended: the master stays on around the clock, on a UPS.")
+                        .foregroundStyle(.secondary).padding(.leading, 46)
                 }
                 Text(masterStatus).foregroundStyle(partner.masterProblem == nil ? Color.secondary : Color.orange)
                     .padding(.leading, 26)

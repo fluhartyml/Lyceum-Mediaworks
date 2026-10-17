@@ -90,6 +90,9 @@ struct DeviceChangesView: View {
         case .sendIn: "Sent a file to the Import Drive"
         case .sendReplace: "Replaced a file by Send to Server"
         case .marksPatch: "Changed checkmarks or playlists through the master"
+        case .importRegister: "Sent files to import"
+        case .importList: "Asked about imports"
+        case .importHold: "Holds a copy of an import"
         case .renameFolder: "Renamed folder"
         case .playlistFromFolder: "Made a playlist from a folder"
         }

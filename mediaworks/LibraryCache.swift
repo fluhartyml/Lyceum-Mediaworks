@@ -161,8 +161,10 @@ nonisolated struct CacheRequest: Codable, Sendable, Hashable {
     /// prompt. `sendIn` (path = the file's name, newName = the one-time address) — a Mac's Send to Server: downloaded into
     /// this server's Import Drive, where intake files it. `sendReplace` (path = the library file it replaces) — the same,
     /// straight into that place, the old one to the Trash. All three only from a Mac approved in Settings (SendToServer.swift).
+    /// `importRegister` (picture = JSON [ImportJob]) · `importList` · `importHold` (path = the job's id) — imports through the
+    /// master, with an iPhone as relay (ImportJobs.swift). Only from a device approved in the master's Settings.
     /// `marksPatch` (picture = a JSON MarksPatch) — a follower's change to the master's checkmarks and playlists (MasterMarks).
-    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash, unthumb, renamePlaylist, checkAll, addToPlaylist, removeFromPlaylist, getOwn, takeIn, renameFolder, playlistFromFolder, deletePlaylist, uncheckAll, checkFolder, uncheckFolder, sendCheck, sendIn, sendReplace, marksPatch }
+    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash, unthumb, renamePlaylist, checkAll, addToPlaylist, removeFromPlaylist, getOwn, takeIn, renameFolder, playlistFromFolder, deletePlaylist, uncheckAll, checkFolder, uncheckFolder, sendCheck, sendIn, sendReplace, marksPatch, importRegister, importList, importHold }
     var op: Op
     /// The file, relative to the library root ("Music Videos/Rock/1990s/Queensryche - Silent Lucidity.mp4").
     var path: String?
@@ -234,6 +236,8 @@ nonisolated enum LibraryCache {
     static let sendInBuild = 206
     /// A master takes followers' changes from build 207 on (MasterMarks).
     static let masterBuild = 207
+    /// Imports through the master, with an iPhone as relay, from build 208 on (ImportJobs.swift).
+    static let relayBuild = 208
     /// The Bonjour service the Mac announces on the home network.
     static let serviceType = "_lyceum._tcp"
 

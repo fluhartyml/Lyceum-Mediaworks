@@ -435,6 +435,8 @@ struct IntakeView: View {
                     .disabled(intake.drop == nil)
             }
             Text(intake.status).foregroundStyle(.secondary)
+            // REM  IMPORTS THROUGH THE MASTER — what is coming in from other devices, and why anything is stuck (ImportJobs.swift).
+            ImportJobsSection()
             if let at = intake.lastLook { Text("Last look \(at.formatted(date: .omitted, time: .standard))").foregroundStyle(.secondary) }
 
             if !intake.questions.isEmpty {

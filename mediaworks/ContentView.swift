@@ -76,6 +76,8 @@ struct ContentView: View {
         }
         // REM  REMOTE JOBS — listens if this Mac accepts jobs, and finishes any queue left from before a restart (N12).
         .task { JobWorker.shared.start() }
+        // REM  IMPORTS THROUGH THE MASTER (ImportJobs.swift) — originals still waiting are offered again; the master's list resumes.
+        .task { ImportOutbox.shared.resume(); if !ImportMaster.shared.open.isEmpty { ImportMaster.shared.start() } }
         // REM  SMART TVs (DLNA, 017/018) — serves if the user turned it on in Settings.
         .task { DLNAServer.shared.startIfOn() }
         // REM  TWO MACS, ONE LIBRARY (N16) — keeps the partner's half current if one is named.

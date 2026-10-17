@@ -267,7 +267,7 @@ final class MacLibrary {
     }
 
     /// Sends one request and reads the cache the Mac answers with.
-    private static func ask(_ request: CacheRequest) async -> Data? {
+    static func ask(_ request: CacheRequest) async -> Data? {
         guard let connection = await open(sending: request) else { return nil }
         return await withCheckedContinuation { (done: CheckedContinuation<Data?, Never>) in
             Framing.read(connection) { data in
@@ -388,10 +388,21 @@ private struct SyncMenu: View {
 
     var body: some View {
         @Bindable var sync = library.sync
+        #if os(iOS)
+        @Bindable var relay = ImportRelay.shared
+        #endif
         Menu {
             Picker("Keep a copy on this device", selection: $sync.mode) {
                 ForEach(DeviceSync.Mode.allCases) { Text($0.title).tag($0) }
             }
+            // REM  RELAY IMPORTS — his idea, 2026-10-17: "it uses the iphone as the 'media file cloud'". In this menu, not
+            // REM  a new button — his rule: "we cant clutter the small iphone screen with settings all over the place".
+            #if os(iOS)
+            Section {
+                Toggle("Relay Imports From Your Mac", isOn: $relay.isOn)
+                if relay.isOn, !relay.status.isEmpty { Text(relay.status) }
+            }
+            #endif
         } label: {
             Label("Sync: \(library.sync.mode == .off ? "Off" : library.sync.mode == .automatic ? "Automatic" : "Manual")",
                   systemImage: library.sync.running ? "arrow.triangle.2.circlepath" : "iphone.and.arrow.forward")

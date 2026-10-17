@@ -290,7 +290,7 @@ final class LibraryCatalog {
     // REM  the marks (Marks.json), puts them in the cache, and every device sees them on its next look. Nothing is deleted.
     private func apply(_ request: CacheRequest) {
         guard let path = request.path, !path.isEmpty,
-              ![.get, .file, .setTags, .trash, .getOwn, .takeIn, .renameFolder, .playlistFromFolder, .sendCheck, .sendIn, .sendReplace, .marksPatch].contains(request.op) else { return }
+              ![.get, .file, .setTags, .trash, .getOwn, .takeIn, .renameFolder, .playlistFromFolder, .sendCheck, .sendIn, .sendReplace, .marksPatch, .importRegister, .importList, .importHold].contains(request.op) else { return }
         if request.op == .renamePlaylist {
             // REM  A bad or taken name is refused before anything is recorded.
             guard let newName = request.newName?.trimmingCharacters(in: .whitespaces), Self.validName(newName),
@@ -328,7 +328,7 @@ final class LibraryCatalog {
             saveChanges()
         }
         switch request.op {
-        case .get, .file, .setTags, .trash, .getOwn, .takeIn, .renameFolder, .playlistFromFolder, .sendCheck, .sendIn, .sendReplace, .marksPatch: return
+        case .get, .file, .setTags, .trash, .getOwn, .takeIn, .renameFolder, .playlistFromFolder, .sendCheck, .sendIn, .sendReplace, .marksPatch, .importRegister, .importList, .importHold: return
         case .check: unchecked.remove(path)
         case .uncheck: unchecked.insert(path)
         case .thumbsUp:
@@ -909,6 +909,7 @@ final class LibraryCatalog {
             }
             if request.op == .takeIn { takeIn(request, on: connection); return }
             if request.op == .marksPatch { receivePatch(request, on: connection); return }
+            if [.importRegister, .importList, .importHold].contains(request.op) { receiveImport(request, on: connection); return }
             if [.sendCheck, .sendIn, .sendReplace].contains(request.op) { receiveSend(request, on: connection); return }
             if routeToPartner(request, on: connection) { return }
             if request.op == .file { sendFile(request.path, on: connection); return }
@@ -1268,7 +1269,7 @@ extension LibraryCatalog {
         guard let sender = request.device, !sender.isEmpty else { fail("The sending Mac did not say who it is."); return }
         guard SendApprovals.shared.isApproved(sender) else {
             SendApprovals.shared.asked(sender)
-            fail("Waiting for you to approve “\(sender)” on \(me): Settings → General → Macs That May Send Files.")
+            fail("Waiting for you to approve “\(sender)” on \(me): Settings → General → Devices That May Send Files.")
             return
         }
         var caller: String?
@@ -1457,6 +1458,53 @@ extension LibraryCatalog {
         loadPlaylistFiles()
         marksVersion += 1
         if let lastFound { publish(lastFound) } else { republishMerged() }
+    }
+}
+
+// MARK: - Imports through the master (ImportJobs.swift)
+
+extension LibraryCatalog {
+    func importReport(_ line: String) { report(line) }
+
+    // REM  The master holds the list; any other server passes the request on to it, so an iPhone talking to Lab B and a
+    // REM  MacBook talking to Lab A see the same list. With no master decided, the server asked keeps the list itself.
+    fileprivate func receiveImport(_ request: CacheRequest, on connection: NWConnection) {
+        func reply(_ r: ImportReply) {
+            connection.send(content: Framing.frame((try? JSONEncoder().encode(r)) ?? Data()), completion: .contentProcessed { _ in connection.cancel() })
+        }
+        let partner = LibraryPartner.shared
+        if let master = partner.decidedMaster, master != partner.me {
+            Task {
+                if let data = await partner.ask(request, to: master, timeout: 30) {
+                    connection.send(content: Framing.frame(data), completion: .contentProcessed { _ in connection.cancel() })
+                } else {
+                    reply(ImportReply(ok: false, problem: "\(master), the master, is not answering — nothing is deleted until it does."))
+                }
+            }
+            return
+        }
+        let me = partner.me
+        guard let sender = request.device, !sender.isEmpty else { reply(ImportReply(ok: false, problem: "The device did not say who it is.")); return }
+        guard SendApprovals.shared.isApproved(sender) else {
+            SendApprovals.shared.asked(sender)
+            reply(ImportReply(ok: false, problem: "Waiting for you to approve “\(sender)” on \(me): Settings → General → Devices That May Send Files."))
+            return
+        }
+        let desk = ImportMaster.shared
+        switch request.op {
+        case .importRegister:
+            guard let data = request.picture, let jobs = try? JSONDecoder().decode([ImportJob].self, from: data) else {
+                reply(ImportReply(ok: false, problem: "The list of files could not be read.")); return
+            }
+            guard LibraryIntake.shared.drop != nil else { reply(ImportReply(ok: false, problem: "\(me) has no Import Drive chosen (Settings → General).")); return }
+            desk.register(jobs)
+            reply(ImportReply(ok: true, jobs: desk.jobs))
+        case .importHold:
+            if let id = request.path { desk.hold(id, by: sender) }
+            reply(ImportReply(ok: true, jobs: desk.jobs))
+        default:
+            reply(ImportReply(ok: true, jobs: desk.jobs))
+        }
     }
 }
 #endif

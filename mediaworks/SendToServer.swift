@@ -61,7 +61,7 @@ struct SendersSettingsSection: View {
     var body: some View {
         Section {
             if approvals.approved.isEmpty && approvals.waiting.isEmpty {
-                Text("None yet. A Mac that uses File → Send to Server… shows up here the first time, for you to approve.")
+                Text("None yet. A Mac using File → Send to Server…, or an iPhone with Relay Imports on, shows up here the first time, for you to approve.")
                     .foregroundStyle(.secondary)
             }
             ForEach(approvals.waiting, id: \.self) { name in
@@ -80,7 +80,7 @@ struct SendersSettingsSection: View {
                 }
             }
         } header: {
-            Text("Macs That May Send Files").font(.lyceumHeadline)
+            Text("Devices That May Send Files").font(.lyceumHeadline)
         } footer: {
             Text("Files they send land in this Mac's Import Drive and are filed by their tags.")
                 .foregroundStyle(.secondary)
@@ -115,6 +115,8 @@ final class SendQueue {
         let url: URL
         let size: Int64
         var state: State = .waiting
+        /// Once handed to the master: its job (ImportJobs.swift) — the master's word on it is the state from then on.
+        var jobID: String?
         var name: String { url.lastPathComponent }
     }
 
@@ -139,11 +141,16 @@ final class SendQueue {
     @ObservationIgnored private var standing: Choice?
     @ObservationIgnored private var answer: CheckedContinuation<(Choice, Bool), Never>?
     @ObservationIgnored private var stopRequested = false
-    @ObservationIgnored private var listener: NWListener?
     @ObservationIgnored private var scoped: [URL] = []
 
     var totalBytes: Int64 { items.reduce(0) { $0 + $1.size } }
-    var sentBytes: Int64 { items.filter { $0.state == .sent }.reduce(0) { $0 + $1.size } }
+    var sentBytes: Int64 {
+        items.reduce(0) { sum, item in
+            if item.state == .sent { return sum + item.size }
+            guard let id = item.jobID, let job = ImportOutbox.shared.status[id] else { return sum }
+            return sum + (job.state == .done ? item.size : job.have)
+        }
+    }
     var left: Int { items.filter { [.waiting, .checking, .sending].contains($0.state) }.count }
 
     // MARK: Adding
@@ -193,17 +200,14 @@ final class SendQueue {
         running = true
         stopRequested = false
         standing = nil
-        defer { running = false; stopListening() }
-        guard let base = await startListening() else {
-            for i in items.indices where items[i].state == .waiting { items[i].state = .failed("This Mac's network address could not be found.") }
-            return
-        }
+        defer { running = false }
         while !stopRequested, let i = items.firstIndex(where: { $0.state == .waiting }) {
-            await send(i, base: base)
+            await send(i)
         }
+        ImportOutbox.shared.start()
     }
 
-    private func send(_ i: Int, base: String) async {
+    private func send(_ i: Int) async {
         let item = items[i]
         guard FileManager.default.fileExists(atPath: item.url.path) else { items[i].state = .failed("The file is gone."); return }
 
@@ -235,27 +239,43 @@ final class SendQueue {
         }
 
         items[i].state = .sending
-        let token = LibraryCatalog.shared.offer(item.url)
-        defer { LibraryCatalog.shared.withdraw(token) }
-        var request = CacheRequest(op: op, path: sendName, device: Self.me)
-        request.newName = base + "/outbox/" + token
-        guard let reply = await ask(request, to: to, timeout: 6 * 3600) else {
-            items[i].state = .failed("\(to) did not answer — is Mediaworks build \(LibraryCache.sendInBuild) or newer running there?")
+        if op == .sendReplace {
+            // Replace goes straight to the server holding the old file, as before (206).
+            guard let base = await ImportSource.shared.base() else { items[i].state = .failed("This Mac's network address could not be found."); return }
+            let token = UUID().uuidString
+            ImportSource.shared.offer(item.url, as: token)
+            defer { ImportSource.shared.withdraw(token) }
+            var request = CacheRequest(op: op, path: sendName, device: Self.me)
+            request.newName = base + "/outbox/" + token
+            guard let reply = await ask(request, to: to, timeout: 6 * 3600) else {
+                items[i].state = .failed("\(to) did not answer — is Mediaworks build \(LibraryCache.sendInBuild) or newer running there?"); return
+            }
+            guard reply["ok"] as? Bool == true else { items[i].state = .failed(reply["problem"] as? String ?? "\(to) refused it."); return }
+            let instant = UserDefaults.standard.bool(forKey: "instantDelete")
+            do {
+                if instant { try FileManager.default.removeItem(at: item.url) }
+                else { try FileManager.default.trashItem(at: item.url, resultingItemURL: nil) }
+                items[i].state = .sent
+            } catch {
+                items[i].state = .failed("Sent — but this Mac's copy could not be \(instant ? "deleted" : "moved to the Trash"): \(error.localizedDescription)")
+            }
             return
         }
-        guard reply["ok"] as? Bool == true else {
-            items[i].state = .failed(reply["problem"] as? String ?? "\(to) refused it.")
-            return
+        // Everything else becomes a job on the master — pulled from this Mac or an iPhone relay; the original goes only
+        // when the master says it arrived (ImportJobs.swift).
+        guard let job = ImportOutbox.shared.add(item.url, name: sendName, size: item.size, server: to) else {
+            items[i].state = .failed("This Mac could not keep its place for the file."); return
         }
-        // Safely there — this Mac's copy goes as his Settings say.
-        let instant = UserDefaults.standard.bool(forKey: "instantDelete")
-        do {
-            if instant { try FileManager.default.removeItem(at: item.url) }
-            else { try FileManager.default.trashItem(at: item.url, resultingItemURL: nil) }
-            items[i].state = .sent
-        } catch {
-            items[i].state = .failed("Sent — but this Mac's copy could not be \(instant ? "deleted" : "moved to the Trash"): \(error.localizedDescription)")
+        var request = CacheRequest(op: .importRegister, device: Self.me)
+        request.picture = try? JSONEncoder().encode([job])
+        guard let data = await LibraryPartner.shared.ask(request, to: to, timeout: 30),
+              let reply = try? JSONDecoder().decode(ImportReply.self, from: data) else {
+            ImportOutbox.shared.forget(job.id)
+            items[i].state = .failed("\(to) did not answer — is Mediaworks build \(LibraryCache.relayBuild) or newer running there?"); return
         }
+        guard reply.ok else { ImportOutbox.shared.forget(job.id); items[i].state = .failed(reply.problem ?? "\(to) refused it."); return }
+        items[i].jobID = job.id
+        items[i].state = .sent
     }
 
     private func ask(_ request: CacheRequest, to name: String, timeout: Double = 60) async -> [String: Any]? {
@@ -291,49 +311,29 @@ final class SendQueue {
         }
     }
 
-    // MARK: The private listener — offers files, nothing else
-
-    private func startListening() async -> String? {
-        if listener == nil, let l = try? NWListener(using: .tcp) {
-            l.newConnectionHandler = { connection in
-                connection.start(queue: .main)
-                var header = Data()
-                func readHeader() {
-                    connection.receive(minimumIncompleteLength: 1, maximumLength: 16384) { chunk, _, complete, _ in
-                        if let chunk { header.append(chunk) }
-                        if let end = header.range(of: Data("\r\n\r\n".utf8)) {
-                            let text = String(decoding: header[..<end.lowerBound], as: UTF8.self)
-                            DispatchQueue.main.async {
-                                MainActor.assumeIsolated { LibraryCatalog.shared.serveOutboxRequest(connection, header: text) }
-                            }
-                        } else if complete || header.count > 65536 { connection.cancel() } else { readHeader() }
-                    }
-                }
-                readHeader()
-            }
-            l.start(queue: .main)
-            listener = l
-        }
-        for _ in 0..<20 {
-            if let port = listener?.port?.rawValue, port > 0, let ip = DLNAServer.localAddress() { return "http://\(ip):\(port)" }
-            try? await Task.sleep(for: .milliseconds(100))
-        }
-        return nil
-    }
-
-    private func stopListening() { listener?.cancel(); listener = nil }
 }
 
 // MARK: - The window
 
 struct SendToServerView: View {
     @State private var queue = SendQueue.shared
+    @State private var outbox = ImportOutbox.shared
     @State private var partner = LibraryPartner.shared
     @State private var picking = false
     @State private var forTheRest = false
     @AppStorage("instantDelete") private var instantDelete = false
 
     private func size(_ b: Int64) -> String { ByteCountFormatter.string(fromByteCount: b, countStyle: .file) }
+
+    /// A row's words — once the master has the file, its word.
+    private func words(_ item: SendQueue.Item) -> String {
+        guard let id = item.jobID else { return item.state.words }
+        guard let job = outbox.status[id] else { return outbox.entries.contains { $0.job.id == id } ? "With the master — waiting" : "Arrived — removed here" }
+        if job.state == .done { return "Arrived" }
+        if let problem = job.problem { return problem }
+        if job.state == .receiving { return "Arriving — \(size(job.have)) of \(size(job.size))" }
+        return job.holders.isEmpty ? "Waiting for the master to take it" : "On \(job.holders.joined(separator: ", ")) — this Mac may sleep"
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -365,14 +365,16 @@ struct SendToServerView: View {
                     Text(item.name).lineLimit(1).truncationMode(.middle)
                     Spacer()
                     Text(size(item.size)).foregroundStyle(.secondary).monospacedDigit()
-                    Text(item.state.words)
+                    Text(words(item))
                         .foregroundStyle({ if case .failed = item.state { return Color.red } else { return Color.secondary } }())
                         .frame(width: 260, alignment: .trailing)
                         .lineLimit(2)
                 }
                 .contextMenu { if item.state == .waiting { Button("Remove from Queue") { queue.removeWaiting(item.id) } } }
             }
-            Text("Each file goes to the server's Import Drive and is filed by its tags. After it arrives safely, this Mac's copy is \(instantDelete ? "deleted immediately" : "moved to the Trash") — your choice in Settings → General.")
+            if let problem = outbox.problem { Text(problem).foregroundStyle(.orange) }
+            if outbox.safeToSleep { Text("Every waiting file is also on an iPhone — this Mac may sleep.").foregroundStyle(.green) }
+            Text("Each file goes to the master's Import Drive and is filed by its tags — pulled from this Mac, or from an iPhone with Relay Imports on. Only when the master says it arrived is this Mac's copy \(instantDelete ? "deleted immediately" : "moved to the Trash") — your choice in Settings → General.")
                 .foregroundStyle(.secondary)
         }
         .font(.lyceumBody)
@@ -381,7 +383,10 @@ struct SendToServerView: View {
         .fileImporter(isPresented: $picking, allowedContentTypes: [.folder, .movie, .audio], allowsMultipleSelection: true) { result in
             if case .success(let urls) = result { queue.add(urls) }
         }
-        .onAppear { partner.start() }
+        .onAppear {
+            partner.start()
+            if let m = partner.decidedMaster, m != partner.me, !queue.running { queue.server = m }
+        }
         .sheet(item: Binding(get: { queue.question }, set: { _ in })) { q in
             VStack(alignment: .leading, spacing: 14) {
                 Text("“\(q.name)” is already in the library").font(.lyceumHeadline)
