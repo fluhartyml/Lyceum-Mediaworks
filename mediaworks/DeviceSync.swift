@@ -89,9 +89,16 @@ final class DeviceSync {
         let removed = removeUnwanted(keeping: wantedPaths)
 
         let missing = wanted.filter { !hasCopy($0.path, size: $0.size) }
+        // REM  THE COUNT LEADS EVERY LINE — his ask, 2026-10-17: "it should show a a total number of media files slash how many
+        // REM  files are on your device with a how many are left to synchronize at the bottom". Total = what THIS device should
+        // REM  hold (every media file on Automatic, the checked ones on Manual).
+        let alreadyHere = wanted.count - missing.count
+        func tally(_ copied: Int) -> String {
+            "\(alreadyHere + copied) / \(wanted.count) on this device · \(missing.count - copied) left to sync"
+        }
         guard !missing.isEmpty else {
             status = mode == .off ? (removed > 0 ? "Removed \(removed) copies from this device" : "")
-                                  : "\(wanted.count) files on this device — up to date"
+                                  : "\(tally(0)) — up to date"
             return
         }
         let need = missing.reduce(Int64(0)) { $0 + $1.size }
@@ -103,21 +110,21 @@ final class DeviceSync {
         #endif
         guard need < free - 2_000_000_000 else {
             // REM  Leaves 2 GB free for the phone itself.
-            status = "Not enough room: \(ByteCountFormatter.string(fromByteCount: need, countStyle: .file)) to copy, \(ByteCountFormatter.string(fromByteCount: free, countStyle: .file)) free. Switch to Manual and check fewer files."
+            status = "\(tally(0)) — not enough room: \(ByteCountFormatter.string(fromByteCount: need, countStyle: .file)) to copy, \(ByteCountFormatter.string(fromByteCount: free, countStyle: .file)) free. Switch to Manual and check fewer files."
             return
         }
         var done = 0
         for item in missing {
-            if stopRequested { status = "Sync stopped"; return }
-            status = "Copying \(done + 1) of \(missing.count) from your Mac — \((item.path as NSString).lastPathComponent)"
+            if stopRequested { status = "\(tally(done)) — sync stopped"; return }
+            status = "\(tally(done)) — copying \((item.path as NSString).lastPathComponent)"
             guard await MacLibrary.download(item.path, to: Self.localURL(item.path)) else {
-                status = "Your Mac is out of reach — \(done) of \(missing.count) copied; the rest come next time"
+                status = "\(tally(done)) — your Mac is out of reach; the rest come next time"
                 return
             }
             done += 1
             copiesVersion += 1
         }
-        status = "\(wanted.count) files on this device — up to date"
+        status = "\(tally(done)) — up to date"
     }
 
     /// Deletes this device's copies that are not wanted, and empty folders. Returns how many files went.
