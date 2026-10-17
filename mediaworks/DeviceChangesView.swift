@@ -89,6 +89,7 @@ struct DeviceChangesView: View {
         case .sendCheck: "Asked whether a file is a duplicate"
         case .sendIn: "Sent a file to the Import Drive"
         case .sendReplace: "Replaced a file by Send to Server"
+        case .marksPatch: "Changed checkmarks or playlists through the master"
         case .renameFolder: "Renamed folder"
         case .playlistFromFolder: "Made a playlist from a folder"
         }

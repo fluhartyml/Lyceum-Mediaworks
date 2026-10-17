@@ -132,6 +132,137 @@ final class LibraryPartner {
         }
     }
 
+    // REM  THE MASTER — his design, 2026-10-17: "there probably should be a supervisor or master server and then subservers or
+    // REM  workers that could house parts of the library" · "the master library server consolidates the folders and curates
+    // REM  the playlists that refernce the actual media file names" · "if the master is toggled off or a leader cant be
+    // REM  decided then the mediworks uses the most recent playlist the leader server buffers all playlists and file
+    // REM  lications among all devices via the cloud" · "mediaworks should 'fail safe'" · "metephorically the icloud carries
+    // REM  the leading servers standing orders" · "the master is a title and is a formality to be a tie breaker more tham a
+    // REM  keysyone. it is cerimonial".
+    // REM  So NOTHING WAITS ON THE MASTER. Every Mac keeps the whole library's checkmarks and playlists and changes them at
+    // REM  once; each change goes to every other server as adds and removes. The master's copy settles any disagreement —
+    // REM  when it answers, its orders win, with this Mac's not-yet-taken changes laid back on top. Changes for the master
+    // REM  wait in a queue and are never dropped. A follower's own mark files are never written while it follows. With no
+    // REM  master, or two claiming it, nobody writes the iCloud copy.
+    /// This Mac is the master. Only a server can be.
+    var thisMacIsMaster: Bool = UserDefaults.standard.bool(forKey: "thisMacIsMaster") {
+        didSet {
+            UserDefaults.standard.set(thisMacIsMaster, forKey: "thisMacIsMaster")
+            if thisMacIsMaster { LibraryCatalog.shared.becomeMaster() }
+            LibraryCatalog.shared.masterChanged()
+        }
+    }
+    /// Once another Mac has been the master, this one follows it — even while it is off (the last orders stand).
+    private(set) var followsMaster: Bool = UserDefaults.standard.bool(forKey: "followsMaster") {
+        didSet { UserDefaults.standard.set(followsMaster, forKey: "followsMaster") }
+    }
+    /// The master last followed.
+    private(set) var masterName: String? = UserDefaults.standard.string(forKey: "masterName") {
+        didSet { UserDefaults.standard.set(masterName, forKey: "masterName") }
+    }
+    /// Changes made here that the master has not taken yet — oldest first. Never dropped.
+    private(set) var waiting: [MarksPatch] = {
+        guard let d = try? Data(contentsOf: LibraryPartner.waitingURL) else { return [] }
+        return (try? JSONDecoder().decode([MarksPatch].self, from: d)) ?? []
+    }() {
+        didSet { if let d = try? JSONEncoder().encode(waiting) { try? d.write(to: Self.waitingURL, options: .atomic) } }
+    }
+    /// When the master's copy in use was made.
+    private(set) var ordersMade: Date?
+    private(set) var masterProblem: String?
+
+    nonisolated static var waitingURL: URL { LibraryCache.fileURL.deletingLastPathComponent().appending(path: "MasterWaiting.json") }
+    nonisolated static var ordersURL: URL { LibraryCache.fileURL.deletingLastPathComponent().appending(path: "MasterOrders.json") }
+
+    var me: String { Host.current().localizedName ?? "Mac" }
+    /// Every Mac saying it is the master — this one and the ticked servers.
+    var claimants: [String] {
+        (thisMacIsMaster ? [me] : []) + servers.sorted().filter { snapshots[$0]?.claimsMaster == true }
+    }
+    /// The master, when exactly one Mac claims it.
+    var decidedMaster: String? { claimants.count == 1 ? claimants[0] : nil }
+    var isMasterHere: Bool { thisMacIsMaster && decidedMaster == me }
+    /// This Mac works from the master's copy.
+    var following: Bool { followsMaster && !thisMacIsMaster }
+    /// Marks belong to a master — this one, or another (the overlay applies to every file).
+    var masterMode: Bool { thisMacIsMaster || followsMaster }
+    /// Only the master writes the iCloud copy; with no master set up at all, every server does, as before.
+    var writesCloud: Bool { isMasterHere || (!masterMode && claimants.isEmpty) }
+
+    /// A change made on this Mac while following — queued, then sent.
+    func send(_ patch: MarksPatch) {
+        waiting.append(patch)
+        Task {
+            // Every other server takes it now (best effort — the master's orders bring any it missed later) …
+            var request = CacheRequest(op: .marksPatch, device: me)
+            request.picture = try? JSONEncoder().encode(patch)
+            for name in servers where name != decidedMaster && Self.build(of: snapshots[name]) >= LibraryCache.masterBuild {
+                _ = await ask(request, to: name, timeout: 15)
+            }
+            // … and the master, through the queue.
+            await flush()
+        }
+    }
+
+    /// Sends the waiting changes in order; stops at the first the master does not take.
+    func flush() async {
+        guard following, let master = decidedMaster, master != me, !waiting.isEmpty else { return }
+        guard Self.build(of: snapshots[master]) >= LibraryCache.masterBuild else {
+            masterProblem = "\(master) needs Mediaworks build \(LibraryCache.masterBuild) or newer to take changes — \(waiting.count) waiting."
+            return
+        }
+        while let patch = waiting.first {
+            var request = CacheRequest(op: .marksPatch, device: me)
+            request.picture = try? JSONEncoder().encode(patch)
+            guard let data = await ask(request, to: master, timeout: 30),
+                  let orders = try? LibraryCache.decoder.decode(LibrarySnapshot.self, from: data),
+                  orders.marksFrom == master else {
+                masterProblem = "\(master) did not take the changes — \(waiting.count) waiting; they go when it answers."
+                return
+            }
+            waiting.removeFirst()
+            adopt(orders, from: master)
+        }
+        masterProblem = nil
+    }
+
+    /// The master's copy, kept on disk (the standing orders) and laid over this Mac's library.
+    private func adopt(_ orders: LibrarySnapshot, from master: String) {
+        guard orders.marksFrom != nil else { return }
+        if let d = try? LibraryCache.encoder.encode(orders) { try? d.write(to: Self.ordersURL, options: .atomic) }
+        ordersMade = orders.marksMade ?? orders.made
+        LibraryCatalog.shared.adoptOrders(orders, waiting: waiting)
+    }
+
+    /// The standing orders saved last time — from disk, else the master's iCloud copy. Used when the master is away.
+    func loadSavedOrders() async {
+        guard following else { return }
+        if let d = try? Data(contentsOf: Self.ordersURL), let orders = try? LibraryCache.decoder.decode(LibrarySnapshot.self, from: d),
+           orders.marksFrom != nil {
+            ordersMade = orders.marksMade ?? orders.made
+            LibraryCatalog.shared.adoptOrders(orders, waiting: waiting)
+            return
+        }
+        if let cloud = await LibraryCloud.download(),
+           let orders = try? LibraryCache.decoder.decode(LibrarySnapshot.self, from: cloud.data), let from = orders.marksFrom {
+            adopt(orders, from: from)
+        }
+    }
+
+    /// Back to this Mac's own marks — only when nothing is waiting for the master (nothing may be lost).
+    func stopFollowing() -> String? {
+        guard waiting.isEmpty else { return "\(waiting.count) change\(waiting.count == 1 ? "" : "s") still waiting for the master — they would be lost." }
+        followsMaster = false
+        masterName = nil
+        ordersMade = nil
+        LibraryCatalog.shared.reloadOwnMarks()
+        return nil
+    }
+
+    static func build(of snap: LibrarySnapshot?) -> Int {
+        snap?.serverBuild?.split(separator: " ").first.flatMap { Int($0) } ?? 0
+    }
+
     /// The machines were chosen once (the welcome screen is done). A Mac with a library before N20 counts as chosen.
     var machinesChosen: Bool = UserDefaults.standard.object(forKey: "machinesChosen") as? Bool
         ?? (UserDefaults.standard.data(forKey: "libraryRootBookmark") != nil) {
@@ -156,6 +287,7 @@ final class LibraryPartner {
 
     func start() {
         browse()
+        if following, ordersMade == nil { Task { await loadSavedOrders() } }
         guard loop == nil else { return }
         loop = Task {
             while !Task.isCancelled {
@@ -200,6 +332,23 @@ final class LibraryPartner {
                 if heard[name] == nil { snapshots[name] = nil }
             }
         }
+        // THE MASTER: learn it, send it what is waiting, then take its current orders.
+        if !thisMacIsMaster, let master = decidedMaster {
+            if !followsMaster { LibraryCatalog.shared.startFollowing() }
+            followsMaster = true
+            masterName = master
+            await flush()
+            if waiting.isEmpty,
+               let data = await ask(CacheRequest(op: .get), to: master),
+               let orders = try? LibraryCache.decoder.decode(LibrarySnapshot.self, from: data), orders.marksFrom == master {
+                adopt(orders, from: master)
+            }
+        } else if isMasterHere {
+            LibraryCatalog.shared.mergeFromServers()
+        }
+        if claimants.count > 1 { masterProblem = "More than one Mac says it is the master: \(claimants.joined(separator: ", "))." }
+        else if following, decidedMaster == nil { masterProblem = "The master is not answering — using its last orders." }
+        else if waiting.isEmpty { masterProblem = nil }
         LibraryCatalog.shared.republishMerged()
     }
 

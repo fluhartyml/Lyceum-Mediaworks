@@ -84,6 +84,62 @@ nonisolated struct LibrarySnapshot: Codable, Sendable {
     /// The serving Mac's build and commit — "176 · 1a2b3c4" (his ask, 2026-10-13, for development: "can the from homelab b
     /// date and time stamp also display the server build number?"). Nil from a Mac older than 176, which never sent it.
     var serverBuild: String?
+    /// THE MASTER (his design, 2026-10-17): true on the own listing of a Mac ticked as the master.
+    var claimsMaster: Bool?
+    /// The master whose checkmarks and playlists this listing carries, and when it last answered — nil when each server
+    /// still keeps its own marks.
+    var marksFrom: String?
+    var marksMade: Date?
+}
+
+/// One follower's change to the master's checkmarks and playlists — adds and removes only, so a change made while the master
+/// was away can never wipe out what the master did meanwhile (his "fail safe", 2026-10-17).
+nonisolated struct MarksPatch: Codable, Sendable, Equatable {
+    var uncheck: [String] = []
+    var check: [String] = []
+    /// Per playlist: entries added (a new name makes the playlist), entries removed.
+    var added: [String: [String]] = [:]
+    var removed: [String: [String]] = [:]
+    /// Playlists deleted (or renamed away from).
+    var deleted: [String] = []
+    /// Playlists whose files are the same but in a new order.
+    var order: [String: [String]] = [:]
+
+    var isEmpty: Bool { uncheck.isEmpty && check.isEmpty && added.isEmpty && removed.isEmpty && deleted.isEmpty && order.isEmpty }
+
+    static func diff(unchecked old: Set<String>, _ new: Set<String>, playlists before: [String: [String]], _ after: [String: [String]]) -> MarksPatch {
+        var p = MarksPatch()
+        p.uncheck = Array(new.subtracting(old)).sorted()
+        p.check = Array(old.subtracting(new)).sorted()
+        for (name, list) in after {
+            let was = before[name] ?? []
+            let plus = list.filter { !was.contains($0) }
+            let minus = was.filter { !list.contains($0) }
+            if !plus.isEmpty || before[name] == nil { p.added[name] = plus }
+            if !minus.isEmpty { p.removed[name] = minus }
+            if plus.isEmpty, minus.isEmpty, was != list { p.order[name] = list }
+        }
+        p.deleted = before.keys.filter { after[$0] == nil }.sorted()
+        return p
+    }
+
+    /// Applied on the master (and on a follower over the master's copy, for changes still waiting to be sent).
+    func apply(unchecked: inout Set<String>, playlists: inout [String: [String]]) {
+        unchecked.formUnion(uncheck)
+        unchecked.subtract(check)
+        for name in deleted { playlists[name] = nil }
+        for (name, list) in added {
+            var mine = playlists[name] ?? []
+            for path in list where !mine.contains(path) { mine.append(path) }
+            playlists[name] = mine
+        }
+        for (name, list) in removed {
+            guard var mine = playlists[name] else { continue }
+            mine.removeAll { list.contains($0) }
+            playlists[name] = mine.isEmpty && LibraryCache.isThumbsUp(name) ? nil : mine
+        }
+        for (name, list) in order where Set(playlists[name] ?? []) == Set(list) { playlists[name] = list }
+    }
 }
 
 /// What a phone or iPad asks the Mac — the Mac is the gatekeeper for every change (platforms 002b).
@@ -105,7 +161,8 @@ nonisolated struct CacheRequest: Codable, Sendable, Hashable {
     /// prompt. `sendIn` (path = the file's name, newName = the one-time address) — a Mac's Send to Server: downloaded into
     /// this server's Import Drive, where intake files it. `sendReplace` (path = the library file it replaces) — the same,
     /// straight into that place, the old one to the Trash. All three only from a Mac approved in Settings (SendToServer.swift).
-    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash, unthumb, renamePlaylist, checkAll, addToPlaylist, removeFromPlaylist, getOwn, takeIn, renameFolder, playlistFromFolder, deletePlaylist, uncheckAll, checkFolder, uncheckFolder, sendCheck, sendIn, sendReplace }
+    /// `marksPatch` (picture = a JSON MarksPatch) — a follower's change to the master's checkmarks and playlists (MasterMarks).
+    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash, unthumb, renamePlaylist, checkAll, addToPlaylist, removeFromPlaylist, getOwn, takeIn, renameFolder, playlistFromFolder, deletePlaylist, uncheckAll, checkFolder, uncheckFolder, sendCheck, sendIn, sendReplace, marksPatch }
     var op: Op
     /// The file, relative to the library root ("Music Videos/Rock/1990s/Queensryche - Silent Lucidity.mp4").
     var path: String?
@@ -175,6 +232,8 @@ nonisolated enum LibraryCache {
     static let folderCheckBuild = 196
     /// A server takes files from a Mac's Send to Server from build 206 on (SendToServer.swift).
     static let sendInBuild = 206
+    /// A master takes followers' changes from build 207 on (MasterMarks).
+    static let masterBuild = 207
     /// The Bonjour service the Mac announces on the home network.
     static let serviceType = "_lyceum._tcp"
 

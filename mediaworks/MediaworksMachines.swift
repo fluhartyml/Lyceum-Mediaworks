@@ -22,8 +22,21 @@ struct MachinesList: View {
     @Environment(LibraryStore.self) private var library
     @State private var partner = LibraryPartner.shared
     @State private var choosingFolder = false
+    @State private var stopProblem: String?
 
     private var me: String { Host.current().localizedName ?? "This Mac" }
+
+    private var masterStatus: String {
+        let waiting = partner.waiting.isEmpty ? "" : " · \(partner.waiting.count) change\(partner.waiting.count == 1 ? "" : "s") waiting for the master"
+        if let problem = partner.masterProblem { return problem + waiting }
+        if partner.isMasterHere { return "This Mac is the master: its checkmarks and playlists settle any disagreement, and it writes the iCloud copy." }
+        if partner.following, let m = partner.decidedMaster { return "Master: \(m). Every Mac keeps the whole library's marks; \(m)'s settle disagreements." + waiting }
+        if partner.following {
+            let when = partner.ordersMade.map { " from \($0.formatted(date: .abbreviated, time: .shortened))" } ?? ""
+            return "No master answering — using its last orders\(when)." + waiting
+        }
+        return "No master — each server keeps the marks for its own files."
+    }
     private var others: [String] { Array(Set(partner.found + partner.servers)).sorted() }
 
     var body: some View {
@@ -45,6 +58,22 @@ struct MachinesList: View {
                 } else {
                     Text("Not a server — it reads the hybrid library from the servers ticked below.")
                         .foregroundStyle(.secondary).padding(.leading, 26)
+                }
+                // REM  THE MASTER — his design, 2026-10-17: "the master is a title and is a formality to be a tie breaker
+                // REM  more tham a keysyone. it is cerimonial" (LibraryPartner).
+                if partner.thisMacServes {
+                    Toggle(isOn: $partner.thisMacIsMaster) {
+                        Text("Master — the tie-breaker for checkmarks and playlists")
+                    }
+                    .toggleStyle(.checkbox)
+                    .padding(.leading, 26)
+                }
+                Text(masterStatus).foregroundStyle(partner.masterProblem == nil ? Color.secondary : Color.orange)
+                    .padding(.leading, 26)
+                if partner.following, partner.decidedMaster == nil {
+                    Button("Stop Following — Use This Mac's Own Marks") { stopProblem = partner.stopFollowing() }
+                        .padding(.leading, 26)
+                    if let stopProblem { Text(stopProblem).foregroundStyle(.orange).padding(.leading, 26) }
                 }
             }
             Divider()

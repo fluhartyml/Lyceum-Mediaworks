@@ -59,6 +59,8 @@ final class LibraryCatalog {
     private static var marksURL: URL { LibraryCache.fileURL.deletingLastPathComponent().appending(path: "Marks.json") }
 
     private struct Marks: Codable { var unchecked: Set<String>; var playlists: [String: [String]] }
+    /// Following a master: the marks as last agreed — what a change here is measured against (MasterMarks).
+    @ObservationIgnored private var followedMarks: (unchecked: Set<String>, playlists: [String: [String]])?
 
     /// Every change a phone or iPad made, newest first — "Changes from Devices" on the Mac, each with Undo.
     private(set) var deviceChanges: [DeviceChange] = []
@@ -189,6 +191,7 @@ final class LibraryCatalog {
         var own = LibrarySnapshot(made: .now, macName: Host.current().localizedName ?? "Mac",
                                   root: fill(found.folder, base), playlists: playlists)
         own.serverBuild = "\(BuildStamp.number) · \(BuildStamp.commit)"
+        own.claimsMaster = LibraryPartner.shared.thisMacIsMaster ? true : nil
         ownSnapshot = own
         ownPayload = (try? LibraryCache.encoder.encode(own)) ?? Data()
         republishMerged()
@@ -199,7 +202,14 @@ final class LibraryCatalog {
     func republishMerged() {
         guard let own = ownSnapshot else { return }
         let partner = LibraryPartner.shared
-        let merged = PartnerMerge.merge(own, partner.slices)
+        var merged = PartnerMerge.merge(own, partner.slices)
+        // THE MASTER'S ORDERS over every file — this Mac's copy of the whole library's marks (MasterMarks).
+        if partner.masterMode {
+            merged.root = Self.marking(merged.root, "", unchecked)
+            merged.playlists = playlists.isEmpty ? nil : playlists
+            if partner.isMasterHere { merged.marksFrom = partner.me; merged.marksMade = .now }
+            else if partner.following { merged.marksFrom = partner.masterName; merged.marksMade = partner.ordersMade }
+        }
         snapshot = merged
         guard let data = try? LibraryCache.encoder.encode(merged) else { return }
         payload = data
@@ -214,7 +224,8 @@ final class LibraryCatalog {
 
     /// Saves the current cache to iCloud — at most every ten minutes, always the newest copy.
     private func saveToCloudSoon() {
-        guard cloudTask == nil else { return }
+        // REM  Only the master writes the iCloud copy — "the icloud carries the leading servers standing orders".
+        guard LibraryPartner.shared.writesCloud, cloudTask == nil else { return }
         cloudTask = Task {
             let wait = 600 - Date.now.timeIntervalSince(lastCloudSave)
             if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
@@ -279,7 +290,7 @@ final class LibraryCatalog {
     // REM  the marks (Marks.json), puts them in the cache, and every device sees them on its next look. Nothing is deleted.
     private func apply(_ request: CacheRequest) {
         guard let path = request.path, !path.isEmpty,
-              ![.get, .file, .setTags, .trash, .getOwn, .takeIn, .renameFolder, .playlistFromFolder, .sendCheck, .sendIn, .sendReplace].contains(request.op) else { return }
+              ![.get, .file, .setTags, .trash, .getOwn, .takeIn, .renameFolder, .playlistFromFolder, .sendCheck, .sendIn, .sendReplace, .marksPatch].contains(request.op) else { return }
         if request.op == .renamePlaylist {
             // REM  A bad or taken name is refused before anything is recorded.
             guard let newName = request.newName?.trimmingCharacters(in: .whitespaces), Self.validName(newName),
@@ -317,7 +328,7 @@ final class LibraryCatalog {
             saveChanges()
         }
         switch request.op {
-        case .get, .file, .setTags, .trash, .getOwn, .takeIn, .renameFolder, .playlistFromFolder, .sendCheck, .sendIn, .sendReplace: return
+        case .get, .file, .setTags, .trash, .getOwn, .takeIn, .renameFolder, .playlistFromFolder, .sendCheck, .sendIn, .sendReplace, .marksPatch: return
         case .check: unchecked.remove(path)
         case .uncheck: unchecked.insert(path)
         case .thumbsUp:
@@ -771,6 +782,17 @@ final class LibraryCatalog {
 
     private func saveMarksAndPublish() {
         marksVersion += 1
+        // REM  A FOLLOWER NEVER WRITES ITS OWN MARK FILES — the change goes to the other Macs as adds and removes, and this
+        // REM  Mac's own Marks.json and .m3u8 files stay exactly as they were (his "fail safe", 2026-10-17).
+        if LibraryPartner.shared.following {
+            if let base = followedMarks {
+                let patch = MarksPatch.diff(unchecked: base.unchecked, unchecked, playlists: base.playlists, playlists)
+                if !patch.isEmpty { LibraryPartner.shared.send(patch) }
+            }
+            followedMarks = (unchecked, playlists)
+            if let lastFound { publish(lastFound) } else { republishMerged() }
+            return
+        }
         writePlaylistFiles()
         if let data = try? LibraryCache.encoder.encode(Marks(unchecked: unchecked, playlists: playlists)) {
             try? data.write(to: Self.marksURL, options: .atomic)
@@ -831,6 +853,7 @@ final class LibraryCatalog {
         self.report = report
         var own = LibrarySnapshot(made: .now, macName: Host.current().localizedName ?? "Mac", root: CachedFolder(name: "Lyceum"), playlists: nil)
         own.serverBuild = "\(BuildStamp.number) · \(BuildStamp.commit)"
+        own.claimsMaster = LibraryPartner.shared.thisMacIsMaster ? true : nil
         ownSnapshot = own
         ownPayload = (try? LibraryCache.encoder.encode(own)) ?? Data()
         LibraryPartner.shared.start()
@@ -885,6 +908,7 @@ final class LibraryCatalog {
                 return
             }
             if request.op == .takeIn { takeIn(request, on: connection); return }
+            if request.op == .marksPatch { receivePatch(request, on: connection); return }
             if [.sendCheck, .sendIn, .sendReplace].contains(request.op) { receiveSend(request, on: connection); return }
             if routeToPartner(request, on: connection) { return }
             if request.op == .file { sendFile(request.path, on: connection); return }
@@ -1019,6 +1043,8 @@ extension LibraryCatalog {
     /// Returns true when it has answered the device itself.
     fileprivate func routeToPartner(_ request: CacheRequest, on connection: NWConnection) -> Bool {
         let partner = LibraryPartner.shared
+        // With a master, every Mac keeps the whole library's marks — a mark is changed here and goes out from here.
+        if partner.masterMode && Self.markOps.contains(request.op) { return false }
         guard !partner.servers.isEmpty, let path = request.path else { return false }
         let host = snapshot?.file(at: path)?.host
         let isPartnerFile: Bool = {
@@ -1307,6 +1333,130 @@ extension LibraryCatalog {
                 fail(error.localizedDescription)
             }
         }
+    }
+}
+
+// MARK: - The master (his design, 2026-10-17 — see LibraryPartner)
+
+extension LibraryCatalog {
+    static let markOps: Set<CacheRequest.Op> = [.check, .uncheck, .thumbsUp, .thumbsDown, .unthumb, .renamePlaylist, .checkAll,
+                                                 .addToPlaylist, .removeFromPlaylist, .deletePlaylist, .uncheckAll,
+                                                 .checkFolder, .uncheckFolder, .playlistFromFolder]
+
+    /// Every file's checkmark from a set of unchecked paths.
+    static func marking(_ folder: CachedFolder, _ path: String, _ unchecked: Set<String>) -> CachedFolder {
+        var folder = folder
+        folder.files = folder.files.map { file in
+            var file = file
+            file.checked = unchecked.contains(path.isEmpty ? file.name : path + "/" + file.name) ? false : nil
+            return file
+        }
+        folder.folders = folder.folders.map { marking($0, path.isEmpty ? $0.name : path + "/" + $0.name, unchecked) }
+        return folder
+    }
+
+    /// Every unchecked file in a listing, by path.
+    static func uncheckedPaths(_ folder: CachedFolder, _ path: String = "") -> Set<String> {
+        var out = Set(folder.files.filter { $0.checked == false }.map { path.isEmpty ? $0.name : path + "/" + $0.name })
+        for sub in folder.folders { out.formUnion(uncheckedPaths(sub, path.isEmpty ? sub.name : path + "/" + sub.name)) }
+        return out
+    }
+
+    /// A copy of this Mac's own marks file, before anything about the master touches them.
+    private func backUpMarks(_ why: String) {
+        let stamp = Date.now.formatted(.iso8601).replacingOccurrences(of: ":", with: "-")
+        let copy = Self.marksURL.deletingLastPathComponent().appending(path: "Marks.before-\(why)-\(stamp).json")
+        try? FileManager.default.copyItem(at: Self.marksURL, to: copy)
+    }
+
+    /// The first time this Mac follows a master: its own marks are backed up, and changes are measured from here on.
+    func startFollowing() {
+        backUpMarks("following")
+        followedMarks = (unchecked, playlists)
+    }
+
+    /// The master's orders taken in: its marks for every file it knows, this Mac's own for files it does not know yet,
+    /// then this Mac's changes still waiting for the master laid back on top. Nothing waiting is lost.
+    func adoptOrders(_ orders: LibrarySnapshot, waiting: [MarksPatch]) {
+        guard LibraryPartner.shared.following else { return }
+        var u = Self.uncheckedPaths(orders.root)
+        u.formUnion(unchecked.filter { orders.file(at: $0) == nil })
+        var p = orders.playlists ?? [:]
+        for patch in waiting { patch.apply(unchecked: &u, playlists: &p) }
+        guard u != unchecked || p != playlists || followedMarks == nil else { return }
+        unchecked = u
+        playlists = p
+        followedMarks = (u, p)
+        marksVersion += 1
+        if let lastFound { publish(lastFound) } else { republishMerged() }
+    }
+
+    /// Another Mac's change. The master saves it to its own files; a follower lays it on its copy without sending it on.
+    fileprivate func receivePatch(_ request: CacheRequest, on connection: NWConnection) {
+        let partner = LibraryPartner.shared
+        if partner.masterMode, let data = request.picture, let patch = try? JSONDecoder().decode(MarksPatch.self, from: data) {
+            patch.apply(unchecked: &unchecked, playlists: &playlists)
+            if partner.following {
+                followedMarks = (unchecked, playlists)
+                marksVersion += 1
+                if let lastFound { publish(lastFound) } else { republishMerged() }
+            } else {
+                saveMarksAndPublish()
+            }
+        }
+        connection.send(content: Framing.frame(payload), completion: .contentProcessed { _ in connection.cancel() })
+    }
+
+    /// Ticked as the master: its own marks are backed up, then the other servers' marks are merged in.
+    func becomeMaster() {
+        backUpMarks("master")
+        followedMarks = nil
+        mergeFromServers()
+        saveMarksAndPublish()
+    }
+
+    // REM  MERGING ONLY ADDS — a file unchecked on any server stays unchecked; every playlist entry is kept. Once per server,
+    // REM  the first time the master hears it, so a server that was off at the time is merged when it comes back.
+    func mergeFromServers() {
+        guard LibraryPartner.shared.isMasterHere else { return }
+        var done = Set(UserDefaults.standard.stringArray(forKey: "masterMergedFrom") ?? [])
+        var changed = false
+        for (name, slice) in LibraryPartner.shared.slices where !done.contains(name) {
+            let before = (unchecked, playlists)
+            unchecked.formUnion(Self.uncheckedPaths(slice.root))
+            for (list, paths) in slice.playlists ?? [:] {
+                var mine = playlists[list] ?? []
+                for path in paths where !mine.contains(path) { mine.append(path) }
+                playlists[list] = mine
+            }
+            if before.0 != unchecked || before.1 != playlists { changed = true; report("Master: took in \(name)'s checkmarks and playlists") }
+            done.insert(name)
+        }
+        UserDefaults.standard.set(Array(done), forKey: "masterMergedFrom")
+        if changed { saveMarksAndPublish() }
+    }
+
+    /// The master ticked or unticked: this Mac's own listing says so.
+    func masterChanged() {
+        if let lastFound { publish(lastFound) }
+        else if var own = ownSnapshot {
+            own.claimsMaster = LibraryPartner.shared.thisMacIsMaster ? true : nil
+            ownSnapshot = own
+            ownPayload = (try? LibraryCache.encoder.encode(own)) ?? Data()
+            republishMerged()
+        }
+    }
+
+    /// Back to this Mac's own marks, exactly as its files on disk hold them.
+    func reloadOwnMarks() {
+        followedMarks = nil
+        if let data = try? Data(contentsOf: Self.marksURL), let marks = try? LibraryCache.decoder.decode(Marks.self, from: data) {
+            unchecked = marks.unchecked
+            playlists = marks.playlists
+        }
+        loadPlaylistFiles()
+        marksVersion += 1
+        if let lastFound { publish(lastFound) } else { republishMerged() }
     }
 }
 #endif
