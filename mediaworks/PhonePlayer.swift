@@ -338,6 +338,8 @@ private struct FullScreenPlayer: View {
     @State private var length: Double = 1
     @State private var scrubbing = false
     @State private var drag: CGFloat = 0
+    /// How far the video has followed a sideways swipe (👍 / 👎).
+    @State private var slide: CGFloat = 0
     private var modes: PlayModes { .shared }
 
     var body: some View {
@@ -355,19 +357,30 @@ private struct FullScreenPlayer: View {
                     Text(flash).font(.system(size: 120)).transition(.scale.combined(with: .opacity))
                 }
             }
-            .offset(y: max(0, drag))
+            .offset(x: slide, y: max(0, drag))
             // P06: swipe down leaves the full-screen video.
             // REM  SWIPE RIGHT 👍, SWIPE LEFT 👎 — his words, 2026-10-17, about the corner buttons: "that is too intense i just
             // REM  want to swipr right or swipe left to thumbs up or thumbs down". Sideways must clearly beat up-and-down, so a
             // REM  slanted swipe down still closes the video.
+            // REM  THE VIDEO MOVES WITH THE FINGER, AND A RATED ONE GOES — his catch, 2026-10-17: "it doesnt move or animate a
+            // REM  swipe and it accepts the thumbs down without the animation feedback after accepting thumbs up or thumbs
+            // REM  down it is upposed to uncheck and move to the next song". Sideways follows the finger; past the line the
+            // REM  video slides off that side, the rating goes to the Mac, the file is unchecked, and the next one slides in.
+            // REM  (The TV's ▲/▼ with Media File Processing on.)
             .gesture(DragGesture(minimumDistance: 30)
-                .onChanged { if $0.translation.height > 0 && abs($0.translation.width) < 80 { drag = $0.translation.height } }
+                .onChanged { value in
+                    let across = value.translation.width, down = value.translation.height
+                    if abs(across) > abs(down) { slide = across; drag = 0 }
+                    else if down > 0 && abs(across) < 80 { drag = down; slide = 0 }
+                }
                 .onEnded { value in
                     let across = value.translation.width, down = value.translation.height
                     if abs(across) > 80 && abs(across) > abs(down) * 2, let path = player.current {
-                        library.change(across > 0 ? .thumbsUp : .thumbsDown, path)
-                        show(flash: across > 0 ? "👍" : "👎")
-                    } else if down > space.size.height * 0.2 { leave() }
+                        rate(up: across > 0, path, width: space.size.width)
+                    } else {
+                        if down > space.size.height * 0.2 && abs(across) < 80 { leave() }
+                        withAnimation(.spring(duration: 0.25)) { slide = 0 }
+                    }
                     withAnimation { drag = 0 }
                 })
             // P03: long press flips landscape / portrait, whatever the phone's own rotation lock says.
@@ -474,6 +487,20 @@ private struct FullScreenPlayer: View {
     }
 
     private func hide() { hideTask?.cancel(); withAnimation { controls = false } }
+
+    /// 👍 or 👎: the rating and the uncheck go to the Mac, the video slides off its side, and the next one comes in.
+    private func rate(up: Bool, _ path: String, width: CGFloat) {
+        library.change(up ? .thumbsUp : .thumbsDown, path)
+        if up { library.change(.uncheck, path) }        // 👎 unchecks by itself
+        show(flash: up ? "👍" : "👎")
+        withAnimation(.easeIn(duration: 0.22)) { slide = up ? width : -width }
+        Task {
+            try? await Task.sleep(for: .milliseconds(230))
+            player.next()
+            slide = up ? -width : width
+            withAnimation(.easeOut(duration: 0.25)) { slide = 0 }
+        }
+    }
 
     private func show(flash symbol: String) {
         withAnimation { flash = symbol }
