@@ -45,6 +45,7 @@ struct ContentView: View {
                 case .library: libraryView(root: root)
                 case .commander: NavigationStack { CommanderView(root: root.url).toolbar { modeSwitch } }
                 case .theater: NavigationStack { TheaterView().toolbar { modeSwitch } }
+                case .status: NavigationStack { NetworkView(embedded: true).toolbar { modeSwitch } }
                 }
             } else if library.needsWriteAccess {
                 OnboardingView()
@@ -56,6 +57,7 @@ struct ContentView: View {
                 case .library: HybridLibraryView().toolbar { modeSwitch }
                 case .commander: NavigationStack { CommanderView(root: LyceumPlace.root).toolbar { modeSwitch } }
                 case .theater: NavigationStack { TheaterView().toolbar { modeSwitch } }
+                case .status: NavigationStack { NetworkView(embedded: true).toolbar { modeSwitch } }
                 }
             } else {
                 // REM  N20 — "the choose library folder to be choose media works machines". Shown whenever this Mac has no

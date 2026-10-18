@@ -13,7 +13,9 @@ import Observation
 /// The app's three views. Each is a future spin-off: Commander organizes, Library serves,
 /// Theater plays.
 enum AppMode: String, CaseIterable, Identifiable {
-    case library, commander, theater
+    // REM  STATUS — his naming, 2026-10-18: "WFC is our term but it is called Status in the tab". WFC = "waiting for caller",
+    // REM  his 10-17 idea; the page is the Mediaworks Network (NetworkView), and "it needs a simpler way to see it".
+    case library, commander, theater, status
     var id: String { rawValue }
     var title: String { rawValue.capitalized }
     var symbol: String {
@@ -21,6 +23,7 @@ enum AppMode: String, CaseIterable, Identifiable {
         case .library: "books.vertical"
         case .commander: "rectangle.split.2x1"
         case .theater: "play.rectangle"
+        case .status: "antenna.radiowaves.left.and.right"
         }
     }
     /// The hover text for its button — what each glyph means.
@@ -29,6 +32,7 @@ enum AppMode: String, CaseIterable, Identifiable {
         case .library: "Library — browse your collection by folder"
         case .commander: "Commander — two panes to copy, move, rename and delete files"
         case .theater: "Theater — play a video full size"
+        case .status: "Status — the Mediaworks network: servers, devices calling in, and imports"
         }
     }
 }
