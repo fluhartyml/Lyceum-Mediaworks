@@ -78,6 +78,7 @@ struct MacPickerSection: View {
                 choice("\(chosen) (not found now)", chosen)
             }
             #else
+            HStack(spacing: 8) {
             Picker("Library from", selection: Binding(get: { finder.chosen ?? "" },
                                                       set: { finder.chosen = $0.isEmpty ? nil : $0 })) {
                 Text("Any Mac").tag("")
@@ -86,17 +87,21 @@ struct MacPickerSection: View {
                     Text("\(chosen) (not found now)").tag(chosen)
                 }
             }
+            InfoButton(Self.info)
+            }
             #endif
             if finder.names.isEmpty {
                 Text("Looking for Macs running Lyceum Mediaworks…").foregroundStyle(.secondary)
             }
+            #if os(tvOS)
+            InfoButton(Self.info)
+            #endif
         } header: {
             Text("Your Mac")
-        } footer: {
-            Text("Each Mac is listed by its computer name. The library, playlists and videos come from the Mac you choose.")
-                .foregroundStyle(.secondary)
         }
     }
+
+    private static let info = "Each Mac running Mediaworks is listed by its computer name. The library, playlists and videos come from the Mac you choose. Any Mac — the first one found, in name order."
 
     private func choice(_ title: String, _ name: String?) -> some View {
         Button {

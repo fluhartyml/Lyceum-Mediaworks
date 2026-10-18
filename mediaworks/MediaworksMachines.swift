@@ -47,6 +47,7 @@ struct MachinesList: View {
                     Text("\(me) — this Mac").font(.lyceumHeadline)
                 }
                 .toggleStyle(.checkbox)
+                .info("Ticked, this Mac is a server: iPhones, iPads and TVs can get the library from it, and it serves its own slice from the folder chosen here. Unticked, it only reads the library from the servers.")
                 if partner.thisMacServes {
                     HStack {
                         Text(library.root.map { "Serves its slice: \($0.path)" }
@@ -66,6 +67,7 @@ struct MachinesList: View {
                         Text("Master — the tie-breaker for checkmarks, playlists and imports")
                     }
                     .toggleStyle(.checkbox)
+                    .info("Tick it on any one Mac and, through iCloud, every Mac on your Apple ID follows it within about 30 seconds; any other Mac unticks itself. With no master, each Mac keeps its own checkmarks.")
                     .padding(.leading, 26)
                     // REM  His word, 2026-10-17: "master is recommended to be online 24x7 with UPS backup".
                     Text("Recommended: the master stays on around the clock, on a UPS.")
@@ -74,9 +76,10 @@ struct MachinesList: View {
                 Text(masterStatus).foregroundStyle(partner.masterProblem == nil ? Color.secondary : Color.orange)
                     .padding(.leading, 26)
                 // REM  One tick, every Mac (2026-10-18) — LibraryPartner.takeCloudChoice.
-                Text(partner.cloudMaster.map { "iCloud: \($0) is the master for every Mac on this Apple ID." }
-                     ?? "Tick Master on any one Mac — every Mac on this Apple ID follows it.")
-                    .foregroundStyle(.secondary).padding(.leading, 26)
+                if let cloud = partner.cloudMaster {
+                    Text("iCloud: \(cloud) is the master for every Mac on this Apple ID.")
+                        .foregroundStyle(.secondary).padding(.leading, 26)
+                }
                 if partner.following, partner.decidedMaster == nil {
                     Button("Stop Following — Use This Mac's Own Marks") { stopProblem = partner.stopFollowing() }
                         .padding(.leading, 26)
@@ -97,6 +100,7 @@ struct MachinesList: View {
                         Text(name).font(.lyceumHeadline)
                     }
                     .toggleStyle(.checkbox)
+                    .info("Tick each Mac that is a server; their slices join into one library.")
                     Text(status(name)).foregroundStyle(.secondary).padding(.leading, 26)
                 }
             }
@@ -163,6 +167,7 @@ struct MachinesSettingsSection: View {
             if !partner.servers.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Buffer for the other servers' files: \(Int(gb)) GB (on this Mac's own drive)")
+                        .info("Files from another server are copied here as they play, so they do not stutter. Oldest-played leave first when it is full; the drive always keeps 25 GB free. Empty Buffer Now clears it.")
                     Slider(value: $gb, in: 25...max(top, 25.5), step: 1, onEditingChanged: { editing in
                         if !editing { buffer.setLimit(gigabytes: gb) }
                     })
@@ -175,9 +180,6 @@ struct MachinesSettingsSection: View {
             }
         } header: {
             Text("Mediaworks Machines").font(.lyceumHeadline)
-        } footer: {
-            Text("Each server serves its slice; every device connected to a server sees the whole library. Files from another server are copied into this Mac's buffer as they play, so they do not stutter — oldest-played leave first when it is full.")
-                .foregroundStyle(.secondary)
         }
         .onAppear {
             partner.start()

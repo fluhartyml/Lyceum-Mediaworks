@@ -342,9 +342,9 @@ struct SortingSettingsView: View {
                 .labelsHidden()
                 .frame(maxWidth: 360)
                 .frame(maxWidth: .infinity)
-
-                Text("Tick the tags to sort by and put them in order with ▲ ▼. They order the files inside each folder, and playlists.")
-                    .foregroundStyle(.secondary)
+                .overlay(alignment: .trailing) {
+                    InfoButton("Audio and Video each have their own sorting. Tick the tags to sort by and put them in order with ▲ ▼ — they order the files inside each folder, and playlists. The folder tree below is only a suggestion until Use This Folder Tree; no folders are made before that.")
+                }
 
                 tagList
 
@@ -360,6 +360,7 @@ struct SortingSettingsView: View {
                     ForEach(ArtistFolderName.allCases) { Text($0.title).tag($0) }
                 }
                 .frame(maxWidth: 560)
+                .info("Which form of the artist's name the artist folders use.")
 
                 #if os(macOS)
                 OrganizeButton()

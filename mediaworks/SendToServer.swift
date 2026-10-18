@@ -61,8 +61,7 @@ struct SendersSettingsSection: View {
     var body: some View {
         Section {
             if approvals.approved.isEmpty && approvals.waiting.isEmpty {
-                Text("None yet. A Mac using File → Import…, Commander or its drop folder, or an iPhone with Relay Imports on, shows up here the first time, for you to approve.")
-                    .foregroundStyle(.secondary)
+                Text("None yet.").foregroundStyle(.secondary)
             }
             ForEach(approvals.waiting, id: \.self) { name in
                 HStack {
@@ -80,10 +79,7 @@ struct SendersSettingsSection: View {
                 }
             }
         } header: {
-            Text("Devices That May Send Files").font(.lyceumHeadline)
-        } footer: {
-            Text("Files they send land in this Mac's Import Drive and are filed by their tags.")
-                .foregroundStyle(.secondary)
+            InfoHeader("Devices That May Send Files", info: "A Mac using File → Import…, Commander or its drop folder, or an iPhone with Relay Imports on, shows up here the first time it sends.\n\nApprove — its files are taken from now on. Deny — not this time; it asks again next time. Remove — takes an approved device off the list.\n\nFiles they send land in this Mac's Import Drive and are filed by their tags.")
         }
     }
 }

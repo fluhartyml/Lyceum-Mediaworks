@@ -525,25 +525,19 @@ struct TVSettingsSheet: View {
                 // REM  the dark bar is display only (N15). The bar shows which are on.
                 Section("Playing a folder or playlist") {
                     Toggle("Shuffle", isOn: Binding(get: { modes.shuffle }, set: { theater.setShuffle($0) }))
+                    InfoButton("Plays the folder or playlist in random order.")
                     Picker("Repeat", selection: $modes.repeatMode) {
                         ForEach(RepeatMode.allCases) { Text($0.title).tag($0) }
                     }
-                    Text("Repeat One plays the same video again when it ends; Next still moves on. Repeat All starts the folder or playlist over.")
-                        .foregroundStyle(.secondary)
+                    InfoButton("Repeat One plays the same video again when it ends; Next still moves on. Repeat All starts the folder or playlist over.")
                 }
                 Section("Rating with the remote") {
                     Toggle("Media File Processing", isOn: $processing)
-                    Text(processing
-                         ? "▲ 👍 and ▼ 👎 both uncheck the file and go to the next one — everything you rate leaves rotation, so only unrated files are left to play."
-                         : "▲ 👍 rates and keeps playing. ▼ 👎 unchecks the file and goes to the next one.")
-                        .foregroundStyle(.secondary)
+                    InfoButton("Media File Processing on — ▲ 👍 and ▼ 👎 both uncheck the file and go to the next one. Everything you rate leaves rotation, so only unrated files are left to play.\n\nOff — ▲ 👍 rates and keeps playing. ▼ 👎 unchecks the file and goes to the next one.")
                 }
                 Section("While a video plays") {
                     Toggle("Always show the file name", isOn: $alwaysShowFileName)
-                    Text(alwaysShowFileName
-                         ? "The file name stays at the bottom of the screen the whole time."
-                         : "The file name shows for 5 seconds when each video starts, and after a remote press.")
-                        .foregroundStyle(.secondary)
+                    InfoButton("Always show the file name on — it stays at the bottom of the screen the whole time.\n\nOff — it shows for 5 seconds when each video starts, and after a remote press.")
                 }
                 MacPickerSection()
                 Section { Text("Build \(BuildStamp.number) · \(BuildStamp.commit)").foregroundStyle(.secondary) }

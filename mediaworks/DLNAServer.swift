@@ -476,13 +476,11 @@ struct DLNASettingsSection: View {
     var body: some View {
         Section {
             Toggle("Serve the library to smart TVs (DLNA)", isOn: $server.isOn)
+                .info("Samsung, LG, Sony and other DLNA TVs find “Lyceum Mediaworks” on the home network and browse your folders and playlists. Unchecked files are not shown. Standard MP4s play best — Window → Transcode makes them.")
             Text(server.status).foregroundStyle(.secondary)
             if let tv = server.lastTV { Text("Last asked by \(tv)").foregroundStyle(.secondary) }
         } header: {
             Text("Smart TVs").font(.lyceumHeadline)
-        } footer: {
-            Text("Samsung, LG, Sony and other DLNA TVs find “Lyceum Mediaworks” on the home network and browse your folders and playlists. Unchecked files are not shown. Standard MP4s play best — Window → Transcode makes them.")
-                .foregroundStyle(.secondary)
         }
     }
 }

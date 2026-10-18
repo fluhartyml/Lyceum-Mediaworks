@@ -451,16 +451,15 @@ struct IntakeSettingsSection: View {
                 if intake.drop != nil { Button("Stop Using It") { intake.forget() } }
             }
             .controlSize(.large)
+            .info("A drive or folder this Mac watches for new media files. Stop Using It stops watching; nothing on the drive is touched.")
             Toggle("Take in new files automatically", isOn: $intake.isOn)
                 .disabled(intake.drop == nil)
+                .info(library.root == nil
+                      ? "Any audio or video file put anywhere on the import drive is sent to the master, which files it by its tags. Each file goes from here once the master says it arrived — Delete instantly decides Trash or gone."
+                      : "Any audio or video file put anywhere on the import drive is moved into the library by its tags, using Settings → Sorting. Duplicates go to the 30-day Trash; a file that cannot be placed waits for you in Window → Import Drive.")
             Text(intake.status).foregroundStyle(.secondary)
         } header: {
             Text("Import Drive").font(.lyceumHeadline)
-        } footer: {
-            Text(library.root == nil
-                 ? "This Mac has no library folder of its own: any audio or video file put anywhere on this drive or folder is sent to the master, which files it by its tags. Each file here goes once the master says it arrived (Settings → Delete instantly decides Trash or gone)."
-                 : "Any audio or video file put anywhere on this drive is moved into the library by its tags, using Settings → Sorting. Duplicates go to the 30-day Trash; a file that cannot be placed waits for you in Window → Import Drive.")
-                .foregroundStyle(.secondary)
         }
         .fileImporter(isPresented: $choosing, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result {

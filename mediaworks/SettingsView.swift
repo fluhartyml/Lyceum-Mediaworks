@@ -33,12 +33,9 @@ struct SettingsView: View {
             Section {
                 Toggle("Delete instantly (skip the 30-day Trash)", isOn: $instantDelete)
                     .font(.lyceumBody)
+                    .info("On — a deleted file is gone at once and cannot be recovered.\n\nOff — it waits 30 days in the library's own Trash, then is removed.")
             } header: {
                 Text("Deleting").font(.lyceumHeadline)
-            } footer: {
-                Text(instantDelete ? "Deleted items are gone at once and cannot be recovered."
-                                   : "Deleted items wait 30 days in the library's own Trash, then are removed.")
-                    .foregroundStyle(.secondary)
             }
 
             // REM  HIS ASK, 2026-10-08: "can the glyphs with text be a setting?" — labels under the pane buttons
@@ -46,12 +43,11 @@ struct SettingsView: View {
             // REM  minimum esp id the hover text is at 18 points and is turned on") — and hover help at 18 points.
             Section {
                 Toggle("Show labels under the pane buttons", isOn: $paneButtonLabels)
+                    .info("Small words under each icon in Commander's panes.")
                 Toggle("Show hover help (18 point)", isOn: $hoverHelpOn)
+                    .info("When the pointer rests on a button, an 18-point note says what it is and does.")
             } header: {
                 Text("Buttons & Help").font(.lyceumHeadline)
-            } footer: {
-                Text("Labels are small words under each icon in Commander's panes. Hover help tells what a button is and does when the pointer rests on it.")
-                    .foregroundStyle(.secondary)
             }
 
             #if os(macOS)
@@ -73,11 +69,9 @@ struct SettingsView: View {
                 Button { choosingFolder = true } label: { Text("Change Library Folder…").font(.lyceumBody) }
                     .font(.lyceumBody)
                     .controlSize(.large)
+                    .info("The parent folder that houses your media library — on this device, a drive, or a network share. This points Mediaworks at a different one.")
             } header: {
                 Text("Library").font(.lyceumHeadline)
-            } footer: {
-                Text("The parent folder that houses your media library — on this device, a drive, or a network share.")
-                    .foregroundStyle(.secondary)
             }
         }
         .font(.lyceumBody)
