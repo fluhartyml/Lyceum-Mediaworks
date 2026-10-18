@@ -512,7 +512,7 @@ private struct CachedFolderList: View {
                     }
                 }
             }
-            ForEach(folder.files) { file in
+            ForEach(shownFiles) { file in
                 FileLink(path: join(file.name), fallback: file)
             }
         }
@@ -524,6 +524,19 @@ private struct CachedFolderList: View {
     }
 
     private func join(_ name: String) -> String { path.isEmpty ? name : path + "/" + name }
+
+    // REM  ONLY WHAT IS ON THE PHONE — his ask, 2026-10-18: "when listing the files on the iphone it showed hundreads of
+    // REM  unchecked media files you had to scroll past before seeing the first checked songs. can you have it not show media
+    // REM  files that are not on the phone?" With Sync on, a media file without a copy on this phone is not listed; other
+    // REM  files and the folders stay. With Sync Off nothing is on the phone by design, so everything is listed (to stream).
+    private var shownFiles: [CachedFile] {
+        #if os(iOS)
+        guard library.sync.mode != .off else { return folder.files }
+        return folder.files.filter { !$0.isMedia || library.sync.hasCopy(join($0.name), size: $0.size) }
+        #else
+        return folder.files
+        #endif
+    }
 }
 
 /// A playlist: the files it points to, wherever they live in the library.
