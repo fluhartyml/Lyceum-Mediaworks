@@ -118,13 +118,28 @@ final class PhonePlayer {
     }
 }
 
-// MARK: - The two pages
+// MARK: - The three pages
 
-/// Library and Theater, swiped between (P01). The swipe is off while a video is full screen (P06).
+/// Library, Theater and Settings, swiped between (P01). The swipe is off while a video is full screen (P06).
+// REM  SETTINGS AS THE THIRD PAGE — his words, 2026-10-18: "there are swipe pages already on the main iphone display when
+// REM  first opening the app sheet one is lyceum sheet two is theater add a third sheet for settings". The iPhone had NO way
+// REM  into Settings before this (the gear was only on the Mac's own-library screens).
 struct PhoneHome: View {
     let library: MacLibrary
     @State private var player = PhonePlayer()
     @State private var remote = TVRemote()
+    /// The last page change went right-to-left (to a higher page) — which way the pages slide.
+    @State private var forward = true
+
+    private func go(to page: Int) {
+        guard (0...2).contains(page), page != player.page else { return }
+        forward = page > player.page
+        withAnimation(.snappy) { player.page = page }
+    }
+
+    private var slide: AnyTransition {
+        .asymmetric(insertion: .move(edge: forward ? .trailing : .leading), removal: .move(edge: forward ? .leading : .trailing))
+    }
 
     var body: some View {
         @Bindable var player = player
@@ -134,14 +149,17 @@ struct PhoneHome: View {
         ZStack {
             if player.page == 0 {
                 MacLibraryView(library: library)
-                    .transition(.move(edge: .leading))
-            } else {
+                    .transition(slide)
+            } else if player.page == 1 {
                 // The Theater's remote fills only the top half; this lets a swipe land anywhere on the page. Only here —
                 // a whole-screen contentShape over the Library took its rows' taps again (tested 2026-10-15).
                 TheaterPage()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .contentShape(Rectangle())
-                    .transition(.move(edge: .trailing))
+                    .transition(slide)
+            } else {
+                NavigationStack { SettingsView().navigationTitle("Settings") }
+                    .transition(slide)
             }
         }
         // The whole screen — without this the ZStack measured zero high, so the swipe had nothing to land on.
@@ -151,16 +169,16 @@ struct PhoneHome: View {
         // REM  Library's rows — removing it made them open (testPhoneFolderOpensWhenTapped, run all three ways). UIKit's own
         // REM  swipe recognizer, told never to cancel or delay touches, leaves the taps alone. (TabView(.page) retried the same
         // REM  day: still draws the Library blank on iOS 27 — the 10-10 note stands.)
-        .gesture(PageSwipe(direction: .left) { if player.page == 0 { withAnimation(.snappy) { player.page = 1 } } })
-        .gesture(PageSwipe(direction: .right) { if player.page == 1 { withAnimation(.snappy) { player.page = 0 } } })
+        .gesture(PageSwipe(direction: .left) { go(to: player.page + 1) })
+        .gesture(PageSwipe(direction: .right) { go(to: player.page - 1) })
         // REM  THE DOTS ARE AN OVERLAY, NOT A SAFE-AREA BAR: as a bar, its frosted background stretched over the WHOLE screen and
         // REM  hid the pages — that, not the pagers, was why the Library looked blank in three earlier tries.
         // Under the clock, so they never cover the "From your Mac" line at the bottom of the Library.
         .overlay(alignment: .top) {
             // Which page is showing — tap a dot to go there.
             HStack(spacing: 14) {
-                ForEach([(0, "Library"), (1, "Theater")], id: \.0) { page, name in
-                    Button { withAnimation { player.page = page } } label: {
+                ForEach([(0, "Library"), (1, "Theater"), (2, "Settings")], id: \.0) { page, name in
+                    Button { go(to: page) } label: {
                         Label(name, systemImage: player.page == page ? "circle.fill" : "circle")
                             .labelStyle(.iconOnly)
                             .font(.system(size: 10))

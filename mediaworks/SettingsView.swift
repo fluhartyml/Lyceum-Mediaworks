@@ -29,6 +29,9 @@ struct SettingsView: View {
                 NavigationLink("Sorting") { SortingSettingsView().navigationTitle("Sorting") }
                     .font(.lyceumBody)
             }
+            // REM  RELAY IMPORTS — his idea, 2026-10-17: "it uses the iphone as the 'media file cloud'". Moved here from the Sync
+            // REM  menu 2026-10-18 (it is not a sync choice, and here it can have its (i)).
+            RelaySettingsSection()
             #endif
             Section {
                 Toggle("Delete instantly (skip the 30-day Trash)", isOn: $instantDelete)
@@ -82,6 +85,21 @@ struct SettingsView: View {
         }
     }
 }
+
+#if os(iOS)
+private struct RelaySettingsSection: View {
+    @State private var relay = ImportRelay.shared
+    var body: some View {
+        Section {
+            Toggle("Relay Imports From Your Mac", isOn: $relay.isOn)
+                .info("While Mediaworks is open, this iPhone copies the files your Mac is sending in and holds them until the master takes them — so a sleeping Mac does not hold up an import. It keeps 10 GB free on the phone.")
+            if relay.isOn, !relay.status.isEmpty { Text(relay.status).foregroundStyle(.secondary) }
+        } header: {
+            Text("Imports").font(.lyceumHeadline)
+        }
+    }
+}
+#endif
 
 #Preview {
     SettingsView()

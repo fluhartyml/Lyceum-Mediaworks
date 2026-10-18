@@ -388,29 +388,15 @@ private struct SyncMenu: View {
 
     var body: some View {
         @Bindable var sync = library.sync
-        #if os(iOS)
-        @Bindable var relay = ImportRelay.shared
-        #endif
         Menu {
             // REM  A TITLE WHEN IT OPENS — his catch, 2026-10-18: "the con is ambiguous so it should have a title or something
-            // REM  when the popup is revealed that says Lyceum Synching". A menu cannot hold an (i), so Relay Imports carries a
-            // REM  grey second line instead.
+            // REM  when the popup is revealed that says Lyceum Synching". Sync choices only: Relay Imports moved to Settings —
+            // REM  his rule the same day, "menus cant have an (i) means … that menu option does not match … the other menu options".
             Section("Lyceum Syncing") {
                 Picker("Keep a copy on this device", selection: $sync.mode) {
                     ForEach(DeviceSync.Mode.allCases) { Text($0.title).tag($0) }
                 }
             }
-            // REM  RELAY IMPORTS — his idea, 2026-10-17: "it uses the iphone as the 'media file cloud'". In this menu, not
-            // REM  a new button — his rule: "we cant clutter the small iphone screen with settings all over the place".
-            #if os(iOS)
-            Section {
-                Toggle(isOn: $relay.isOn) {
-                    Text("Relay Imports From Your Mac")
-                    Text("Carries files your Mac is sending in until the master takes them")
-                }
-                if relay.isOn, !relay.status.isEmpty { Text(relay.status) }
-            }
-            #endif
         } label: {
             Label("Sync: \(library.sync.mode == .off ? "Off" : library.sync.mode == .automatic ? "Automatic" : "Manual")",
                   systemImage: library.sync.running ? "arrow.triangle.2.circlepath" : "iphone.and.arrow.forward")
