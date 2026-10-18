@@ -511,7 +511,13 @@ private struct CachedFolderList: View {
             }
         }
         .font(.lyceumBody)
+        // REM  THE THREE PAGES READ AS A SET — his words, 2026-10-18: "the first page say Lyceum Media the second page say
+        // REM  Lyceum Theater and the third say Settings".
+        #if os(iOS)
+        .navigationTitle(isTop ? "Lyceum Media" : folder.name)
+        #else
         .navigationTitle(folder.name)
+        #endif
         #if os(iOS)
         .toolbar { if isTop { ToolbarItem { SyncMenu() } } }
         #endif
