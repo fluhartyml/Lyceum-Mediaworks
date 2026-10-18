@@ -316,6 +316,8 @@ final class MacLibrary {
 /// The Library on iPhone and iPad: the Mac's folders and files, read from the cache.
 struct MacLibraryView: View {
     let library: MacLibrary
+    /// The iPhone's Lyceum Media page: only what is on this device, for playing (PhonePlayer.swift, the four pages).
+    var mediaOnly = false
 
     #if os(tvOS)
     static let barMaterial = Material.thin
@@ -340,7 +342,7 @@ struct MacLibraryView: View {
     var body: some View {
         if let snapshot = library.snapshot {
             NavigationStack {
-                CachedFolderList(folder: snapshot.root, path: "", isTop: true)
+                CachedFolderList(folder: snapshot.root, path: "", isTop: true, mediaOnly: mediaOnly)
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         // REM  ONE THING PER LINE — his layout, 2026-10-17, after "the status / feedback to user is disorganized
                         // REM  and doesnt look good": "from homelab b, build ca7b105, oct 17 2026 10:18, 69/2280 on this device
@@ -410,6 +412,8 @@ private struct CachedFolderList: View {
     /// This folder, relative to the library ("" for the top).
     let path: String
     var isTop = false
+    /// Lyceum Media: only this device's copies; no checkboxes, playlists or sync switches (those are Lyceum Library's).
+    var mediaOnly = false
     @Environment(MacLibrary.self) private var library
 
     @State private var savedAs: String?
@@ -429,6 +433,12 @@ private struct CachedFolderList: View {
             // REM  SYNC THIS FOLDER — his ask, 2026-10-17: "he only wants to toggle folders to synch" · "all folders probably
             // REM  should get a toggle on or off" · "first synch off". THIS device only; checkmarks are untouched (DeviceSync.swift).
             #if os(iOS)
+            if mediaOnly, shownFolders.isEmpty, shownFiles.isEmpty {
+                Text(isTop ? "Nothing is on this iPhone yet. Swipe to Lyceum Library and switch on Sync to This Device for a folder."
+                           : "Nothing in this folder is on this iPhone.")
+                    .foregroundStyle(.secondary)
+            }
+            if !mediaOnly {
             Section {
                 Toggle(isTop ? "Sync Everything to This Device" : "Sync to This Device", isOn: Binding(
                     get: { library.sync.syncsFolder(path) },
@@ -438,11 +448,15 @@ private struct CachedFolderList: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            }
             #endif
             // REM  PLAY ALL / SHUFFLE ALL / SAVE FOLDER AS PLAYLIST — his words, 2026-10-14: "folders are one step away from
             // REM  being a playlist. i want to be able to save a folder as a playlist and i want to be able to play them at random
             // REM  shuffle repeat one or all". Everything in the folder and the folders inside it, as the Mac's right-click does.
-            if !isTop {
+            if !isTop, mediaOnly {
+                Section { PlayAllButtons(paths: shownMedia) }
+            }
+            if !isTop, !mediaOnly {
                 Section {
                     PlayAllButtons(paths: PlayOrder.media(in: folder, at: path))
                     Button {
@@ -476,7 +490,7 @@ private struct CachedFolderList: View {
             }
             // REM  THE THUMBS UP PLAYLIST at the top of the library — every file 👍'd on any device (platforms 001c).
             // REM  EVERY PLAYLIST at the top — Thumbs Up first, then by name (platforms PL5).
-            if isTop {
+            if isTop, !mediaOnly {
                 ForEach(library.playlistNames, id: \.self) { name in
                     let list = library.snapshot?.playlists?[name] ?? []
                     NavigationLink {
@@ -490,52 +504,63 @@ private struct CachedFolderList: View {
                     }
                 }
             }
-            ForEach(folder.folders) { sub in
+            ForEach(shownFolders) { sub in
                 NavigationLink {
-                    CachedFolderList(folder: sub, path: join(sub.name))
+                    CachedFolderList(folder: sub, path: join(sub.name), mediaOnly: mediaOnly)
                 } label: {
                     HStack {
                         Label(sub.name, systemImage: "folder")
                         Spacer()
                         #if os(iOS)
-                        if library.sync.mode != .off && library.sync.syncsFolder(join(sub.name)) {
+                        if !mediaOnly && library.sync.mode != .off && library.sync.syncsFolder(join(sub.name)) {
                             Image(systemName: "iphone").foregroundStyle(.secondary).accessibilityLabel("Syncs to this device")
                         }
                         #endif
-                        Text("\(sub.fileCount)").foregroundStyle(.secondary).monospacedDigit()
+                        Text("\(mediaOnly ? Self.copies(in: sub, at: join(sub.name), sync: library.sync) : sub.fileCount)")
+                            .foregroundStyle(.secondary).monospacedDigit()
                     }
                 }
             }
             ForEach(shownFiles) { file in
-                FileLink(path: join(file.name), fallback: file)
+                FileLink(path: join(file.name), fallback: file, showsCheckbox: !mediaOnly)
             }
         }
         .font(.lyceumBody)
-        // REM  THE THREE PAGES READ AS A SET — his words, 2026-10-18: "the first page say Lyceum Media the second page say
-        // REM  Lyceum Theater and the third say Settings".
+        // REM  THE PAGES READ AS A SET — his words, 2026-10-18: "the first page say Lyceum Media the second page say Lyceum
+        // REM  Theater and the third say Settings", then Lyceum Library between Media and Theater.
         #if os(iOS)
-        .navigationTitle(isTop ? "Lyceum Media" : folder.name)
+        .navigationTitle(isTop ? (mediaOnly ? "Lyceum Media" : "Lyceum Library") : folder.name)
         #else
         .navigationTitle(folder.name)
         #endif
         #if os(iOS)
-        .toolbar { if isTop { ToolbarItem { SyncMenu() } } }
+        .toolbar { if isTop, !mediaOnly { ToolbarItem { SyncMenu() } } }
         #endif
     }
 
     private func join(_ name: String) -> String { path.isEmpty ? name : path + "/" + name }
 
-    // REM  ONLY WHAT IS ON THE PHONE — his ask, 2026-10-18: "when listing the files on the iphone it showed hundreads of
-    // REM  unchecked media files you had to scroll past before seeing the first checked songs. can you have it not show media
-    // REM  files that are not on the phone?" With Sync on, a media file without a copy on this phone is not listed; other
-    // REM  files and the folders stay. With Sync Off nothing is on the phone by design, so everything is listed (to stream).
+    // REM  ONLY WHAT IS ON THE PHONE — his ask, 2026-10-18: "it showed hundreads of unchecked media files you had to scroll
+    // REM  past before seeing the first checked songs. can you have it not show media files that are not on the phone?" —
+    // REM  then the same morning, Lyceum Media vs Lyceum Library: the filter lives on the MEDIA page (only media files with a
+    // REM  copy here, only folders holding one); the Library lists everything, because it is where checkmarks are managed.
     private var shownFiles: [CachedFile] {
-        #if os(iOS)
-        guard library.sync.mode != .off else { return folder.files }
-        return folder.files.filter { !$0.isMedia || library.sync.hasCopy(join($0.name), size: $0.size) }
-        #else
-        return folder.files
-        #endif
+        guard mediaOnly else { return folder.files }
+        return folder.files.filter { $0.isMedia && library.sync.hasCopy(join($0.name), size: $0.size) }
+    }
+
+    private var shownFolders: [CachedFolder] {
+        guard mediaOnly else { return folder.folders }
+        return folder.folders.filter { Self.copies(in: $0, at: join($0.name), sync: library.sync) > 0 }
+    }
+
+    private var shownMedia: [String] { shownFiles.map { join($0.name) } }
+
+    /// How many media files in a folder and below have a copy on this device.
+    static func copies(in folder: CachedFolder, at path: String, sync: DeviceSync) -> Int {
+        func join(_ name: String) -> String { path.isEmpty ? name : path + "/" + name }
+        return folder.files.filter { $0.isMedia && sync.hasCopy(join($0.name), size: $0.size) }.count
+            + folder.folders.reduce(0) { $0 + copies(in: $1, at: join($1.name), sync: sync) }
     }
 }
 
@@ -683,6 +708,8 @@ private struct FileLink: View {
     let fallback: CachedFile
     /// What Next / Previous step through — the playlist this row is in, or else the file's folder.
     var queue: [String]? = nil
+    /// Off on Lyceum Media — checkmarks are managed in Lyceum Library.
+    var showsCheckbox = true
     @Environment(MacLibrary.self) private var library
 
     private var file: CachedFile { library.snapshot?.file(at: path) ?? fallback }
@@ -761,7 +788,7 @@ private struct FileLink: View {
 
     private var phoneRow: some View {
         HStack(spacing: 10) {
-            if file.isMedia {
+            if file.isMedia, showsCheckbox {
                 // REM  THE SYNC CHECKMARK — his iTunes "manual synchronization" (platforms 002d): unchecked files stay off a
                 // REM  phone set to Manual. A tap here goes to the Mac, which passes it to every device.
                 Button {

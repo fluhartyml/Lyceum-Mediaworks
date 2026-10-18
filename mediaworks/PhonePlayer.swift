@@ -27,8 +27,9 @@ final class PhonePlayer {
     /// The folder or playlist playing (library-relative paths), in its play order — as listed, or shuffled.
     private(set) var order = PlayOrder()
     var fullScreen = false
-    /// Which page shows — 0 Library, 1 Theater.
-    var page = 0
+    /// Which page shows.
+    var page = PhonePlayer.mediaPage
+    static let mediaPage = 0, libraryPage = 1, theaterPage = 2, settingsPage = 3
     let player = AVPlayer()
     private(set) var isPlaying = false
     @ObservationIgnored private var endObserver: NSObjectProtocol?
@@ -42,7 +43,7 @@ final class PhonePlayer {
     func play(_ path: String, in queue: [String]) {
         order.start(path, in: queue, shuffle: PlayModes.shared.shuffle)
         load()
-        page = 1
+        page = Self.theaterPage
         fullScreen = true
     }
 
@@ -118,9 +119,13 @@ final class PhonePlayer {
     }
 }
 
-// MARK: - The three pages
+// MARK: - The four pages
 
-/// Library, Theater and Settings, swiped between (P01). The swipe is off while a video is full screen (P06).
+/// Media, Library, Theater and Settings, swiped between (P01). The swipe is off while a video is full screen (P06).
+// REM  MEDIA AND LIBRARY, TWO PAGES — his design, 2026-10-18: "lyceum media and lyceum library? where library is the checkbox
+// REM  and playlist management" → "yes" to Media · Library · Theater · Settings. Media = only what is on THIS phone, for
+// REM  playing. Library = the whole library from the servers: checkboxes, playlists, folder sync switches — shared by every
+// REM  device. (Servers hold the files and the one set of marks; a device holds copies and its own sync choices.)
 // REM  SETTINGS AS THE THIRD PAGE — his words, 2026-10-18: "there are swipe pages already on the main iphone display when
 // REM  first opening the app sheet one is lyceum sheet two is theater add a third sheet for settings". The iPhone had NO way
 // REM  into Settings before this (the gear was only on the Mac's own-library screens).
@@ -132,7 +137,7 @@ struct PhoneHome: View {
     @State private var forward = true
 
     private func go(to page: Int) {
-        guard (0...2).contains(page), page != player.page else { return }
+        guard (PhonePlayer.mediaPage...PhonePlayer.settingsPage).contains(page), page != player.page else { return }
         forward = page > player.page
         withAnimation(.snappy) { player.page = page }
     }
@@ -147,10 +152,13 @@ struct PhoneHome: View {
         // REM  TabView(.page) and a GeometryReader pager drew the Library BLANK; a paging ScrollView pushed the big "Lyceum"
         // REM  title against the left edge. Showing one page whole keeps each page's own normal layout.
         ZStack {
-            if player.page == 0 {
+            if player.page == PhonePlayer.mediaPage {
+                MacLibraryView(library: library, mediaOnly: true)
+                    .transition(slide)
+            } else if player.page == PhonePlayer.libraryPage {
                 MacLibraryView(library: library)
                     .transition(slide)
-            } else if player.page == 1 {
+            } else if player.page == PhonePlayer.theaterPage {
                 // The Theater's remote fills only the top half; this lets a swipe land anywhere on the page. Only here —
                 // a whole-screen contentShape over the Library took its rows' taps again (tested 2026-10-15).
                 TheaterPage()
@@ -177,7 +185,8 @@ struct PhoneHome: View {
         .overlay(alignment: .top) {
             // Which page is showing — tap a dot to go there.
             HStack(spacing: 14) {
-                ForEach([(0, "Library"), (1, "Theater"), (2, "Settings")], id: \.0) { page, name in
+                ForEach([(PhonePlayer.mediaPage, "Media"), (PhonePlayer.libraryPage, "Library"),
+                         (PhonePlayer.theaterPage, "Theater"), (PhonePlayer.settingsPage, "Settings")], id: \.0) { page, name in
                     Button { go(to: page) } label: {
                         Label(name, systemImage: player.page == page ? "circle.fill" : "circle")
                             .labelStyle(.iconOnly)
