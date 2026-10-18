@@ -64,4 +64,44 @@ nonisolated enum LibraryCloud {
         guard let payload = try? (packed as NSData).decompressed(using: .zlib) as Data else { return nil }
         return (payload, made)
     }
+
+    // REM  THE MASTER, CHOSEN ONCE FOR EVERY MAC — his ask, 2026-10-18: "is there a way to toggle on one computer and the
+    // REM  change take effect on all computers? can we somehow use icloud preferences to know which computer name was chosen
+    // REM  to be leader? and automatically tell the group of macs to listen to the master?" · "every mac is on my apple id".
+    // REM  One small record in the same private database: the chosen Mac's name (empty = no master) and a fresh id per
+    // REM  choice, so a Mac acts on each choice once without trusting any Mac's clock.
+    private static let masterID = CKRecord.ID(recordName: "master-choice")
+
+    struct MasterChoice: Sendable {
+        /// The chosen Mac, nil when the master was unticked.
+        var name: String?
+        /// New with every choice.
+        var id: String
+    }
+
+    /// Saves the choice (Mac). Errors come back as words.
+    static func saveMaster(_ name: String?, id: String) async -> String? {
+        let record = CKRecord(recordType: "MasterChoice", recordID: masterID)
+        record.encryptedValues["name"] = name ?? ""
+        record.encryptedValues["id"] = id
+        do {
+            _ = try await database.modifyRecords(saving: [record], deleting: [], savePolicy: .allKeys)
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    /// The choice in iCloud. `.some(nil)` = no Mac has ever chosen through iCloud; nil = iCloud out of reach.
+    static func loadMaster() async -> MasterChoice?? {
+        do {
+            let record = try await database.record(for: masterID)
+            let name = record.encryptedValues["name"] as? String ?? ""
+            return .some(MasterChoice(name: name.isEmpty ? nil : name, id: record.encryptedValues["id"] as? String ?? ""))
+        } catch let error as CKError where error.code == .unknownItem {
+            return .some(nil)
+        } catch {
+            return nil
+        }
+    }
 }

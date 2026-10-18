@@ -150,7 +150,67 @@ final class LibraryPartner {
             UserDefaults.standard.set(thisMacIsMaster, forKey: "thisMacIsMaster")
             if thisMacIsMaster { LibraryCatalog.shared.becomeMaster() }
             LibraryCatalog.shared.masterChanged()
+            if !takingCloudChoice, thisMacIsMaster != oldValue { Task { await publishChoice(thisMacIsMaster ? me : nil) } }
         }
+    }
+
+    // REM  ONE TICK, EVERY MAC — his ask, 2026-10-18 (LibraryCloud.saveMaster): ticking or unticking Master on one Mac goes
+    // REM  to iCloud; every Mac on his Apple ID reads it every 30 s and follows it. The chosen Mac ticks itself, any other
+    // REM  unticks itself, and the rest add the master to their servers so the follow in refresh() starts. With no master
+    // REM  chosen, a Mac that followed keeps the last orders, as before — going back to its own older marks would bring
+    // REM  back checkmarks the master had taken away.
+    @ObservationIgnored private var takingCloudChoice = false
+    @ObservationIgnored private var cloudWatch: Task<Void, Never>?
+    /// The last iCloud choice this Mac acted on.
+    private var cloudChoiceSeen: String? = UserDefaults.standard.string(forKey: "masterChoiceSeen") {
+        didSet { UserDefaults.standard.set(cloudChoiceSeen, forKey: "masterChoiceSeen") }
+    }
+    /// The master as iCloud has it, once read — for the status line.
+    private(set) var cloudMaster: String?
+
+    /// Tells every Mac which one is the master (nil = none).
+    private func publishChoice(_ name: String?) async {
+        let id = UUID().uuidString
+        cloudChoiceSeen = id
+        cloudMaster = name
+        if let problem = await LibraryCloud.saveMaster(name, id: id) {
+            masterProblem = "iCloud did not take the master choice (\(problem)) — the other Macs have not heard."
+        }
+    }
+
+    func watchCloudChoice() {
+        guard cloudWatch == nil else { return }
+        cloudWatch = Task {
+            while !Task.isCancelled {
+                await takeCloudChoice()
+                try? await Task.sleep(for: .seconds(30))
+            }
+        }
+    }
+
+    /// Acts on a choice made on another Mac, once.
+    private func takeCloudChoice() async {
+        guard let stored = await LibraryCloud.loadMaster() else { return }     // iCloud out of reach: keep what this Mac knows
+        guard let choice = stored else {
+            // Ticked before iCloud carried the choice: tell the others now.
+            if thisMacIsMaster { await publishChoice(me) }
+            return
+        }
+        cloudMaster = choice.name
+        guard choice.id != cloudChoiceSeen else { return }
+        takingCloudChoice = true
+        defer { takingCloudChoice = false }
+        if let name = choice.name, name == me {
+            guard thisMacServes else {
+                masterProblem = "iCloud names this Mac the master, but it is not a server — tick it as a server first."
+                return      // taken once it serves
+            }
+            if !thisMacIsMaster { thisMacIsMaster = true }
+        } else {
+            if thisMacIsMaster { thisMacIsMaster = false }
+            if let name = choice.name, !servers.contains(name) { servers.append(name) }
+        }
+        cloudChoiceSeen = choice.id
     }
     /// Once another Mac has been the master, this one follows it — even while it is off (the last orders stand).
     private(set) var followsMaster: Bool = UserDefaults.standard.bool(forKey: "followsMaster") {
@@ -283,7 +343,7 @@ final class LibraryPartner {
     @ObservationIgnored private var loop: Task<Void, Never>?
     @ObservationIgnored private var bases: [String: (url: URL, when: Date)] = [:]
 
-    private init() { browse() }
+    private init() { browse(); watchCloudChoice() }
 
     func start() {
         browse()

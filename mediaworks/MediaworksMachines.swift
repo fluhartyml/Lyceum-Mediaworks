@@ -73,6 +73,10 @@ struct MachinesList: View {
                 }
                 Text(masterStatus).foregroundStyle(partner.masterProblem == nil ? Color.secondary : Color.orange)
                     .padding(.leading, 26)
+                // REM  One tick, every Mac (2026-10-18) — LibraryPartner.takeCloudChoice.
+                Text(partner.cloudMaster.map { "iCloud: \($0) is the master for every Mac on this Apple ID." }
+                     ?? "Tick Master on any one Mac — every Mac on this Apple ID follows it.")
+                    .foregroundStyle(.secondary).padding(.leading, 26)
                 if partner.following, partner.decidedMaster == nil {
                     Button("Stop Following — Use This Mac's Own Marks") { stopProblem = partner.stopFollowing() }
                         .padding(.leading, 26)
