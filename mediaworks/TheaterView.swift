@@ -14,13 +14,10 @@ import UniformTypeIdentifiers
 
 struct TheaterView: View {
     @Environment(LibraryStore.self) private var library
-    @AppStorage("theaterPositionPath") private var positionPath = ""
-    @AppStorage("theaterPosition") private var position: Double = 0
-
     @State private var player: AVPlayer?
+    /// Where each file was left (PlayPositions.swift) — one per player, as Theater makes a player per file.
+    @State private var keeper: PositionKeeper?
     @State private var choosingFile = false
-    /// The file now in the player, by path — kept apart from the stream's own address, so resuming works for both.
-    @State private var playingKey: String?
 
     var body: some View {
         Group {
@@ -68,7 +65,7 @@ struct TheaterView: View {
             library.nowPlaying = url
         }
         .task(id: library.nowPlaying) { start() }
-        .onDisappear { savePosition(); player?.pause() }
+        .onDisappear { keeper?.leave(); player?.pause() }
     }
 
     /// A file on this Mac, or a file in the Lyceum on any server.
@@ -80,7 +77,8 @@ struct TheaterView: View {
     }
 
     private func start() {
-        savePosition()
+        keeper?.leave()
+        keeper = nil
         guard let url = library.nowPlaying, Self.playable(url) else {
             player = nil
             return
@@ -92,35 +90,24 @@ struct TheaterView: View {
             player = nil
             Task {
                 guard let real = await LyceumPlace.theaterURL(url), library.nowPlaying == url else { return }
-                begin(AVPlayer(url: real), key: url.path)
+                begin(AVPlayer(url: real), key: PlayPositions.key(url))
             }
             return
         }
         #endif
-        begin(AVPlayer(url: url), key: url.path)
+        begin(AVPlayer(url: url), key: PlayPositions.key(url))
     }
 
-    /// Plays, resuming where this file was left unless it was nearly finished. `key` names the file for the resume.
+    /// Plays from where this file was left (PlayPositions.swift), unless it was barely started or nearly finished.
     private func begin(_ newPlayer: AVPlayer, key: String) {
-        playingKey = key
-        let url = URL(fileURLWithPath: key)
-        // Resume where this file was left, unless it was nearly finished.
-        if positionPath == url.path, position > 5 {
-            newPlayer.seek(to: CMTime(seconds: position, preferredTimescale: 600))
-        } else {
-            positionPath = url.path
-            position = 0
-        }
+        let newKeeper = PositionKeeper(newPlayer)
+        keeper = newKeeper
         player = newPlayer
-        newPlayer.play()
-    }
-
-    private func savePosition() {
-        guard let player, let key = playingKey else { return }
-        let seconds = player.currentTime().seconds
-        guard seconds.isFinite else { return }
-        positionPath = key
-        position = seconds
+        Task {
+            if let item = newPlayer.currentItem { await newKeeper.resume(key, for: item) }
+            guard player === newPlayer else { return }
+            newPlayer.play()
+        }
     }
 
     private func isAudio(_ url: URL) -> Bool {

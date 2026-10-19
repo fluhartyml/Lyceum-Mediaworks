@@ -19,6 +19,22 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-19 ~12:4x — EVERY FILE REMEMBERS WHERE IT WAS LEFT, ON EVERY DEVICE (build 222) — NOT yet seen on his devices
+- His words: *"make it remember position for every file on all devices"* — after *"can it remember play position like itunes
+  does?"* iTunes keeps its bookmark in its library database, not in the file (forum sources, not Apple docs), so nothing is
+  read from iTunes; Mediaworks keeps its own.
+- `PlayPositions.swift`: a mark per file, named by its path inside the library (same on Mac, iPhone, iPad, TV); files outside
+  the library = full path, that Mac only. Each device keeps its own (UserDefaults, newest 2,000) + one encrypted iCloud record
+  per file (`PlayPosition`, private DB, name = SHA-256 of the path). Newer wins; iCloud gets 2 s, then the device's own mark.
+  Under 5 s in or within 10 s of the end = from the top, and that is saved too. Moves/renames carry the mark (`filesMoved`).
+- `PositionKeeper` on each player: every 1 s while playing, at once on pause / stop / change of file. Wired into the TV
+  (`TVTheater`), iPhone/iPad (`PhonePlayer`), Mac mini player and Mac Theater (replaces its old one-file `theaterPosition`).
+- Mini player resumes music too — his "every file". Repeat One still starts the same one from the top.
+- ⚠️ **iCloud on TestFlight builds needs the `PlayPosition` record type in the PRODUCTION schema** (CloudKit Console → Deploy
+  Schema Changes). Xcode-run builds use Development, where the type is made on first save. Whether the earlier types
+  (`LibraryManifest`, `MasterChoice`) were ever deployed is unknown. Without it, each device still remembers its own.
+- Built for macOS, iOS, tvOS (scratch build folder). Not run; tests not run.
+
 ### 2026-10-14 ~09:4x — SHUFFLE, REPEAT, SAVE FOLDER AS PLAYLIST — built, NOT yet seen on his devices
 - His words: *"folders are one step away from being a playlist. i want to be able to save a folder as a playlist and i
   want to be able to play them at random shuffle repeat one or all"* → his "yes build it".

@@ -74,6 +74,14 @@ final class TVTheater {
     var presented = false
     @ObservationIgnored private var listener: NWListener?
     @ObservationIgnored private var endObserver: NSObjectProtocol?
+    /// Where each file was left (PlayPositions.swift).
+    @ObservationIgnored private var keeperMade: PositionKeeper?
+    private var keeper: PositionKeeper {
+        if let keeperMade { return keeperMade }
+        let made = PositionKeeper(player)
+        keeperMade = made
+        return made
+    }
 
     var current: String? { order.current }
     var isPlaying: Bool { player.timeControlStatus != .paused }
@@ -111,6 +119,7 @@ final class TVTheater {
 
     private func load() {
         guard let path = current else { return }
+        keeper.leave()
         Task {
             guard let url = await MacLibrary.streamURL(path) else { problem = "Your Mac is out of reach."; return }
             problem = nil
@@ -124,6 +133,8 @@ final class TVTheater {
             endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { _ in
                 MainActor.assumeIsolated { self.advance(ended: true) }
             }
+            await keeper.resume(path, for: item)
+            guard player.currentItem === item else { return }
             player.play()
         }
     }
@@ -150,7 +161,7 @@ final class TVTheater {
     func skip(_ seconds: Double) {
         player.seek(to: CMTime(seconds: max(0, player.currentTime().seconds + seconds), preferredTimescale: 600))
     }
-    func stop() { player.pause(); player.replaceCurrentItem(with: nil); order = PlayOrder(); presented = false }
+    func stop() { keeper.leave(); player.pause(); player.replaceCurrentItem(with: nil); order = PlayOrder(); presented = false }
 
     // MARK: Forward / reverse buttons — TV remotes over HDMI, Control Center's Apple TV Remote (platforms 004e)
 

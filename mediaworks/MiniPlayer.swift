@@ -65,6 +65,14 @@ final class MiniPlayer {
     @ObservationIgnored private var heard: [Source: Set<URL>] = [:]
     @ObservationIgnored private var timeObserver: Any?
     @ObservationIgnored private var endObserver: NSObjectProtocol?
+    /// Where each file was left (PlayPositions.swift).
+    @ObservationIgnored private var keeperMade: PositionKeeper?
+    private var keeper: PositionKeeper {
+        if let keeperMade { return keeperMade }
+        let made = PositionKeeper(player)
+        keeperMade = made
+        return made
+    }
 
     init() {
         continuous = Continuous(rawValue: UserDefaults.standard.string(forKey: "miniPlayerContinuous") ?? "") ?? .off
@@ -149,6 +157,7 @@ final class MiniPlayer {
     func release(_ url: URL) -> Source? {
         guard current?.standardizedFileURL == url.standardizedFileURL, !isPlaying else { return nil }
         let source = currentSource
+        keeper.leave()
         player.replaceCurrentItem(with: nil)
         current = nil
         currentSource = nil
@@ -170,6 +179,7 @@ final class MiniPlayer {
             return paths.contains { path == $0 || path.hasPrefix($0 + "/") }
         }
         if hit(current) {
+            keeper.leave()
             player.pause()
             isPlaying = false
             player.replaceCurrentItem(with: nil)
@@ -196,6 +206,7 @@ final class MiniPlayer {
 
     private func load(_ url: URL, from source: Source) {
         guard url != current else { return }
+        keeper.leave()
         #if os(macOS)
         // REM  A LYCEUM FILE (LyceumPlace.swift) plays from where it really is — this Mac's library, or streamed from
         // REM  the server holding it. The row's own address stays `current`, so the highlight still follows playback.
@@ -209,8 +220,10 @@ final class MiniPlayer {
             duration = 0
             Task { [weak self] in
                 guard let real = await LyceumPlace.playURL(url), let self, self.current == url else { return }
-                self.player.replaceCurrentItem(with: AVPlayerItem(url: real))
+                let item = AVPlayerItem(url: real)
+                self.player.replaceCurrentItem(with: item)
                 if self.isPlaying { self.player.play() }
+                await self.keeper.resume(PlayPositions.key(url), for: item)
                 if let seconds = try? await AVURLAsset(url: real).load(.duration).seconds, seconds.isFinite, self.current == url {
                     self.duration = seconds
                 }
@@ -218,7 +231,9 @@ final class MiniPlayer {
             return
         }
         #endif
-        player.replaceCurrentItem(with: AVPlayerItem(url: url))
+        let item = AVPlayerItem(url: url)
+        player.replaceCurrentItem(with: item)
+        Task { [weak self] in await self?.keeper.resume(PlayPositions.key(url), for: item) }
         current = url
         currentSource = source
         lastPlayed[source] = url

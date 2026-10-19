@@ -434,6 +434,7 @@ final class LibraryCatalog {
         var changed = false
         for (from, to) in moves {
             guard let old = relative(from), let new = relative(to) else { continue }
+            PlayPositions.shared.moved(from: old, to: new)
             if unchecked.remove(old) != nil { unchecked.insert(new); changed = true }
             for (name, list) in playlists where list.contains(old) {
                 playlists[name] = list.map { $0 == old ? new : $0 }

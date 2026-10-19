@@ -33,6 +33,14 @@ final class PhonePlayer {
     let player = AVPlayer()
     private(set) var isPlaying = false
     @ObservationIgnored private var endObserver: NSObjectProtocol?
+    /// Where each file was left (PlayPositions.swift).
+    @ObservationIgnored private var keeperMade: PositionKeeper?
+    private var keeper: PositionKeeper {
+        if let keeperMade { return keeperMade }
+        let made = PositionKeeper(player)
+        keeperMade = made
+        return made
+    }
 
     var current: String? { order.current }
 
@@ -56,20 +64,22 @@ final class PhonePlayer {
     // REM  THIS DEVICE'S COPY FIRST, OTHERWISE STREAMED FROM THE MAC (platforms 002c, N05).
     private func load() {
         guard let path = current else { return }
+        keeper.leave()
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
         let local = DeviceSync.localURL(path)
         if FileManager.default.fileExists(atPath: local.path) {
-            start(local)
+            start(local, path)
         } else {
             Task {
-                if let url = await MacLibrary.streamURL(path) { start(url) }
+                if let url = await MacLibrary.streamURL(path) { start(url, path) }
                 else { problem = "Your Mac is out of reach, and this file has no copy on this device."; stop() }
             }
         }
     }
 
-    private func start(_ url: URL) {
+    /// Plays `url` — this device's copy or the Mac's stream — from where `path` was left.
+    private func start(_ url: URL, _ path: String) {
         problem = nil
         let item = AVPlayerItem(url: url)
         player.replaceCurrentItem(with: item)
@@ -77,8 +87,12 @@ final class PhonePlayer {
         endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { _ in
             MainActor.assumeIsolated { self.advance(ended: true) }
         }
-        player.play()
         isPlaying = true
+        Task {
+            await keeper.resume(path, for: item)
+            guard player.currentItem === item, isPlaying else { return }
+            player.play()
+        }
     }
 
     func togglePlay() {
@@ -112,6 +126,7 @@ final class PhonePlayer {
     }
 
     func stop() {
+        keeper.leave()
         player.pause()
         player.seek(to: .zero)
         isPlaying = false
