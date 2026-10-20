@@ -85,13 +85,57 @@ final class DeviceSync {
     @ObservationIgnored private var nextSnapshot: LibrarySnapshot?
 
     /// Where this device keeps its copies — never backed up to iCloud (the Mac has the originals).
+    // REM  IN THE FILES APP ON IPHONE AND IPAD — his ask, 2026-10-20: "can you expose them?" · "just the synced copies".
+    // REM  The copies sit in Documents/Synced, which Files shows under Lyceum Mediaworks. Apple TV keeps them private.
     static let folder: URL = {
+        #if os(iOS)
+        var url = URL.documentsDirectory.appending(path: "Synced", directoryHint: .isDirectory)
+        moveOldCopies(to: url)
+        #else
         var url = URL.applicationSupportDirectory.appending(path: "Lyceum/Synced", directoryHint: .isDirectory)
+        #endif
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         var values = URLResourceValues(); values.isExcludedFromBackup = true
         try? url.setResourceValues(values)
         return url
     }()
+
+    #if os(iOS)
+    /// Copies made before build 224 sat in Application Support, out of sight — moved once into Documents.
+    private static func moveOldCopies(to url: URL) {
+        let old = URL.applicationSupportDirectory.appending(path: "Lyceum/Synced", directoryHint: .isDirectory)
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: old.path), !fm.fileExists(atPath: url.path) else { return }
+        try? fm.moveItem(at: old, to: url)
+    }
+    #endif
+
+    // REM  ONLY MEDIAWORKS' OWN COPIES ARE EVER REMOVED. With the folder open in Files, a file the user adds or renames
+    // REM  there is theirs — removing everything "not wanted" would delete it without a word.
+    private static let ledgerURL = URL.applicationSupportDirectory.appending(path: "Lyceum/SyncedCopies.json")
+    /// The paths, inside the folder, of the copies Mediaworks itself made.
+    @ObservationIgnored private var copied: Set<String> = DeviceSync.loadLedger()
+
+    private static func loadLedger() -> Set<String> {
+        if let data = try? Data(contentsOf: ledgerURL), let paths = try? JSONDecoder().decode(Set<String>.self, from: data) {
+            return paths
+        }
+        // The first run with a ledger: everything already in the folder was copied by Mediaworks.
+        let base = folder.standardizedFileURL.path + "/"
+        var paths = Set<String>()
+        if let walker = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: [.isDirectoryKey]) {
+            for case let url as URL in walker where (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) != true {
+                paths.insert(String(url.standardizedFileURL.path.dropFirst(base.count)))
+            }
+        }
+        saveLedger(paths)
+        return paths
+    }
+
+    private static func saveLedger(_ paths: Set<String>) {
+        try? FileManager.default.createDirectory(at: ledgerURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? JSONEncoder().encode(paths).write(to: ledgerURL, options: .atomic)
+    }
 
     static func localURL(_ path: String) -> URL { folder.appending(path: path) }
 
@@ -191,6 +235,8 @@ final class DeviceSync {
                 report(done, "Your Mac is out of reach — the rest come next time")
                 return
             }
+            copied.insert(item.path)
+            Self.saveLedger(copied)
             done += 1
             copiedBytes += item.size
             copiesVersion += 1
@@ -207,8 +253,11 @@ final class DeviceSync {
         for case let url as URL in walker {
             if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true { folders.append(url); continue }
             let path = String(url.standardizedFileURL.path.dropFirst(base.count))
-            if !wanted.contains(path) { try? FileManager.default.removeItem(at: url); gone += 1 }
+            if !wanted.contains(path) && copied.contains(path) {
+                try? FileManager.default.removeItem(at: url); copied.remove(path); gone += 1
+            }
         }
+        if gone > 0 { Self.saveLedger(copied) }
         for folder in folders.sorted(by: { $0.path.count > $1.path.count }) {
             if (try? FileManager.default.contentsOfDirectory(atPath: folder.path))?.isEmpty == true {
                 try? FileManager.default.removeItem(at: folder)

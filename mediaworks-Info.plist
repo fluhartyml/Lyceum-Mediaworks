@@ -14,5 +14,7 @@
 		<string>_lyceum-jobs._tcp</string>
 		<string>_lyceum-src._tcp</string>
 	</array>
+	<key>UIFileSharingEnabled</key>
+	<true/>
 </dict>
 </plist>
