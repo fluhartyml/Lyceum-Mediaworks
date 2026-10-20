@@ -79,7 +79,10 @@ struct SettingsView: View {
         }
         .font(.lyceumBody)
         .formStyle(.grouped)
+        #if os(macOS)
+        // REM  The Settings window's minimum size. On iPhone a 560-point minimum pushed every row off both edges.
         .frame(minWidth: 560, minHeight: 420)
+        #endif
         .fileImporter(isPresented: $choosingFolder, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result { library.choose(url) }
         }
