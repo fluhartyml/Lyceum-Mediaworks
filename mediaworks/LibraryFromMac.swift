@@ -208,6 +208,22 @@ final class MacLibrary {
                     // One connection per request — a second sighting of the same Mac must not send the change twice.
                     guard !finished, let mac = MacFinder.pick(results) else { return }
                     let connection = NWConnection(to: mac.endpoint, using: .tcp)
+                    // REM  A CONNECTION THAT CANNOT COME UP GIVES UP — his report, 2026-10-21: on a fresh install the welcome
+                    // REM  screen sat "for a few long minutes" until he force-quit. Reading the answer had no time limit, so a
+                    // REM  connection left waiting (the local-network permission is the likely one, not proven) held the
+                    // REM  fetch — and the once-a-minute retry behind it — for good. Waiting, failed, or not up in 20 seconds →
+                    // REM  cancelled; the read ends empty and the next minute tries again.
+                    let ready = Flag()
+                    connection.stateUpdateHandler = { state in
+                        switch state {
+                        case .ready: ready.value = true
+                        case .waiting, .failed: connection.cancel()
+                        default: break
+                        }
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 20) {
+                        if !ready.value { connection.cancel() }
+                    }
                     connection.start(queue: .main)
                     connection.send(content: message, completion: .contentProcessed { _ in })
                     finish(connection)
@@ -309,6 +325,7 @@ final class MacLibrary {
     }
 
     private final class Counter: @unchecked Sendable { var value = 0 }
+    private final class Flag: @unchecked Sendable { var value = false }
 }
 
 // MARK: - Browsing the copy
@@ -384,28 +401,83 @@ struct MacLibraryView: View {
     }
 }
 
-/// The Sync menu — Off, Automatic or Manual, for THIS device only (platforms 002d).
-private struct SyncMenu: View {
-    @Environment(MacLibrary.self) private var library
+#if os(iOS)
+// REM  THE SYNC CHOICE LIVES IN SETTINGS — his words, 2026-10-21: "the arrow pointing to the door with automatic - ...
+// REM  manual-... should be in the settings sheet too", and the Library's Sync Everything toggle with it. Two toggles, never
+// REM  both on: "off if both are toggled off". Replaces the Library's Sync menu (platforms 002d — still per device).
+/// Settings → Sync to This Device (iPhone and iPad).
+struct DeviceSyncSettingsSection: View {
+    @Environment(MacLibrary.self) private var library: MacLibrary?
 
     var body: some View {
-        @Bindable var sync = library.sync
-        Menu {
-            // REM  A TITLE WHEN IT OPENS — his catch, 2026-10-18: "the con is ambiguous so it should have a title or something
-            // REM  when the popup is revealed that says Lyceum Synching". Sync choices only: Relay Imports moved to Settings —
-            // REM  his rule the same day, "menus cant have an (i) means … that menu option does not match … the other menu options".
-            Section("Lyceum Syncing") {
-                Picker("Keep a copy on this device", selection: $sync.mode) {
-                    ForEach(DeviceSync.Mode.allCases) { Text($0.title).tag($0) }
-                }
+        if let library {
+            @Bindable var sync = library.sync
+            Section {
+                Toggle("Sync Everything to This Device", isOn: $sync.syncsEverything)
+                    .info("Automatic — every media file in the library is copied here, checked or not. Turning it on turns Sync Only Checked Media off.")
+                Toggle("Sync Only Checked Media", isOn: $sync.syncsCheckedOnly)
+                    .info("Manual — only checked media files are copied here. Turning it on turns Sync Everything off. With both off, nothing syncs.")
+                Text("A folder can still be left out with its own Sync to This Device switch in Lyceum Library.")
+                    .foregroundStyle(.secondary)
+            } header: {
+                Text("Sync to This \(SyncSummarySection.device)").font(.lyceumHeadline)
             }
-        } label: {
-            Label("Sync: \(library.sync.mode == .off ? "Off" : library.sync.mode == .automatic ? "Automatic" : "Manual")",
-                  systemImage: library.sync.running ? "arrow.triangle.2.circlepath" : "iphone.and.arrow.forward")
+            .font(.lyceumBody)
+            .onChange(of: library.sync.mode) { library.syncNow() }
         }
-        .onChange(of: library.sync.mode) { library.syncNow() }
     }
 }
+
+/// The top of Lyceum Media: how syncing stands, and which library folders land in which folder on this device.
+struct SyncSummarySection: View {
+    @Environment(MacLibrary.self) private var library
+
+    static var device: String { UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone" }
+    /// Where the Files app shows the copies (DeviceSync.folder = Documents/Synced).
+    static var filesPlace: String { "On My \(device) › Lyceum Mediaworks › Synced" }
+
+    private var sync: DeviceSync { library.sync }
+
+    var body: some View {
+        Section {
+            Text(sync.mode == .automatic ? "Sync Everything — every media file"
+                 : sync.mode == .manual ? "Sync Only Checked Media" : "Sync is Off — turn it on in Settings")
+            if let progress = sync.progress {
+                Group {
+                    Text("\(progress.onDevice.formatted()) / \(progress.total.formatted()) on this \(Self.device) · \(progress.left.formatted()) left to sync")
+                    Text("\(MacLibraryView.size(progress.copiedBytes)) copied · \(MacLibraryView.size(progress.totalBytes)) total")
+                    Text("\(MacLibraryView.size(progress.freeBytes)) free")
+                }
+                .monospacedDigit()
+            }
+            if !sync.status.isEmpty { Text(sync.status).foregroundStyle(.secondary) }
+        } header: {
+            Text("Syncing").font(.lyceumHeadline)
+        }
+        if sync.mode != .off {
+            Section {
+                ForEach(folderLines, id: \.self) { Text($0) }
+                ForEach(sync.listChoices.sorted(), id: \.self) { name in
+                    Text("👍 \(name) → each file in its own library folder, under Synced")
+                }
+                if folderLines.isEmpty && sync.listChoices.isEmpty {
+                    Text("No folders or Thumbs Up lists are switched on.").foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Library → \(Self.filesPlace)").font(.lyceumHeadline)
+            }
+        }
+    }
+
+    /// One line per folder switch: what syncs and the folder it lands in; a switched-off folder says it is left out.
+    private var folderLines: [String] {
+        sync.folderChoices.sorted { $0.key < $1.key }.compactMap { path, on in
+            if path.isEmpty { return on ? "The whole library → Synced" : nil }
+            return on ? "\(path) → Synced/\(path)" : "\(path) — left out"
+        }
+    }
+}
+#endif
 
 private struct CachedFolderList: View {
     let folder: CachedFolder
@@ -433,18 +505,23 @@ private struct CachedFolderList: View {
             // REM  SYNC THIS FOLDER — his ask, 2026-10-17: "he only wants to toggle folders to synch" · "all folders probably
             // REM  should get a toggle on or off" · "first synch off". THIS device only; checkmarks are untouched (DeviceSync.swift).
             #if os(iOS)
+            // REM  SYNC STATS AND WHERE THE COPIES GO — his ask, 2026-10-21: "on this sheet it should show the sync stats and what
+            // REM  folders are being synced to what folder on the iphone".
+            if isTop, mediaOnly { SyncSummarySection() }
             if mediaOnly, shownFolders.isEmpty, shownFiles.isEmpty {
-                Text(isTop ? "Nothing is on this iPhone yet. Swipe to Lyceum Library and switch on Sync to This Device for a folder."
+                Text(isTop ? "Nothing is on this iPhone yet. Turn on syncing in Settings, or switch on Sync to This Device for a folder in Lyceum Library."
                            : "Nothing in this folder is on this iPhone.")
                     .foregroundStyle(.secondary)
             }
-            if !mediaOnly {
+            // REM  SYNC EVERYTHING MOVED TO SETTINGS — his word, 2026-10-21: "the sync everything toggle should be relocated to
+            // REM  settings". Each folder below the top keeps its own switch here.
+            if !mediaOnly, !isTop {
             Section {
-                Toggle(isTop ? "Sync Everything to This Device" : "Sync to This Device", isOn: Binding(
+                Toggle("Sync to This Device", isOn: Binding(
                     get: { library.sync.syncsFolder(path) },
                     set: { library.sync.setFolder(path, on: $0); library.syncNow() }))
                 if library.sync.mode == .off {
-                    Text("Sync is Off — choose Automatic or Manual from the Sync button at the top of the Library.")
+                    Text("Sync is Off — turn on Sync Everything or Sync Only Checked Media in Settings.")
                         .foregroundStyle(.secondary)
                 }
             }
@@ -499,6 +576,11 @@ private struct CachedFolderList: View {
                         HStack {
                             Label(name, systemImage: LibraryCache.isThumbsUp(name) ? "hand.thumbsup.fill" : "music.note.list")
                             Spacer()
+                            #if os(iOS)
+                            if library.sync.mode != .off && library.sync.syncsList(name) {
+                                Image(systemName: "iphone").foregroundStyle(.secondary).accessibilityLabel("Syncs to this device")
+                            }
+                            #endif
                             Text("\(list.count)").foregroundStyle(.secondary).monospacedDigit()
                         }
                     }
@@ -532,9 +614,6 @@ private struct CachedFolderList: View {
         .navigationTitle(isTop ? (mediaOnly ? "Lyceum Media" : "Lyceum Library") : folder.name)
         #else
         .navigationTitle(folder.name)
-        #endif
-        #if os(iOS)
-        .toolbar { if isTop, !mediaOnly { ToolbarItem { SyncMenu() } } }
         #endif
     }
 
@@ -596,6 +675,25 @@ private struct PlaylistList: View {
             Section {
                 PlayAllButtons(paths: paths)
             }
+            #if os(iOS)
+            // REM  A THUMBS UP LIST SYNCS LIKE A FOLDER — his ask, 2026-10-21 (DeviceSync.listChoices). Greyed when Sync
+            // REM  Everything already brings every file.
+            if LibraryCache.isThumbsUp(name) {
+                Section {
+                    Toggle("Sync to This Device", isOn: Binding(
+                        get: { library.sync.syncsList(name) },
+                        set: { library.sync.setList(name, on: $0); library.syncNow() }))
+                        .disabled(library.sync.coversEverything)
+                    if library.sync.coversEverything {
+                        Text("Sync Everything is on — every file in this list already comes to this device.")
+                            .foregroundStyle(.secondary)
+                    } else if library.sync.mode == .off {
+                        Text("Sync is Off — turn on Sync Everything or Sync Only Checked Media in Settings.")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            #endif
             Section {
                 // REM  SAVE AS NEW PLAYLIST — his word, 2026-10-13 (N09): he went to make a new playlist from Thumbs Up on the
                 // REM  TV and couldn't find how — nothing said "new playlist", only Rename. Same action as renaming Thumbs Up.

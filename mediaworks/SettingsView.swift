@@ -24,6 +24,10 @@ struct SettingsView: View {
             #if !os(macOS)
             // REM  WHICH MAC — his ask, 2026-10-11 (MacFinder.swift).
             MacPickerSection()
+            #if os(iOS)
+            // REM  SYNC TO THIS DEVICE — moved here from the Library, his word 2026-10-21 (LibraryFromMac.swift).
+            DeviceSyncSettingsSection()
+            #endif
             // REM  SORTING — on the Mac it is its own Settings tab; here it is a page of its own.
             Section {
                 NavigationLink("Sorting") { SortingSettingsView().navigationTitle("Sorting") }

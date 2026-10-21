@@ -19,6 +19,21 @@ Write here what the next session needs and cannot get from the code or git log: 
 progress, what was promised, what is waiting on him. **Newest on top. Date every entry.** Clear an
 entry once it is done, and move anything that became a decision into the sections below.
 
+### 2026-10-21 ~08:3x — iPHONE SYNC MOVED TO SETTINGS + THUMBS UP SYNC + LYCEUM MEDIA SUMMARY (build 225) — NOT yet on any device
+- From his 11 Pro shakedown of 224. Settings → Sync to This iPhone: **Sync Everything** (= Automatic, top switched on) and
+  **Sync Only Checked Media** (= Manual, top switched on) — one on turns the other off; both off = Off (his rulings).
+  The Library's top Sync Everything toggle and its Sync menu are gone; per-folder switches stay.
+- Thumbs Up lists: **Sync to This Device** on each list's page (`DeviceSync.listChoices`); greyed when Sync Everything covers all.
+- Lyceum Media top: mode, counts/sizes/free, status, and folder → `On My iPhone › Lyceum Mediaworks › Synced/<path>` lines.
+- Welcome-screen hang (minutes on first install): reading the Mac's answer had no time limit. Connection now cancelled on
+  waiting/failed or not ready in 20 s. **Cause not proven on the phone** — test on a fresh install.
+- Compiles iOS/macOS/tvOS. Tests not run; not run in a simulator or on a device.
+
+### 2026-10-19 ~13:5x — HE IS USING IT DAILY · NEXT: THE iOS APP ON THE iPHONE DUO (captured, NOT started)
+- His words: *"this is so cool! i have actually been using the app on lab b and my apple tv. we will need to optimize the
+  ios abb for an iphone duo"* (his order W1402305332 delivers Nov 20–30). Nothing designed or built yet; ask what he wants first.
+- 222 sent to TestFlight at his word (*"upload to testflight please!"*).
+
 ### 2026-10-19 ~12:4x — EVERY FILE REMEMBERS WHERE IT WAS LEFT, ON EVERY DEVICE (build 222) — NOT yet seen on his devices
 - His words: *"make it remember position for every file on all devices"* — after *"can it remember play position like itunes
   does?"* iTunes keeps its bookmark in its library database, not in the file (forum sources, not Apple docs), so nothing is

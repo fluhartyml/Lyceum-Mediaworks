@@ -65,6 +65,45 @@ final class DeviceSync {
 
     func setFolder(_ path: String, on: Bool) { folderChoices[path] = on }
 
+    // REM  THE TWO SETTINGS TOGGLES — his design, 2026-10-21: "sync everything to this device toggle should be in settings and
+    // REM  should turn automatic sync on and under it should be a second toggle that is inverse toggled to manual sync only
+    // REM  checked media" · "off if both are toggled off". Each turns the whole library on for this device; the folder
+    // REM  switches in Lyceum Library still leave a folder out.
+    var syncsEverything: Bool {
+        get { mode == .automatic }
+        set {
+            if newValue { setFolder("", on: true) }
+            mode = newValue ? .automatic : .off
+        }
+    }
+    var syncsCheckedOnly: Bool {
+        get { mode == .manual }
+        set {
+            if newValue { setFolder("", on: true) }
+            mode = newValue ? .manual : .off
+        }
+    }
+
+    /// Every media file in the library comes here — Automatic, the top switched on, and no folder left out.
+    var coversEverything: Bool { mode == .automatic && syncsFolder("") && !folderChoices.values.contains(false) }
+
+    // REM  THUMBS UP LISTS SYNC TOO — his ask, 2026-10-21: "the thumbs up lists should have a sync toggle too". THIS device
+    // REM  only, like the folder switches. A file in a switched-on list AND a switched-on folder is one copy (both name it by
+    // REM  its library path). Manual still takes only the checked ones.
+    /// Thumbs Up lists switched on for this device, by name.
+    var listChoices: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "deviceSyncLists") ?? []) {
+        didSet {
+            UserDefaults.standard.set(Array(listChoices), forKey: "deviceSyncLists")
+            stopRequested = running
+        }
+    }
+
+    func syncsList(_ name: String) -> Bool { listChoices.contains(name) }
+
+    func setList(_ name: String, on: Bool) {
+        if on { listChoices.insert(name) } else { listChoices.remove(name) }
+    }
+
     /// The numbers behind the bar at the bottom of the Library — nil when there is nothing to count.
     struct Progress: Equatable {
         var onDevice: Int
@@ -177,6 +216,18 @@ final class DeviceSync {
             for sub in folder.folders { walk(sub, path.isEmpty ? sub.name : path + "/" + sub.name) }
         }
         if mode != .off { walk(snapshot.root, "") }
+        if mode != .off {
+            var have = Set(wanted.map(\.path))
+            for (name, paths) in snapshot.playlists ?? [:] where LibraryCache.isThumbsUp(name) && syncsList(name) {
+                anyFolderOn = true
+                for path in paths where !have.contains(path) {
+                    guard let file = snapshot.file(at: path), file.isMedia,
+                          mode == .automatic || file.isChecked else { continue }
+                    wanted.append((path, file.size ?? 0))
+                    have.insert(path)
+                }
+            }
+        }
         let wantedPaths = Set(wanted.map(\.path))
 
         // Copies no longer wanted come off this device (never off the library).
@@ -185,7 +236,7 @@ final class DeviceSync {
         if mode == .off || !anyFolderOn { progress = nil }
         if mode != .off && !anyFolderOn {
             status = (removed > 0 ? "Removed \(removed) copies from this device · " : "")
-                + "No folders are switched on for this device — open a folder and turn on Sync to This Device"
+                + "Nothing is switched on for this device — turn on Sync to This Device for a folder or a Thumbs Up list"
             return
         }
         let missing = wanted.filter { !hasCopy($0.path, size: $0.size) }

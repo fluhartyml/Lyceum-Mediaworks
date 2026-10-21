@@ -181,7 +181,9 @@ struct PhoneHome: View {
                     .contentShape(Rectangle())
                     .transition(slide)
             } else {
+                // The library goes in for Settings' Sync to This Device section.
                 NavigationStack { SettingsView().navigationTitle("Settings") }
+                    .environment(library)
                     .transition(slide)
             }
         }
