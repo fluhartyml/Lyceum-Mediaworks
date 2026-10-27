@@ -278,6 +278,18 @@ final class MacLibrary {
 
     fileprivate static var streamBase: (url: URL, when: Date)?
 
+    /// The file's own picture at full size, from the Mac (LibraryCatalog's /art/). Nil when the Mac is out of reach or the
+    /// file carries none — the card then keeps the small icon from the cache.
+    static func artwork(_ path: String) async -> Data? {
+        guard let media = await streamURL(path),
+              let url = URL(string: media.absoluteString.replacingOccurrences(of: "/media/", with: "/art/")) else { return nil }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 15
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200, UIImage(data: data) != nil else { return nil }
+        return data
+    }
+
     private static func make(_ base: URL, _ path: String) -> URL? {
         URL(string: base.absoluteString + "/media/" + (path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path))
     }
@@ -944,7 +956,10 @@ private struct CachedFileView: View {
     /// The file's path now — a rename from this card moves it.
     @State private var renamedTo: String?
     @State private var editingField: MediaInfoField?
+    /// The full-size picture once the Mac sends it; until then, and if it never comes, the cache's small icon.
+    @State private var fullArt: Data?
     private var current: String { renamedTo ?? path }
+    private var picture: Data? { fullArt ?? file.info?.thumbnail }
     private var file: CachedFile { library.snapshot?.file(at: current) ?? fallback }
     private var thumbedUp: Bool { library.snapshot?.isThumbedUp(current) ?? false }
 
@@ -994,7 +1009,7 @@ private struct CachedFileView: View {
                     .lyceumSelectable()
                 if twoFrames {
                     HStack(alignment: .top, spacing: 24) {
-                        CachedPicture(data: file.info?.thumbnail, isVideo: file.isVideo)
+                        CachedPicture(data: picture, isVideo: file.isVideo)
                             .frame(width: half)
                             .frame(maxHeight: .infinity)
                         ScrollView { details.padding(.trailing, 8) }
@@ -1003,7 +1018,7 @@ private struct CachedFileView: View {
                 } else {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 14) {
-                            CachedPicture(data: file.info?.thumbnail, isVideo: file.isVideo)
+                            CachedPicture(data: picture, isVideo: file.isVideo)
                                 .frame(maxWidth: .infinity, maxHeight: 260)
                             details
                         }
@@ -1018,6 +1033,7 @@ private struct CachedFileView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .task(id: current) { fullArt = await MacLibrary.artwork(current) }
         .sheet(item: $editingField) { field in
             MediaInfoEditSheet(path: current, file: file, field: field) { renamedTo = $0 }.environment(library)
         }

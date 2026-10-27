@@ -15,6 +15,7 @@ import Foundation
 import Network
 import Observation
 import ImageIO
+import AVFoundation
 
 @MainActor
 @Observable
@@ -1037,6 +1038,21 @@ final class LibraryCatalog {
             serveOutbox(connection, url: url, lines: lines)
             return
         }
+        // REM  /art/ — THE FULL-SIZE EMBEDDED PICTURE for the info card. His report 2026-10-27: "the album art is fuzzy" on
+        // REM  the Apple TV. The cache carries only the 96 px row icon (Columns.swift), and the card stretched it across half
+        // REM  a 4K screen. The card now asks for the picture itself, as it is in the file; a file this Mac does not hold
+        // REM  answers 404 and the card keeps the icon.
+        if parts.count >= 2, parts[1].hasPrefix("/art/"),
+           let wanted = String(parts[1].dropFirst("/art/".count)).removingPercentEncoding {
+            guard let url = libraryFile(wanted), FileManager.default.fileExists(atPath: url.path) else { fail("404 Not Found"); return }
+            Task {
+                guard let art = await Self.artwork(of: url) else { fail("404 Not Found"); return }
+                let head = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: \(art.count)\r\nConnection: close\r\n\r\n"
+                connection.send(content: Data(head.utf8) + art, contentContext: .finalMessage, isComplete: true,
+                                completion: .contentProcessed { _ in connection.cancel() })
+            }
+            return
+        }
         // N16 — a file the partner mini holds: served here through the buffer (N17).
         if parts.count >= 2, parts[1].hasPrefix("/media/"),
            let wanted = String(parts[1].dropFirst("/media/".count)).removingPercentEncoding,
@@ -1104,6 +1120,18 @@ final class LibraryCatalog {
             })
         }
         next()
+    }
+}
+
+extension LibraryCatalog {
+    /// The picture embedded in a media file, untouched — the bytes the file carries.
+    nonisolated static func artwork(of url: URL) async -> Data? {
+        let asset = AVURLAsset(url: url)
+        guard let items = try? await asset.load(.commonMetadata) else { return nil }
+        for item in AVMetadataItem.metadataItems(from: items, filteredByIdentifier: .commonIdentifierArtwork) {
+            if let data = try? await item.load(.dataValue), !data.isEmpty { return data }
+        }
+        return nil
     }
 }
 
