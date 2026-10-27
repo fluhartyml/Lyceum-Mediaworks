@@ -941,8 +941,22 @@ private struct CachedFileView: View {
     var queue: [String]? = nil
     @Environment(MacLibrary.self) private var library
 
-    private var file: CachedFile { library.snapshot?.file(at: path) ?? fallback }
-    private var thumbedUp: Bool { library.snapshot?.isThumbedUp(path) ?? false }
+    /// The file's path now — a rename from this card moves it.
+    @State private var renamedTo: String?
+    @State private var editingField: MediaInfoField?
+    private var current: String { renamedTo ?? path }
+    private var file: CachedFile { library.snapshot?.file(at: current) ?? fallback }
+    private var thumbedUp: Bool { library.snapshot?.isThumbedUp(current) ?? false }
+
+    // REM  THE NAME ACROSS THE TOP — "fit to width or a max text height ... because i dont want madonna.mp4 to take up 100%
+    // REM  screen width". One line, shrinking for a long name down to the app's minimum (tvOS 29, else 18), never above the cap.
+    #if os(tvOS)
+    private static let nameMax: CGFloat = 76
+    private static let nameMin: CGFloat = 29
+    #else
+    private static let nameMax: CGFloat = 34
+    private static let nameMin: CGFloat = 18
+    #endif
     #if os(iOS)
     @Environment(PhonePlayer.self) private var phone: PhonePlayer?
     @Environment(TVRemote.self) private var remote: TVRemote?
@@ -962,12 +976,79 @@ private struct CachedFileView: View {
     private static var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
     #endif
 
+    // REM  THE INFO CARD, HIS DESIGN 2026-10-27: "screen is two frames 50%/50% left frame i want the album art to be to fit.
+    // REM  and the right fram to be the media information" · "most album art is in andscape so being letter boxed is ok" ·
+    // REM  "this is probably good for iphones in duo or landscape too". Two frames wherever the screen is wider than tall;
+    // REM  an upright phone keeps one column. The art stays while editing — his "ok keep the art".
     var body: some View {
-        ScrollView {
+        GeometryReader { space in
+            let twoFrames = space.size.width > space.size.height
+            let half = max(0, (space.size.width - 32 - 24) / 2)
+            VStack(alignment: .leading, spacing: 16) {
+                Text(file.name)
+                    .font(.system(size: Self.nameMax, weight: .bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(Self.nameMin / Self.nameMax)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .lyceumSelectable()
+                if twoFrames {
+                    HStack(alignment: .top, spacing: 24) {
+                        CachedPicture(data: file.info?.thumbnail, isVideo: file.isVideo)
+                            .frame(width: half)
+                            .frame(maxHeight: .infinity)
+                        ScrollView { details.padding(.trailing, 8) }
+                            .frame(width: half)
+                    }
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 14) {
+                            CachedPicture(data: file.info?.thumbnail, isVideo: file.isVideo)
+                                .frame(maxWidth: .infinity, maxHeight: 260)
+                            details
+                        }
+                    }
+                }
+            }
+            .padding(16)
+        }
+        .font(.lyceumBody)
+        // The name is already across the top — no second, faint copy above it.
+        .navigationTitle("")
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+        .sheet(item: $editingField) { field in
+            MediaInfoEditSheet(path: current, file: file, field: field) { renamedTo = $0 }.environment(library)
+        }
+        #if os(tvOS)
+        .sheet(isPresented: $tvEditing) { TVEditSheet(path: current, file: file).environment(library) }
+        #endif
+        #if os(iOS)
+        .sheet(isPresented: $editing) {
+            TagEditSheet(file: file, scraped: scraped) { tags, picture in
+                library.send(CacheRequest(op: .setTags, path: current, tags: tags, picture: picture))
+            }
+        }
+        .sheet(isPresented: $scraping) {
+            ArtworkSearchSheet(initial: ArtworkSearch.query(fromFileName: file.name), startOn: .duckduckgo, isVideo: file.isVideo) { data, info in
+                // The scraper's picks open in the tag editor to check before anything is sent.
+                scraped = (data, info)
+                scraping = false
+                Task { try? await Task.sleep(for: .milliseconds(400)); editing = true }
+            }
+        }
+        .confirmationDialog("Move “\(file.name)” to the Trash?", isPresented: $confirmTrash, titleVisibility: .visible) {
+            Button("Move to Trash", role: .destructive) { library.send(CacheRequest(op: .trash, path: current)) }
+        } message: {
+            Text("Your Mac moves it to the Lyceum Trash, where it stays for 30 days. You can undo it on the Mac.")
+        }
+        #endif
+    }
+
+    /// The right frame: play, 👍 / 👎, and every line of the file's info — each one editable.
+    private var details: some View {
             VStack(alignment: .leading, spacing: 14) {
-                CachedPicture(data: file.info?.thumbnail, isVideo: file.isVideo)
-                    .frame(maxWidth: .infinity, maxHeight: 260)
-                Text(file.name).font(.lyceumHeadline).lyceumSelectable()
                 #if os(iOS)
                 // REM  PLAY — this device's copy (platforms 002c, P02). Next / Previous step through the copies in the same folder.
                 if file.isMedia, let phone, !file.isChecked {
@@ -976,18 +1057,18 @@ private struct CachedFileView: View {
                         .foregroundStyle(.secondary)
                 } else if file.isMedia, let phone {
                     // REM  Plays this device's copy when it has one; otherwise streams from the Mac (N05).
-                    let around = library.playable(queue ?? library.snapshot?.siblings(of: path) ?? [path])
+                    let around = library.playable(queue ?? library.snapshot?.siblings(of: current) ?? [current])
                     HStack(spacing: 12) {
                         Button {
-                            phone.play(path, in: around)
+                            phone.play(current, in: around)
                         } label: {
-                            Label(library.sync.hasCopy(path, size: file.size) ? "Play" : "Play from Your Mac", systemImage: "play.fill")
+                            Label(library.sync.hasCopy(current, size: file.size) ? "Play" : "Play from Your Mac", systemImage: "play.fill")
                         }
                         .buttonStyle(.borderedProminent)
                         // REM  PLAY ON APPLE TV — the TV streams it from the Mac; this phone becomes its remote (platforms 001).
                         if let tv = remote?.state {
                             Button {
-                                remote?.playOnTV(path, queue: around)
+                                remote?.playOnTV(current, queue: around)
                             } label: { Label("Play on \(tv.tvName)", systemImage: "appletv") }
                             .buttonStyle(.bordered)
                         }
@@ -997,7 +1078,7 @@ private struct CachedFileView: View {
                 #if os(tvOS)
                 // REM  APPLE TV: Play streams from the Mac into Apple's own TV player (Siri Remote controls) — 004a, 004d.
                 if file.isMedia {
-                    Button { theater.play(path, in: library.playable(queue ?? library.snapshot?.siblings(of: path) ?? [path])) } label: { Label("Play", systemImage: "play.fill") }
+                    Button { theater.play(current, in: library.playable(queue ?? library.snapshot?.siblings(of: current) ?? [current])) } label: { Label("Play", systemImage: "play.fill") }
                         .disabled(!file.isChecked)
                     Button { tvEditing = true } label: { Label("Genre, Kind, Title & Playlist…", systemImage: "slider.horizontal.3") }
                 }
@@ -1018,10 +1099,10 @@ private struct CachedFileView: View {
                     // REM  👍 checks the file and adds it to "Thumbs Up"; 👎 unchecks it — "thats the point of thumbs downing it
                     // REM  to take it out of synch rotation." Nothing is ever deleted (platforms 001c).
                     HStack(spacing: 14) {
-                        Button { library.change(.thumbsUp, path) } label: {
+                        Button { library.change(.thumbsUp, current) } label: {
                             Label("Thumbs Up", systemImage: thumbedUp ? "hand.thumbsup.fill" : "hand.thumbsup")
                         }
-                        Button { library.change(.thumbsDown, path) } label: {
+                        Button { library.change(.thumbsDown, current) } label: {
                             Label("Thumbs Down", systemImage: file.isChecked ? "hand.thumbsdown" : "hand.thumbsdown.fill")
                         }
                     }
@@ -1029,51 +1110,51 @@ private struct CachedFileView: View {
                     Text(file.isChecked ? "Checked — in sync rotation" : "Unchecked — out of sync rotation")
                         .foregroundStyle(.secondary)
                 }
+                if file.isMedia {
+                    // REM  EVERY LINE EDITABLE HERE — his "i want you to be able to edit media metadata from this screen too".
+                    // REM  Select a line: shared values are picked, the file's own are typed with suggestions (MediaInfoEditor).
+                    if file.info == nil {
+                        Text("Your Mac has not read this file's tags yet.").foregroundStyle(.secondary)
+                    }
+                    ForEach(editableFields) { field in editable(field) }
+                }
                 if let info = file.info {
-                    fact("001 Title", info.title)
-                    fact("002 Artist", info.artist)
-                    fact("003 Album", info.album)
-                    fact("005 Genre", info.genre)
-                    fact("006 Year", info.year.map(String.init))
-                    fact("017 Short Description", info.summary)
-                    fact("019 TV Show", info.show)
-                    fact("020 Season", info.season.map(String.init))
-                    fact("021 Episode", info.episode.map(String.init))
-                    fact("024 Media Kind", info.mediaKind)
                     fact("Length", info.length.map { Duration.seconds($0).formatted(.time(pattern: .hourMinuteSecond)) })
                     fact("Resolution", info.resolution)
-                } else if file.isMedia {
-                    Text("Your Mac has not read this file's tags yet.").foregroundStyle(.secondary)
                 }
                 fact("Size", file.size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) })
                 fact("Modified", file.modified?.formatted(date: .abbreviated, time: .shortened))
             }
-            .font(.lyceumBody)
-            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The lines shown for editing. The TV lines only for a TV show, or a file that already has one of them.
+    private var editableFields: [MediaInfoField] {
+        let info = file.info
+        let isShow = info?.mediaKind == "TV Show" || info?.show != nil || info?.season != nil || info?.episode != nil
+        return MediaInfoField.allCases.filter { isShow || ![.show, .season, .episode].contains($0) }
+    }
+
+    /// One info line; selecting it opens its picker or its typing field.
+    private func editable(_ field: MediaInfoField) -> some View {
+        Button { editingField = field } label: {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(field.label).foregroundStyle(.secondary)
+                    if let value = field.value(of: file), !value.isEmpty {
+                        Text(value)
+                    } else {
+                        Text("None — select to add").foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 8)
+                Image(systemName: field.isPicked ? "chevron.up.chevron.down" : "pencil").foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
-        .navigationTitle(file.info?.title ?? file.name)
-        #if os(tvOS)
-        .sheet(isPresented: $tvEditing) { TVEditSheet(path: path, file: file).environment(library) }
-        #endif
         #if os(iOS)
-        .sheet(isPresented: $editing) {
-            TagEditSheet(file: file, scraped: scraped) { tags, picture in
-                library.send(CacheRequest(op: .setTags, path: path, tags: tags, picture: picture))
-            }
-        }
-        .sheet(isPresented: $scraping) {
-            ArtworkSearchSheet(initial: ArtworkSearch.query(fromFileName: file.name), startOn: .duckduckgo, isVideo: file.isVideo) { data, info in
-                // The scraper's picks open in the tag editor to check before anything is sent.
-                scraped = (data, info)
-                scraping = false
-                Task { try? await Task.sleep(for: .milliseconds(400)); editing = true }
-            }
-        }
-        .confirmationDialog("Move “\(file.name)” to the Trash?", isPresented: $confirmTrash, titleVisibility: .visible) {
-            Button("Move to Trash", role: .destructive) { library.send(CacheRequest(op: .trash, path: path)) }
-        } message: {
-            Text("Your Mac moves it to the Lyceum Trash, where it stays for 30 days. You can undo it on the Mac.")
-        }
+        .buttonStyle(.plain)
         #endif
     }
 

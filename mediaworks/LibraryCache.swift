@@ -240,6 +240,8 @@ nonisolated enum LibraryCache {
     static let masterBuild = 207
     /// Imports through the master, with an iPhone as relay, from build 208 on (ImportJobs.swift).
     static let relayBuild = 208
+    /// A server renames a file in the Lyceum from build 210 on (Commander in the Lyceum; the info card asks it too).
+    static let renameFileBuild = 210
     /// The Bonjour service the Mac announces on the home network.
     static let serviceType = "_lyceum._tcp"
 
