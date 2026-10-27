@@ -100,6 +100,19 @@ enum MediaInfoGuess {
         }
     }
 
+    // REM  his word, 2026-10-27: "it would be nice if you could remove pound signs from the media file name from the apple tv"
+    // REM  · "if you rename it on the apple tv it renames the physical file name too". "#G.I. Joe# Arise.mp4" → "G.I. Joe Arise.mp4";
+    // REM  a space left doubled or at either end by a removed sign goes too. Nil when the name has none.
+    static func withoutPoundSigns(_ name: String) -> String? {
+        guard name.contains("#") else { return nil }
+        let ext = (name as NSString).pathExtension
+        var base = (name as NSString).deletingPathExtension.replacingOccurrences(of: "#", with: "")
+        while base.contains("  ") { base = base.replacingOccurrences(of: "  ", with: " ") }
+        base = base.trimmingCharacters(in: .whitespaces)
+        guard !base.isEmpty else { return nil }
+        return ext.isEmpty ? base : base + "." + ext
+    }
+
     /// A file name made from the tags — "Artist - Title.ext" — offered first when renaming.
     static func nameFromTags(_ file: CachedFile) -> String? {
         guard let title = file.info?.title, !title.isEmpty else { return nil }
@@ -183,6 +196,14 @@ struct MediaInfoEditSheet: View {
 
     @ViewBuilder
     private var typeIn: some View {
+        // REM  One press renames the file on the Mac — the name it becomes is shown first. The Mac refuses if that name is taken.
+        if field == .fileName, macCanRename, let clean = MediaInfoGuess.withoutPoundSigns(file.name) {
+            Section("Remove the # signs") {
+                Button { save((clean as NSString).deletingPathExtension) } label: {
+                    Label(clean, systemImage: "number.square")
+                }
+            }
+        }
         Section(field == .fileName ? "File name — .\((file.name as NSString).pathExtension) stays" : "Change it, or pick a suggestion") {
             TextField(field.label, text: $text, axis: field == .description ? .vertical : .horizontal)
                 .onSubmit { save(text) }
