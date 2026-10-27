@@ -12,6 +12,7 @@
 
 #if !os(macOS)
 import SwiftUI
+import AVFoundation
 import Network
 import Observation
 
@@ -958,6 +959,9 @@ private struct CachedFileView: View {
     @State private var editingField: MediaInfoField?
     /// The full-size picture once the Mac sends it; until then, and if it never comes, the cache's small icon.
     @State private var fullArt: Data?
+    /// The card's own player while ▶ Preview runs — nil the rest of the time.
+    @State private var preview: AVPlayer?
+    @State private var previewProblem: String?
     private var current: String { renamedTo ?? path }
     private var picture: Data? { fullArt ?? file.info?.thumbnail }
     private var file: CachedFile { library.snapshot?.file(at: current) ?? fallback }
@@ -1009,7 +1013,7 @@ private struct CachedFileView: View {
                     .lyceumSelectable()
                 if twoFrames {
                     HStack(alignment: .top, spacing: 24) {
-                        CachedPicture(data: picture, isVideo: file.isVideo)
+                        leftFrame
                             .frame(width: half)
                             .frame(maxHeight: .infinity)
                         ScrollView { details.padding(.trailing, 8) }
@@ -1018,7 +1022,7 @@ private struct CachedFileView: View {
                 } else {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 14) {
-                            CachedPicture(data: picture, isVideo: file.isVideo)
+                            leftFrame
                                 .frame(maxWidth: .infinity, maxHeight: 260)
                             details
                         }
@@ -1033,7 +1037,8 @@ private struct CachedFileView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
-        .task(id: current) { fullArt = await MacLibrary.artwork(current) }
+        .task(id: current) { stopPreview(); fullArt = await MacLibrary.artwork(current) }
+        .onDisappear { stopPreview() }
         .sheet(item: $editingField) { field in
             MediaInfoEditSheet(path: current, file: file, field: field) { renamedTo = $0 }.environment(library)
         }
@@ -1062,6 +1067,44 @@ private struct CachedFileView: View {
         #endif
     }
 
+    // REM  ▶ PREVIEW AND ▶ PLAY — HIS DESIGN 2026-10-27: "preview plays in the card fit the left frames width or Play in the
+    // REM  theater the preview doesnt effect the last play point but the play in the theater does". Preview is "a sample
+    // REM  without interfearing with the last play position in video or audio": it starts at the top, plays in the left
+    // REM  frame, and never reads or writes PlayPositions. Play is the player it always was, and keeps the place.
+    // REM  Unchecked files do not stream (PL9), so Preview is off for them too.
+
+    /// The left frame: the picture, or the preview playing in its place. Audio keeps its picture while it plays.
+    @ViewBuilder private var leftFrame: some View {
+        if let preview, file.isVideo {
+            PreviewLayer(player: preview)
+        } else {
+            CachedPicture(data: picture, isVideo: file.isVideo)
+        }
+    }
+
+    private var previewButton: some View {
+        Button { preview == nil ? startPreview() : stopPreview() } label: {
+            Label(preview == nil ? "Preview" : "Stop Preview", systemImage: preview == nil ? "play" : "stop.fill")
+        }
+    }
+
+    private func startPreview() {
+        previewProblem = nil
+        let path = current
+        Task {
+            guard let url = await MacLibrary.streamURL(path) else { previewProblem = "Your Mac is out of reach."; return }
+            guard path == current else { return }
+            let player = AVPlayer(url: url)
+            preview = player
+            player.play()
+        }
+    }
+
+    private func stopPreview() {
+        preview?.pause()
+        preview = nil
+    }
+
     /// The right frame: play, 👍 / 👎, and every line of the file's info — each one editable.
     private var details: some View {
             VStack(alignment: .leading, spacing: 14) {
@@ -1076,14 +1119,17 @@ private struct CachedFileView: View {
                     let around = library.playable(queue ?? library.snapshot?.siblings(of: current) ?? [current])
                     HStack(spacing: 12) {
                         Button {
+                            stopPreview()
                             phone.play(current, in: around)
                         } label: {
                             Label(library.sync.hasCopy(current, size: file.size) ? "Play" : "Play from Your Mac", systemImage: "play.fill")
                         }
                         .buttonStyle(.borderedProminent)
+                        previewButton.buttonStyle(.bordered)
                         // REM  PLAY ON APPLE TV — the TV streams it from the Mac; this phone becomes its remote (platforms 001).
                         if let tv = remote?.state {
                             Button {
+                                stopPreview()
                                 remote?.playOnTV(current, queue: around)
                             } label: { Label("Play on \(tv.tvName)", systemImage: "appletv") }
                             .buttonStyle(.bordered)
@@ -1094,11 +1140,16 @@ private struct CachedFileView: View {
                 #if os(tvOS)
                 // REM  APPLE TV: Play streams from the Mac into Apple's own TV player (Siri Remote controls) — 004a, 004d.
                 if file.isMedia {
-                    Button { theater.play(current, in: library.playable(queue ?? library.snapshot?.siblings(of: current) ?? [current])) } label: { Label("Play", systemImage: "play.fill") }
+                    Button {
+                        stopPreview()
+                        theater.play(current, in: library.playable(queue ?? library.snapshot?.siblings(of: current) ?? [current]))
+                    } label: { Label("Play", systemImage: "play.fill") }
                         .disabled(!file.isChecked)
+                    previewButton.disabled(!file.isChecked)
                     Button { tvEditing = true } label: { Label("Genre, Kind, Title & Playlist…", systemImage: "slider.horizontal.3") }
                 }
                 #endif
+                if let previewProblem { Text(previewProblem).foregroundStyle(.secondary) }
                 #if os(iOS)
                 if Self.isPad, file.isMedia {
                     // REM  THE iPAD EDITS (platforms 003a / 003b): tags and the Web Metadata Scraper, sent to the Mac to write;
@@ -1182,6 +1233,25 @@ private struct CachedFileView: View {
                 Text(value).lyceumSelectable()
             }
         }
+    }
+}
+
+/// The card's preview video, fit to the left frame — no system controls; the card's Stop Preview is the control.
+private struct PreviewLayer: UIViewRepresentable {
+    let player: AVPlayer
+
+    func makeUIView(context: Context) -> LayerView {
+        let view = LayerView()
+        view.playerLayer.player = player
+        view.playerLayer.videoGravity = .resizeAspect
+        return view
+    }
+
+    func updateUIView(_ view: LayerView, context: Context) { view.playerLayer.player = player }
+
+    final class LayerView: UIView {
+        override static var layerClass: AnyClass { AVPlayerLayer.self }
+        var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
     }
 }
 
