@@ -954,13 +954,15 @@ private struct CachedFileView: View {
     var queue: [String]? = nil
     @Environment(MacLibrary.self) private var library
 
-    /// The file's path now — a rename from this card moves it.
+    /// The file's path now — a rename from this card moves it, and so does ◀ ▶ to the previous or next file (tvOS).
     @State private var renamedTo: String?
     @State private var editingField: MediaInfoField?
     /// The full-size picture once the Mac sends it; until then, and if it never comes, the cache's small icon.
     @State private var fullArt: Data?
     /// The card's own player while ▶ Preview runs — nil the rest of the time.
     @State private var preview: AVPlayer?
+    /// ▶ Preview is a toggle — on, it stays on as ◀ ▶ moves through the folder, until Stop Preview, Play, or leaving the card.
+    @State private var previewOn = false
     @State private var previewProblem: String?
     private var current: String { renamedTo ?? path }
     private var picture: Data? { fullArt ?? file.info?.thumbnail }
@@ -1017,6 +1019,11 @@ private struct CachedFileView: View {
                             .frame(width: half)
                             .frame(maxHeight: .infinity)
                         ScrollView { details.padding(.trailing, 8) }
+                            #if os(tvOS)
+                            .onMoveCommand { direction in
+                                if direction == .left { step(-1) } else if direction == .right { step(1) }
+                            }
+                            #endif
                             .frame(width: half)
                     }
                 } else {
@@ -1037,7 +1044,12 @@ private struct CachedFileView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
-        .task(id: current) { stopPreview(); fullArt = await MacLibrary.artwork(current) }
+        .task(id: current) {
+            endPreviewPlayer()
+            if previewOn, file.isChecked { startPreview() }
+            fullArt = nil
+            fullArt = await MacLibrary.artwork(current)
+        }
         .onDisappear { stopPreview() }
         .sheet(item: $editingField) { field in
             MediaInfoEditSheet(path: current, file: file, field: field) { renamedTo = $0 }.environment(library)
@@ -1082,13 +1094,23 @@ private struct CachedFileView: View {
         }
     }
 
+    @ViewBuilder private var thumbButtons: some View {
+        Button { library.change(.thumbsUp, current) } label: {
+            Label("Thumbs Up", systemImage: thumbedUp ? "hand.thumbsup.fill" : "hand.thumbsup")
+        }
+        Button { library.change(.thumbsDown, current) } label: {
+            Label("Thumbs Down", systemImage: file.isChecked ? "hand.thumbsdown" : "hand.thumbsdown.fill")
+        }
+    }
+
     private var previewButton: some View {
-        Button { preview == nil ? startPreview() : stopPreview() } label: {
-            Label(preview == nil ? "Preview" : "Stop Preview", systemImage: preview == nil ? "play" : "stop.fill")
+        Button { previewOn ? stopPreview() : startPreview() } label: {
+            Label(previewOn ? "Stop Preview" : "Preview", systemImage: previewOn ? "stop.fill" : "play")
         }
     }
 
     private func startPreview() {
+        previewOn = true
         previewProblem = nil
         let path = current
         Task {
@@ -1101,9 +1123,28 @@ private struct CachedFileView: View {
     }
 
     private func stopPreview() {
+        previewOn = false
+        endPreviewPlayer()
+    }
+
+    /// Ends this file's preview but leaves the toggle as it is — the next file previews if it is on.
+    private func endPreviewPlayer() {
         preview?.pause()
         preview = nil
     }
+
+    #if os(tvOS)
+    // REM  ◀ ▶ ON THE CARD — HIS ASK 2026-10-27: "while in the card mode can i use the left and right buttons to swipe next and
+    // REM  swipe previous? and if i clicked preview it stays on like a toggle?" Left and right step through the same folder
+    // REM  (or the list the card was opened from), stopping at either end. Thumbs Up and Thumbs Down are stacked so left and
+    // REM  right are never needed to move between buttons. On the card they only change the file's info — "thumbs up and
+    // REM  thumbs down should not be hard wired to theater 'processing' mode" — no skip.
+    private func step(_ by: Int) {
+        let list = queue ?? library.snapshot?.siblings(of: current) ?? [current]
+        guard let here = list.firstIndex(of: current), list.indices.contains(here + by) else { return }
+        renamedTo = list[here + by]
+    }
+    #endif
 
     /// The right frame: play, 👍 / 👎, and every line of the file's info — each one editable.
     private var details: some View {
@@ -1165,15 +1206,11 @@ private struct CachedFileView: View {
                 if file.isMedia {
                     // REM  👍 checks the file and adds it to "Thumbs Up"; 👎 unchecks it — "thats the point of thumbs downing it
                     // REM  to take it out of synch rotation." Nothing is ever deleted (platforms 001c).
-                    HStack(spacing: 14) {
-                        Button { library.change(.thumbsUp, current) } label: {
-                            Label("Thumbs Up", systemImage: thumbedUp ? "hand.thumbsup.fill" : "hand.thumbsup")
-                        }
-                        Button { library.change(.thumbsDown, current) } label: {
-                            Label("Thumbs Down", systemImage: file.isChecked ? "hand.thumbsdown" : "hand.thumbsdown.fill")
-                        }
-                    }
-                    .buttonStyle(.bordered)
+                    #if os(tvOS)
+                    VStack(alignment: .leading, spacing: 14) { thumbButtons }.buttonStyle(.bordered)
+                    #else
+                    HStack(spacing: 14) { thumbButtons }.buttonStyle(.bordered)
+                    #endif
                     Text(file.isChecked ? "Checked — in sync rotation" : "Unchecked — out of sync rotation")
                         .foregroundStyle(.secondary)
                 }
