@@ -82,8 +82,6 @@ struct TVHome: View {
 
 /// The Settings and Info buttons at the foot of a page — inside its NavigationStack page, so Back pops the page.
 struct TVFooter: ViewModifier {
-    /// Back pressed on these buttons. nil = the usual Back (pop the page). The top page passes one that moves up into the list.
-    var onBack: (() -> Void)?
     @Environment(TVSheets.self) private var sheets
 
     func body(content: Content) -> some View {
@@ -94,7 +92,6 @@ struct TVFooter: ViewModifier {
             }
             .padding(.vertical, 20)
             .frame(maxWidth: .infinity)
-            .onExitCommand(perform: onBack)
         }
     }
 }

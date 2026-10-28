@@ -369,18 +369,10 @@ struct MacLibraryView: View {
 
     static func size(_ bytes: Int64) -> String { ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) }
 
-    #if os(tvOS)
-    @Namespace private var topPage
-    @Environment(\.resetFocus) private var resetFocus
-    #endif
-
     var body: some View {
         if let snapshot = library.snapshot {
             NavigationStack {
                 CachedFolderList(folder: snapshot.root, path: "", isTop: true, mediaOnly: mediaOnly)
-                    #if os(tvOS)
-                    .prefersDefaultFocus(in: topPage)
-                    #endif
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         // REM  ONE THING PER LINE — his layout, 2026-10-17, after "the status / feedback to user is disorganized
                         // REM  and doesnt look good": "from homelab b, build ca7b105, oct 17 2026 10:18, 69/2280 on this device
@@ -416,14 +408,10 @@ struct MacLibraryView: View {
                         .padding(8)
                         .background(Self.barMaterial)
                     }
-                    // REM  SETTINGS IS NOT THE TOP SCREEN — his word, 2026-10-28: "well then the settings button should NOT be
-                    // REM  the top screen". On the top page, Back from Settings or Info moves up into the list; Back from the
-                    // REM  list leaves the app (Apple's rule for the top screen).
-                    .tvFooter(onBack: topBack)
+                    // REM  NO SETTINGS ON THE TOP PAGE — his word, 2026-10-28: "pressing < on the top exits the app, im saying then
+                    // REM  dont put settings button on the top". Back on the top page leaves the app (Apple's rule), so Settings
+                    // REM  and Info are only at the foot of the pages below it, where Back goes back a page.
             }
-            #if os(tvOS)
-            .focusScope(topPage)
-            #endif
             .environment(library)
         }
     }
@@ -847,22 +835,11 @@ private struct PlayAllButtons: View {
     }
 }
 
-extension MacLibraryView {
-    /// Back from Settings or Info on the top page: up into the list, not out of the app.
-    fileprivate var topBack: (() -> Void)? {
-        #if os(tvOS)
-        { resetFocus(in: topPage) }
-        #else
-        nil
-        #endif
-    }
-}
-
 extension View {
     /// Apple TV: Settings and Info at the foot of this page (TVFooter). Elsewhere, nothing.
-    @ViewBuilder func tvFooter(onBack: (() -> Void)? = nil) -> some View {
+    @ViewBuilder func tvFooter() -> some View {
         #if os(tvOS)
-        modifier(TVFooter(onBack: onBack))
+        modifier(TVFooter())
         #else
         self
         #endif
