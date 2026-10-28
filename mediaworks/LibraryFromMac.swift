@@ -502,6 +502,11 @@ private struct CachedFolderList: View {
     @Environment(MacLibrary.self) private var library
 
     @State private var savedAs: String?
+    // REM  KEEP YOUR PLACE AFTER TRASH OR MOVE — his catch, 2026-10-28: "after deleting or moving to trash it looses your
+    // REM  place and goes to [> play all so you have to scroll back down thousands of media files and hope you get back".
+    // REM  The row remembers the file below it (above, if it was last); when it leaves the list, focus lands there.
+    @FocusState private var focusedFile: String?
+    @State private var leaving: (gone: String, next: String)?
 
     /// The serving Mac can make a playlist from a folder from build 184 on (LibraryCache.folderRequestsBuild).
     private var macCanSaveFolder: Bool {
@@ -617,8 +622,16 @@ private struct CachedFolderList: View {
                 }
             }
             ForEach(shownFiles) { file in
-                FileLink(path: join(file.name), fallback: file, showsCheckbox: !mediaOnly)
+                FileLink(path: join(file.name), fallback: file, showsCheckbox: !mediaOnly, focus: $focusedFile, onLeave: {
+                    let gone = join(file.name)
+                    if let next = neighbor(of: gone) { leaving = (gone, next) }
+                })
             }
+        }
+        .onChange(of: shownMedia) {
+            guard let leaving, !shownMedia.contains(leaving.gone) else { return }
+            focusedFile = leaving.next
+            self.leaving = nil
         }
         .font(.lyceumBody)
         // REM  THE PAGES READ AS A SET — his words, 2026-10-18: "the first page say Lyceum Media the second page say Lyceum
@@ -631,6 +644,12 @@ private struct CachedFolderList: View {
     }
 
     private func join(_ name: String) -> String { path.isEmpty ? name : path + "/" + name }
+
+    /// The file to land on when this one leaves: the next one down, or the one above if it was last.
+    private func neighbor(of gone: String) -> String? {
+        guard let i = shownMedia.firstIndex(of: gone) else { return nil }
+        return i + 1 < shownMedia.count ? shownMedia[i + 1] : (i > 0 ? shownMedia[i - 1] : nil)
+    }
 
     // REM  ONLY WHAT IS ON THE PHONE — his ask, 2026-10-18: "it showed hundreads of unchecked media files you had to scroll
     // REM  past before seeing the first checked songs. can you have it not show media files that are not on the phone?" —
@@ -821,6 +840,10 @@ private struct FileLink: View {
     var queue: [String]? = nil
     /// Off on Lyceum Media — checkmarks are managed in Lyceum Library.
     var showsCheckbox = true
+    /// The folder list's focus, so it can land on the next file after this one is trashed or moved.
+    var focus: FocusState<String?>.Binding? = nil
+    /// Called just before this file is trashed or moved away.
+    var onLeave: (() -> Void)? = nil
     @Environment(MacLibrary.self) private var library
 
     private var file: CachedFile { library.snapshot?.file(at: path) ?? fallback }
@@ -863,6 +886,7 @@ private struct FileLink: View {
                 // REM  UNCHECKED = NOT SYNCHRONIZED (PL9) — dimmed; skipped when a list plays; played on purpose, it is checked first.
                 .opacity(file.isMedia && !file.isChecked ? 0.45 : 1)
             }
+            .modifier(FocusedPath(focus: focus, path: path))
             .onPlayPauseCommand { play() }
             .contextMenu {
                 Button("Info") { showInfo = true }
@@ -876,8 +900,8 @@ private struct FileLink: View {
                 // REM  Mac — because only the Mac deletes instantly (platforms 003b).
                 // REM  NO "ARE YOU SURE" — his call, 2026-10-28: "there isnt an easy way to make a mistake and actually select
                 // REM  move to trash. since the delete isnt instant remove the are you sure". The 30-day Trash is the undo.
-                Button("Move to Folder…") { moving = true }
-                Button("Move to Trash", role: .destructive) { library.send(CacheRequest(op: .trash, path: path)) }
+                Button("Move to Folder…") { onLeave?(); moving = true }
+                Button("Move to Trash", role: .destructive) { onLeave?(); library.send(CacheRequest(op: .trash, path: path)) }
             }
         }
         .navigationDestination(isPresented: $showInfo) { CachedFileView(path: path, fallback: fallback) }
@@ -936,6 +960,16 @@ private struct FileLink: View {
                 }
             }
         }
+    }
+}
+
+/// Ties a row to the list's focus when the list gives it one.
+private struct FocusedPath: ViewModifier {
+    let focus: FocusState<String?>.Binding?
+    let path: String
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if let focus { content.focused(focus, equals: path) } else { content }
     }
 }
 
