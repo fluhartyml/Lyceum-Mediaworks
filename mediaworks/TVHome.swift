@@ -291,6 +291,7 @@ struct TVPlayer: View {
     @Environment(MacLibrary.self) private var library
     @State private var flash: String?
     @State private var showInfo = false
+    @State private var trashStep = TrashStep.none
     @AppStorage("tvAlwaysShowFileName") private var alwaysShowFileName = false
     @AppStorage("tvMediaProcessing") private var processing = false
     private var modes: PlayModes { .shared }
@@ -306,6 +307,7 @@ struct TVPlayer: View {
         .onDisappear { if !theater.presented { theater.player.pause() } }
         .onAppear { peek(for: 5) }
         .onChange(of: theater.current) { peek(for: 5) }
+        .onChange(of: showInfo) { if !showInfo { trashStep = .none } }
     }
 
     private var infoBar: some View {
@@ -351,10 +353,17 @@ struct TVPlayer: View {
                           systemImage: library.isPlayable(path) ? "checkmark.square.fill" : "square")
                         .font(.lyceumHeadline)
                 }
+                if showInfo, theater.current != nil, trashStep != .none {
+                    Label(trashStep == .offered ? "Move to Trash — click ●" : "Are you sure? Click ● again to move to Trash",
+                          systemImage: "trash")
+                        .font(.lyceumHeadline)
+                        .padding(.horizontal, 24).padding(.vertical, 10)
+                        .background(trashStep == .offered ? Color.white.opacity(0.25) : Color.red, in: Capsule())
+                }
                 // The key line only with a peek — "always" keeps just the file name on screen.
                 if showInfo {
                     Text((processing ? "Processing   ▲ 👍 uncheck + next   ▼ 👎 uncheck + next" : "▲ 👍   ▼ 👎 + next")
-                         + "   ◀︎ back 5 s   ▶︎ ahead 5 s   hold ◀︎ previous   hold ▶︎ next   hold ● bar").foregroundStyle(.secondary)
+                         + "   ◀︎ back 5 s   ▶︎ ahead 5 s   hold ◀︎ previous   hold ▶︎ next   hold ● bar" + (processing ? " + trash" : "")).foregroundStyle(.secondary)
                 }
             }
             .font(.lyceumBody)
@@ -366,6 +375,18 @@ struct TVPlayer: View {
     }
 
     private func handle(_ press: RemotePress) {
+        // REM  MOVE TO TRASH FROM THE PLAYER — his words, 2026-10-28: "when you long press the center button the miniplayer pops
+        // REM  up ... can you add a move to trash?" · "an are you sure is designed for a situation like this can it just be a
+        // REM  center button again to acknowledge and agree?" Hold ● shows the bar with Move to Trash; click ● asks "Are you
+        // REM  sure?"; click ● again trashes (the Mac's 30-day Lyceum Trash) and plays the next file. Any other press, or the
+        // REM  bar hiding, backs out. A center click with no trash offered stays play / pause.
+        // REM  Only with Media File Processing on — his words, same day: "this should be kind of toggled behind the processing
+        // REM  media files toggle". Off, hold ● is just the bar, as before.
+        if press == .center, showInfo, theater.current != nil, trashStep != .none {
+            if trashStep == .offered { trashStep = .asking; peek() } else { trashCurrent() }
+            return
+        }
+        if press != .holdCenter { trashStep = .none }
         switch press {
         // REM  MEDIA FILE PROCESSING — his design, 2026-10-15: "a 'media file processing' mode where when toggled ... when
         // REM  toggled on it uncheckes for up and down when toggled off it unchecks only when thumbs downed" · "both skip forward
@@ -390,13 +411,23 @@ struct TVPlayer: View {
         case .tapLeft: theater.skip(-5); light(.rewind)
         case .holdRight: theater.next(); light(.next)
         case .holdLeft: theater.previous(); light(.previous)
-        case .playPause: if theater.isPlaying { theater.player.pause() } else { theater.player.play() }; light(.playPause)
+        case .playPause, .center: if theater.isPlaying { theater.player.pause() } else { theater.player.play() }; light(.playPause)
         // REM  HOLD CENTER SHOWS / HIDES THE BAR (platforms N15) — his words, 2026-10-13: "keep it display only and auto hide
         // REM  after 5 seconds" · "center hold shows hides the display bar". A center click stays play / pause.
+        // REM  Since 2026-10-28 the bar it shows also offers Move to Trash (above).
         case .holdCenter:
-            if showInfo { peekID += 1; withAnimation { showInfo = false } } else { peek() }
+            if showInfo { peekID += 1; withAnimation { showInfo = false } } else { peek(); trashStep = processing ? .offered : .none }
         case .back: theater.presented = false
         }
+    }
+
+    /// Sends the playing file to the Mac's Lyceum Trash and moves on to the next one.
+    private func trashCurrent() {
+        guard let path = theater.current else { return }
+        trashStep = .none
+        library.send(CacheRequest(op: .trash, path: path))
+        show("🗑")
+        theater.next()
     }
 
     @State private var lit: TVControl?
@@ -440,7 +471,10 @@ struct TVPlayer: View {
     }
 }
 
-enum RemotePress { case up, down, tapLeft, tapRight, holdLeft, holdRight, playPause, holdCenter, back }
+enum RemotePress { case up, down, tapLeft, tapRight, holdLeft, holdRight, playPause, center, holdCenter, back }
+
+/// Move to Trash from the player's bar: offered after a center hold, then asked once more before it happens.
+enum TrashStep { case none, offered, asking }
 
 /// The media buttons in the dark bar, left to right (N07).
 enum TVControl: CaseIterable {
@@ -541,7 +575,7 @@ struct RemotePlayerView: UIViewControllerRepresentable {
             case .downArrow: handle(.down)
             case .select:
                 holdTimer?.invalidate(); holdTimer = nil
-                if !holdFired { handle(.playPause) }
+                if !holdFired { handle(.center) }
                 holdFired = false
             case .playPause: handle(.playPause)
             case .menu: handle(.back)
