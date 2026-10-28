@@ -829,7 +829,6 @@ private struct FileLink: View {
     @State private var showInfo = false
     @State private var editing = false
     @State private var moving = false
-    @State private var confirmTrash = false
     #endif
 
     var body: some View {
@@ -875,19 +874,15 @@ private struct FileLink: View {
                 // REM  unchecked i would like to long press on the file name and delete or move to another folder". The Mac
                 // REM  does the work (CacheRequest .moveItem / .trash). Delete is the Lyceum Trash — 30 days, undone on the
                 // REM  Mac — because only the Mac deletes instantly (platforms 003b).
+                // REM  NO "ARE YOU SURE" — his call, 2026-10-28: "there isnt an easy way to make a mistake and actually select
+                // REM  move to trash. since the delete isnt instant remove the are you sure". The 30-day Trash is the undo.
                 Button("Move to Folder…") { moving = true }
-                Button("Move to Trash", role: .destructive) { confirmTrash = true }
+                Button("Move to Trash", role: .destructive) { library.send(CacheRequest(op: .trash, path: path)) }
             }
         }
         .navigationDestination(isPresented: $showInfo) { CachedFileView(path: path, fallback: fallback) }
         .sheet(isPresented: $editing) { TVEditSheet(path: path, file: file).environment(library) }
         .sheet(isPresented: $moving) { TVMoveSheet(path: path).environment(library) }
-        .confirmationDialog("Move “\(file.name)” to the Trash?", isPresented: $confirmTrash, titleVisibility: .visible) {
-            Button("Move to Trash", role: .destructive) { library.send(CacheRequest(op: .trash, path: path)) }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("Your Mac keeps it in the Lyceum Trash for 30 days. You can undo it on the Mac.")
-        }
     }
 
     // REM  PLAYING AN UNCHECKED SONG CHECKS IT FIRST — his ruling, 2026-10-15: "if a user highlights a media file and pressed
