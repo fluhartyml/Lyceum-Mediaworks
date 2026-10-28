@@ -369,10 +369,18 @@ struct MacLibraryView: View {
 
     static func size(_ bytes: Int64) -> String { ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) }
 
+    #if os(tvOS)
+    @Namespace private var topPage
+    @Environment(\.resetFocus) private var resetFocus
+    #endif
+
     var body: some View {
         if let snapshot = library.snapshot {
             NavigationStack {
                 CachedFolderList(folder: snapshot.root, path: "", isTop: true, mediaOnly: mediaOnly)
+                    #if os(tvOS)
+                    .prefersDefaultFocus(in: topPage)
+                    #endif
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         // REM  ONE THING PER LINE — his layout, 2026-10-17, after "the status / feedback to user is disorganized
                         // REM  and doesnt look good": "from homelab b, build ca7b105, oct 17 2026 10:18, 69/2280 on this device
@@ -408,8 +416,14 @@ struct MacLibraryView: View {
                         .padding(8)
                         .background(Self.barMaterial)
                     }
-                    .tvFooter()
+                    // REM  SETTINGS IS NOT THE TOP SCREEN — his word, 2026-10-28: "well then the settings button should NOT be
+                    // REM  the top screen". On the top page, Back from Settings or Info moves up into the list; Back from the
+                    // REM  list leaves the app (Apple's rule for the top screen).
+                    .tvFooter(onBack: topBack)
             }
+            #if os(tvOS)
+            .focusScope(topPage)
+            #endif
             .environment(library)
         }
     }
@@ -833,11 +847,22 @@ private struct PlayAllButtons: View {
     }
 }
 
+extension MacLibraryView {
+    /// Back from Settings or Info on the top page: up into the list, not out of the app.
+    fileprivate var topBack: (() -> Void)? {
+        #if os(tvOS)
+        { resetFocus(in: topPage) }
+        #else
+        nil
+        #endif
+    }
+}
+
 extension View {
     /// Apple TV: Settings and Info at the foot of this page (TVFooter). Elsewhere, nothing.
-    @ViewBuilder func tvFooter() -> some View {
+    @ViewBuilder func tvFooter(onBack: (() -> Void)? = nil) -> some View {
         #if os(tvOS)
-        modifier(TVFooter())
+        modifier(TVFooter(onBack: onBack))
         #else
         self
         #endif
