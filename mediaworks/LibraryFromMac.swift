@@ -1028,6 +1028,7 @@ private struct CachedFileView: View {
     #endif
     #if os(tvOS)
     @Environment(TVTheater.self) private var theater
+    @Environment(\.dismiss) private var dismiss
     @State private var tvEditing = false
     #endif
     #if os(iOS)
@@ -1188,6 +1189,19 @@ private struct CachedFileView: View {
         guard let here = list.firstIndex(of: current), list.indices.contains(here + by) else { return }
         renamedTo = list[here + by]
     }
+
+    // REM  MOVE TO TRASH ON THE CARD — his ask, 2026-10-28: "on the info card can it have a move to trash ?" No "are you
+    // REM  sure" (his call the same morning — the 30-day Lyceum Trash is the undo). The card moves on to the next file, or
+    // REM  the one before if this was the last; with neither, it closes.
+    private func trash() {
+        let list = queue ?? library.snapshot?.siblings(of: current) ?? [current]
+        let gone = current
+        library.send(CacheRequest(op: .trash, path: gone))
+        guard let here = list.firstIndex(of: gone) else { dismiss(); return }
+        if list.indices.contains(here + 1) { renamedTo = list[here + 1] }
+        else if here > 0 { renamedTo = list[here - 1] }
+        else { dismiss() }
+    }
     #endif
 
     /// The right frame: play, 👍 / 👎, and every line of the file's info — each one editable.
@@ -1251,7 +1265,11 @@ private struct CachedFileView: View {
                     // REM  👍 checks the file and adds it to "Thumbs Up"; 👎 unchecks it — "thats the point of thumbs downing it
                     // REM  to take it out of synch rotation." Nothing is ever deleted (platforms 001c).
                     #if os(tvOS)
-                    VStack(alignment: .leading, spacing: 14) { thumbButtons }.buttonStyle(.bordered)
+                    VStack(alignment: .leading, spacing: 14) {
+                        thumbButtons
+                        Button(role: .destructive) { trash() } label: { Label("Move to Trash", systemImage: "trash") }
+                    }
+                    .buttonStyle(.bordered)
                     #else
                     HStack(spacing: 14) { thumbButtons }.buttonStyle(.bordered)
                     #endif
