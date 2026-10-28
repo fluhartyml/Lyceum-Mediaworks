@@ -35,6 +35,18 @@ struct TVHome: View {
                     Label("Now Playing — \(file?.info?.title ?? (path as NSString).lastPathComponent)", systemImage: "play.rectangle.fill")
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                // REM  PLAYER CONTROLS ON A LONG PRESS — his ask, 2026-10-28: "long pressing on it i would like to see play
+                // REM  pause stop next previous media file". Click still goes back to the video; Stop also hides this row.
+                .contextMenu {
+                    Button {
+                        if theater.playing { theater.player.pause() } else { theater.player.play() }
+                    } label: {
+                        Label(theater.playing ? "Pause" : "Play", systemImage: theater.playing ? "pause.fill" : "play.fill")
+                    }
+                    Button { theater.stop() } label: { Label("Stop", systemImage: "stop.fill") }
+                    Button { theater.next() } label: { Label("Next", systemImage: "forward.end.fill") }
+                    Button { theater.previous() } label: { Label("Previous", systemImage: "backward.end.fill") }
+                }
                 .padding(.horizontal, 80)
                 .padding(.top, 30)
             }
