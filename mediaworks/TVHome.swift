@@ -16,11 +16,18 @@ import AVKit
 import MediaPlayer
 import Network
 
+/// Settings and Info, opened from the buttons at the foot of every page (TVFooter).
+@MainActor
+@Observable
+final class TVSheets {
+    var settings = false
+    var info = false
+}
+
 struct TVHome: View {
     @State private var library = MacLibrary()
     @State private var theater = TVTheater()
-    @State private var showSettings = false
-    @State private var showInfo = false
+    @State private var sheets = TVSheets()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -50,27 +57,41 @@ struct TVHome: View {
                 .padding(.horizontal, 80)
                 .padding(.top, 30)
             }
+            // REM  SETTINGS and INFO — his ask, 2026-10-10: "add a settings sheet and an info sheet that has our standard
+            // REM  contact / feedback and links and atteributes". INSIDE EACH PAGE since 2026-10-28, his catch: "if my focus
+            // REM  goes on settings and i press the < back on my remote it backs out of the media works app where i was
+            // REM  expecting it to just back to the lyceum media folders". Outside the NavigationStack, Back went to tvOS.
             if library.snapshot != nil {
                 MacLibraryView(library: library)
             } else {
-                FromYourMacView()
+                FromYourMacView().tvFooter()
             }
-            // REM  SETTINGS and INFO — his ask, 2026-10-10: "add a settings sheet and an info sheet that has our standard
-            // REM  contact / feedback and links and atteributes".
-            HStack(spacing: 40) {
-                Button { showSettings = true } label: { Label("Settings", systemImage: "gearshape") }
-                Button { showInfo = true } label: { Label("Info", systemImage: "info.circle") }
-            }
-            .padding(.vertical, 20)
         }
-        .sheet(isPresented: $showSettings) { TVSettingsSheet().environment(theater) }
-        .sheet(isPresented: $showInfo) { AboutView() }
+        .sheet(isPresented: Binding(get: { sheets.settings }, set: { sheets.settings = $0 })) { TVSettingsSheet().environment(theater) }
+        .sheet(isPresented: Binding(get: { sheets.info }, set: { sheets.info = $0 })) { AboutView() }
+        .environment(sheets)
         .environment(theater)
         .task { await library.keepUpToDate() }
         .task { theater.announce() }
         .onAppear { theater.isPlayable = { [library] in library.isPlayable($0) } }
         .fullScreenCover(isPresented: Binding(get: { theater.presented }, set: { theater.presented = $0 })) {
             TVPlayer().environment(theater).environment(library)
+        }
+    }
+}
+
+/// The Settings and Info buttons at the foot of a page — inside its NavigationStack page, so Back pops the page.
+struct TVFooter: ViewModifier {
+    @Environment(TVSheets.self) private var sheets
+
+    func body(content: Content) -> some View {
+        content.safeAreaInset(edge: .bottom, spacing: 0) {
+            HStack(spacing: 40) {
+                Button { sheets.settings = true } label: { Label("Settings", systemImage: "gearshape") }
+                Button { sheets.info = true } label: { Label("Info", systemImage: "info.circle") }
+            }
+            .padding(.vertical, 20)
+            .frame(maxWidth: .infinity)
         }
     }
 }

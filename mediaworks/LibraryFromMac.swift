@@ -408,6 +408,7 @@ struct MacLibraryView: View {
                         .padding(8)
                         .background(Self.barMaterial)
                     }
+                    .tvFooter()
             }
             .environment(library)
         }
@@ -589,7 +590,7 @@ private struct CachedFolderList: View {
                 ForEach(library.playlistNames, id: \.self) { name in
                     let list = library.snapshot?.playlists?[name] ?? []
                     NavigationLink {
-                        PlaylistList(name: name)
+                        PlaylistList(name: name).tvFooter()
                     } label: {
                         HStack {
                             Label(name, systemImage: LibraryCache.isThumbsUp(name) ? "hand.thumbsup.fill" : "music.note.list")
@@ -606,7 +607,7 @@ private struct CachedFolderList: View {
             }
             ForEach(shownFolders) { sub in
                 NavigationLink {
-                    CachedFolderList(folder: sub, path: join(sub.name), mediaOnly: mediaOnly)
+                    CachedFolderList(folder: sub, path: join(sub.name), mediaOnly: mediaOnly).tvFooter()
                 } label: {
                     HStack {
                         Label(sub.name, systemImage: "folder")
@@ -832,6 +833,17 @@ private struct PlayAllButtons: View {
     }
 }
 
+extension View {
+    /// Apple TV: Settings and Info at the foot of this page (TVFooter). Elsewhere, nothing.
+    @ViewBuilder func tvFooter() -> some View {
+        #if os(tvOS)
+        modifier(TVFooter())
+        #else
+        self
+        #endif
+    }
+}
+
 /// One file's row: its checkmark (tap to change) and a link to its page.
 private struct FileLink: View {
     let path: String
@@ -904,7 +916,7 @@ private struct FileLink: View {
                 Button("Move to Trash", role: .destructive) { onLeave?(); library.send(CacheRequest(op: .trash, path: path)) }
             }
         }
-        .navigationDestination(isPresented: $showInfo) { CachedFileView(path: path, fallback: fallback) }
+        .navigationDestination(isPresented: $showInfo) { CachedFileView(path: path, fallback: fallback).tvFooter() }
         .sheet(isPresented: $editing) { TVEditSheet(path: path, file: file).environment(library) }
         .sheet(isPresented: $moving) { TVMoveSheet(path: path).environment(library) }
     }
