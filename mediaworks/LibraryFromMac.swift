@@ -828,6 +828,8 @@ private struct FileLink: View {
     @Environment(TVTheater.self) private var theater
     @State private var showInfo = false
     @State private var editing = false
+    @State private var moving = false
+    @State private var confirmTrash = false
     #endif
 
     var body: some View {
@@ -869,10 +871,23 @@ private struct FileLink: View {
                     Button(file.isChecked ? "Uncheck" : "Check") { library.change(file.isChecked ? .uncheck : .check, path) }
                     Button("Genre, Kind, Title & Playlist…") { editing = true }
                 }
+                // REM  MOVE OR TRASH FROM THE TV — his ask, 2026-10-27: "when im browsing the media files with checkmarks and
+                // REM  unchecked i would like to long press on the file name and delete or move to another folder". The Mac
+                // REM  does the work (CacheRequest .moveItem / .trash). Delete is the Lyceum Trash — 30 days, undone on the
+                // REM  Mac — because only the Mac deletes instantly (platforms 003b).
+                Button("Move to Folder…") { moving = true }
+                Button("Move to Trash", role: .destructive) { confirmTrash = true }
             }
         }
         .navigationDestination(isPresented: $showInfo) { CachedFileView(path: path, fallback: fallback) }
         .sheet(isPresented: $editing) { TVEditSheet(path: path, file: file).environment(library) }
+        .sheet(isPresented: $moving) { TVMoveSheet(path: path).environment(library) }
+        .confirmationDialog("Move “\(file.name)” to the Trash?", isPresented: $confirmTrash, titleVisibility: .visible) {
+            Button("Move to Trash", role: .destructive) { library.send(CacheRequest(op: .trash, path: path)) }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Your Mac keeps it in the Lyceum Trash for 30 days. You can undo it on the Mac.")
+        }
     }
 
     // REM  PLAYING AN UNCHECKED SONG CHECKS IT FIRST — his ruling, 2026-10-15: "if a user highlights a media file and pressed

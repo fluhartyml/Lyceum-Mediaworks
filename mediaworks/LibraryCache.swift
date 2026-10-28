@@ -433,6 +433,11 @@ nonisolated extension LibrarySnapshot {
             }
         case .trash:
             copy.root = Self.removingFile(copy.root, path.split(separator: "/").map(String.init))
+        case .moveItem:
+            // Shown moved at once on the device; the Mac's next listing confirms it (or puts it back if the move failed).
+            guard let destination = request.newName, !destination.isEmpty, let file = copy.file(at: path) else { return copy }
+            copy.root = Self.removingFile(copy.root, path.split(separator: "/").map(String.init))
+            copy.root = Self.addingFile(copy.root, destination.split(separator: "/").map(String.init), file)
         case .addToPlaylist:
             guard let name = request.playlist, var lists = copy.playlists, var list = lists[name] else { return copy }
             if !list.contains(path) { list.append(path) }
@@ -457,6 +462,16 @@ nonisolated extension LibrarySnapshot {
         } else {
             folder.folders = folder.folders.map { $0.name == first ? editingFile($0, Array(parts.dropFirst()), edit) : $0 }
         }
+        return folder
+    }
+
+    private static func addingFile(_ folder: CachedFolder, _ parts: [String], _ file: CachedFile) -> CachedFolder {
+        var folder = folder
+        guard let first = parts.first else {
+            if !folder.files.contains(where: { $0.name == file.name }) { folder.files.append(file) }
+            return folder
+        }
+        folder.folders = folder.folders.map { $0.name == first ? addingFile($0, Array(parts.dropFirst()), file) : $0 }
         return folder
     }
 

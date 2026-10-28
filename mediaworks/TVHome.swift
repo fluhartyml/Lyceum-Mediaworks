@@ -560,6 +560,46 @@ struct TVSettingsSheet: View {
 
 // MARK: - Light upkeep on the TV (platforms 004c)
 
+/// Every folder in the Lyceum, to move one file into — the Mac moves it (CacheRequest .moveItem).
+// REM  His ask, 2026-10-27: long-press a file and "move to another folder". Folders are listed as their paths, indented by
+// REM  depth, in library order; the file's own folder is left out. The Mac refuses a name already in the target and says why.
+struct TVMoveSheet: View {
+    let path: String
+    @Environment(MacLibrary.self) private var library
+    @Environment(\.dismiss) private var dismiss
+
+    private var here: String { (path as NSString).deletingLastPathComponent }
+
+    private var folders: [(path: String, depth: Int)] {
+        guard let root = library.snapshot?.root else { return [] }
+        var out: [(String, Int)] = []
+        func walk(_ folder: CachedFolder, _ prefix: String, _ depth: Int) {
+            for child in folder.folders {
+                let p = prefix.isEmpty ? child.name : prefix + "/" + child.name
+                out.append((p, depth))
+                walk(child, p, depth + 1)
+            }
+        }
+        walk(root, "", 0)
+        return out.filter { $0.0 != here }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List(folders, id: \.path) { folder in
+                Button {
+                    library.send(CacheRequest(op: .moveItem, path: path, newName: folder.path))
+                    dismiss()
+                } label: {
+                    Label((folder.path as NSString).lastPathComponent, systemImage: "folder")
+                        .padding(.leading, CGFloat(folder.depth) * 40)
+                }
+            }
+            .navigationTitle("Move “\((path as NSString).lastPathComponent)” to…")
+        }
+    }
+}
+
 /// A pick list for Genre and Media Kind, a title fix, and Thumbs Up on or off — each sent to the Mac.
 // REM  HIS WORDS, 2026-10-10: "i dont think the apple tv would neccesarily write to the library, no meta tags, maybe an
 // REM  ocasional edit or spell correction but not a primary driver. just mantenance and upkeep. moving from one playlist to
