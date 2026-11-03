@@ -101,6 +101,8 @@ struct TVFooter: ViewModifier {
 @Observable
 final class TVTheater {
     let player = AVPlayer()
+    /// Video stats, hold ▼ (TVPlaybackStats.swift) — collected from the moment each file loads.
+    let stats = PlaybackStats()
     /// The folder or playlist playing, in its play order — as listed, or shuffled.
     private(set) var order = PlayOrder()
     private(set) var problem: String?
@@ -158,6 +160,8 @@ final class TVTheater {
             problem = nil
             let item = AVPlayerItem(url: url)
             player.replaceCurrentItem(with: item)
+            stats.attach(player)
+            stats.watch(item, name: (path as NSString).lastPathComponent)
             elapsed = 0; duration = 0
             watchTime()
             readyMediaCommands()
@@ -292,6 +296,7 @@ struct TVPlayer: View {
     @State private var flash: String?
     @State private var showInfo = false
     @State private var trashStep = TrashStep.none
+    @State private var showStats = false
     @AppStorage("tvAlwaysShowFileName") private var alwaysShowFileName = false
     @AppStorage("tvMediaProcessing") private var processing = false
     private var modes: PlayModes { .shared }
@@ -303,6 +308,7 @@ struct TVPlayer: View {
                 .ignoresSafeArea()
             if let flash { Text(flash).font(.system(size: 220)).transition(.scale.combined(with: .opacity)) }
             if showInfo || alwaysShowFileName || theater.problem != nil { infoBar }
+            if showStats { TVStatsPanel(stats: theater.stats, path: theater.current) }
         }
         .onDisappear { if !theater.presented { theater.player.pause() } }
         .onAppear { peek(for: 5) }
@@ -363,7 +369,7 @@ struct TVPlayer: View {
                 // The key line only with a peek — "always" keeps just the file name on screen.
                 if showInfo {
                     Text((processing ? "Processing   ▲ 👍 uncheck + next   ▼ 👎 uncheck + next" : "▲ 👍   ▼ 👎 + next")
-                         + "   ◀︎ back 5 s   ▶︎ ahead 5 s   hold ◀︎ previous   hold ▶︎ next   hold ● bar" + (processing ? " + trash" : "")).foregroundStyle(.secondary)
+                         + "   ◀︎ back 5 s   ▶︎ ahead 5 s   hold ◀︎ previous   hold ▶︎ next   hold ● bar" + (processing ? " + trash" : "") + "   hold ▼ stats").foregroundStyle(.secondary)
                 }
             }
             .font(.lyceumBody)
@@ -417,7 +423,10 @@ struct TVPlayer: View {
         // REM  Since 2026-10-28 the bar it shows also offers Move to Trash (above).
         case .holdCenter:
             if showInfo { peekID += 1; withAnimation { showInfo = false } } else { peek(); trashStep = processing ? .offered : .none }
-        case .back: theater.presented = false
+        // REM  HOLD ▼ = VIDEO STATS (2026-11-03, his "please add the long press down for video stats"). A tap on ▼ stays 👎 +
+        // REM  next; the hold never also rates. Hold ▼ again hides them; Back hides them first, and leaves only when they're hidden.
+        case .holdDown: withAnimation { showStats.toggle() }
+        case .back: if showStats { withAnimation { showStats = false } } else { theater.presented = false }
         }
     }
 
@@ -471,7 +480,7 @@ struct TVPlayer: View {
     }
 }
 
-enum RemotePress { case up, down, tapLeft, tapRight, holdLeft, holdRight, playPause, center, holdCenter, back }
+enum RemotePress { case up, down, holdDown, tapLeft, tapRight, holdLeft, holdRight, playPause, center, holdCenter, back }
 
 /// Move to Trash from the player's bar: offered after a center hold, then asked once more before it happens.
 enum TrashStep { case none, offered, asking }
@@ -559,7 +568,18 @@ struct RemotePlayerView: UIViewControllerRepresentable {
                         self.handle(.holdCenter)
                     }
                 }
-            case .upArrow, .downArrow, .playPause: break
+            case .downArrow:
+                // REM  Down held past half a second = video stats (2026-11-03), once; a short press is 👎 + next, as before.
+                holdFired = false
+                holdTimer?.invalidate()
+                holdTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
+                    MainActor.assumeIsolated {
+                        guard let self else { return }
+                        self.holdFired = true
+                        self.handle(.holdDown)
+                    }
+                }
+            case .upArrow, .playPause: break
             default: super.pressesBegan(presses, with: event)
             }
         }
@@ -572,7 +592,10 @@ struct RemotePlayerView: UIViewControllerRepresentable {
                 if !holdFired { handle(type == .rightArrow ? .tapRight : .tapLeft) }
                 holdFired = false
             case .upArrow: handle(.up)
-            case .downArrow: handle(.down)
+            case .downArrow:
+                holdTimer?.invalidate(); holdTimer = nil
+                if !holdFired { handle(.down) }
+                holdFired = false
             case .select:
                 holdTimer?.invalidate(); holdTimer = nil
                 if !holdFired { handle(.center) }
