@@ -18,6 +18,7 @@ struct SettingsView: View {
     @AppStorage("instantDelete") private var instantDelete = false
     @AppStorage("paneButtonLabels") private var paneButtonLabels = false
     @AppStorage("hoverHelpOn") private var hoverHelpOn = true
+    @AppStorage("morningRestartOn") private var morningRestart = true
 
     var body: some View {
         Form {
@@ -66,6 +67,14 @@ struct SettingsView: View {
             MachinesSettingsSection()
             // REM  WHO MAY SEND FILES TO THIS MAC (Send to Server) — SendToServer.swift.
             SendersSettingsSection()
+            // REM  THE 5 AM RESTART — his "update or recycle lab b at 5 in the morning", 2026-11-03 (MorningRestart.swift).
+            Section {
+                Toggle("Restart at 5 AM each day", isOn: $morningRestart)
+                    .font(.lyceumBody)
+                    .info("On — when this Mac serves your library, it quits and reopens itself once each morning between 5 and 7 AM, only while nothing is playing, importing, transcoding or syncing.\n\nOff — it keeps running until you quit it.")
+            } header: {
+                Text("Daily Restart").font(.lyceumHeadline)
+            }
             #endif
             Section {
                 LabeledContent("Library folder") {

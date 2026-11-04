@@ -24,6 +24,10 @@ struct mediaworksApp: App {
     @State private var picturePick = PicturePick()
     #if os(macOS)
     @Environment(\.openWindow) private var openWindow
+
+    // REM  THE 5 AM RESTART (MorningRestart.swift) — started here, before any window, so a reopened copy first waits
+    // REM  for the old one to quit before the library starts.
+    init() { MorningRestart.start() }
     #endif
 
     var body: some Scene {
