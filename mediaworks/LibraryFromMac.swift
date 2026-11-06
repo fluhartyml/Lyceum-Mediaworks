@@ -530,8 +530,9 @@ private struct CachedFolderList: View {
             // REM  folders are being synced to what folder on the iphone".
             if isTop, mediaOnly { SyncSummarySection() }
             if mediaOnly, shownFolders.isEmpty, shownFiles.isEmpty {
-                Text(isTop ? "Nothing is on this iPhone yet. Turn on syncing in Settings, or switch on Sync to This Device for a folder in Lyceum Library."
-                           : "Nothing in this folder is on this iPhone.")
+                // REM  HIS CATCH, build 243 on the iPad (2026-11-04): "It says 'on this iPhone' i am on an ipad." Name the device it runs on.
+                Text(isTop ? "Nothing is on this \(SyncSummarySection.device) yet. Turn on syncing in Settings, or switch on Sync to This Device for a folder in Lyceum Library."
+                           : "Nothing in this folder is on this \(SyncSummarySection.device).")
                     .foregroundStyle(.secondary)
             }
             // REM  SYNC EVERYTHING MOVED TO SETTINGS — his word, 2026-10-21: "the sync everything toggle should be relocated to

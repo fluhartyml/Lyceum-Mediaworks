@@ -108,7 +108,7 @@ private struct RelaySettingsSection: View {
     var body: some View {
         Section {
             Toggle("Relay Imports From Your Mac", isOn: $relay.isOn)
-                .info("While Mediaworks is open, this iPhone copies the files your Mac is sending in and holds them until the master takes them — so a sleeping Mac does not hold up an import. It keeps 10 GB free on the phone.")
+                .info("While Mediaworks is open, this \(SyncSummarySection.device) copies the files your Mac is sending in and holds them until the master takes them — so a sleeping Mac does not hold up an import. It keeps 10 GB free on the \(SyncSummarySection.device).")
             if relay.isOn, !relay.status.isEmpty { Text(relay.status).foregroundStyle(.secondary) }
         } header: {
             Text("Imports").font(.lyceumHeadline)

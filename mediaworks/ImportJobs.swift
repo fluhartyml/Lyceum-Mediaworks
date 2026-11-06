@@ -578,7 +578,7 @@ final class ImportRelay {
                 held += 1
                 continue
             }
-            guard Int64(room) - job.size > 10_000_000_000 else { status = "Holding \(held) — the iPhone keeps 10 GB free, so it stopped taking more."; break }
+            guard Int64(room) - job.size > 10_000_000_000 else { status = "Holding \(held) — the \(SyncSummarySection.device) keeps 10 GB free, so it stopped taking more."; break }
             status = "Copying “\(job.name)” from \(job.origin)…"
             guard let base = await ImportSource.base(of: job.origin), let url = URL(string: base.absoluteString + "/outbox/" + job.token) else { continue }
             let partial = copy(job).appendingPathExtension("partial")
