@@ -18,6 +18,8 @@ import SwiftUI
 struct NetworkView: View {
     /// Shown in the main window's empty area (the "waiting for caller" page) instead of its own window.
     var embedded = false
+    /// Shown in the Library tab, where this Mac is a client of the servers (the light then counts servers not responding).
+    var asClient = false
     @State private var partner = LibraryPartner.shared
     @State private var imports = ImportMaster.shared
     @State private var outbox = ImportOutbox.shared
@@ -71,11 +73,11 @@ struct NetworkView: View {
         if embedded {
             GeometryReader { geo in
                 let scale = min(geo.size.width / StandbyBoard.canvas.width, geo.size.height / StandbyBoard.canvas.height)
-                StandbyBoard()
+                StandbyBoard(asClient: asClient)
                     .frame(width: StandbyBoard.canvas.width, height: StandbyBoard.canvas.height)
                     .scaleEffect(scale)
                     .frame(width: geo.size.width, height: geo.size.height)
-                    .overlay { StandbyOutline() }
+                    .overlay { StandbyOutline(asClient: asClient) }
             }
             .font(.lyceumBody)
         } else {

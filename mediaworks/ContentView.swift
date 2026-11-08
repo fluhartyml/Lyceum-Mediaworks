@@ -188,7 +188,7 @@ struct ContentView: View {
             } else {
                 #if os(macOS)
                 // REM  THE "WAITING FOR CALLER" PAGE — his idea, 2026-10-17: the network, where nothing is chosen yet.
-                NetworkView(embedded: true)
+                NetworkView(embedded: true, asClient: true)
                 #else
                 Text("Choose a folder in the sidebar")
                     .font(.lyceumBody)

@@ -100,7 +100,7 @@ struct HybridLibraryView: View {
             VStack(spacing: 0) {
                 if rows.isEmpty && place == nil {
                     // REM  THE "WAITING FOR CALLER" PAGE — his idea, 2026-10-17: the network, where nothing is chosen yet.
-                    NetworkView(embedded: true)
+                    NetworkView(embedded: true, asClient: true)
                 } else if rows.isEmpty {
                     ContentUnavailableView("Nothing here", systemImage: "rectangle.stack",
                                            description: Text("This folder or playlist has no media files."))

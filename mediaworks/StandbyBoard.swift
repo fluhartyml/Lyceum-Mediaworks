@@ -104,7 +104,8 @@ final class StandbyMonitor {
 
     // REM  THE RULES FOR THE LIGHT (011). Red = not working; yellow = needs a look. The reasons are Claude's picks on the
     // REM  amber sheet; "a device dropping frames" waits for the device reports (004).
-    var health: StandbyHealth {
+    /// `asClient`: shown in a client tab (Library), where the servers being reachable IS this Mac's job.
+    func health(asClient: Bool = false) -> StandbyHealth {
         let catalog = LibraryCatalog.shared
         let partner = LibraryPartner.shared
         var red: [String] = [], yellow: [String] = []
@@ -121,6 +122,10 @@ final class StandbyMonitor {
         // REM  client mode and no server was reachable". A client's whole job is reading the servers, so none = this Mac's trouble.
         if !partner.thisMacServes, !partner.servers.isEmpty, partner.servers.allSatisfy({ partner.snapshots[$0] == nil }) {
             yellow.append("No server reachable")
+        } else if asClient {
+            // REM  IN A CLIENT TAB, A SERVER NOT RESPONDING IS FAIR — his word 2026-11-08 08:2x, looking at the Library tab:
+            // REM  "this is a reasonable alert because i am in a client tab". The Status tab stays this Mac's own health.
+            for name in partner.servers.sorted() where partner.snapshots[name] == nil { yellow.append("\(name) not responding") }
         }
         if restartSkipped { yellow.append("5 AM restart skipped") }
         if !red.isEmpty { return StandbyHealth(level: .red, reasons: red + yellow) }
@@ -142,6 +147,8 @@ final class StandbyMonitor {
 struct StandbyBoard: View {
     /// The fixed canvas the board is drawn on; the page scales it to the window (NetworkView).
     static let canvas = CGSize(width: 1024, height: 600)
+    /// Shown in a client tab (Library) rather than Status — see StandbyMonitor.health.
+    var asClient = false
     @Environment(LibraryStore.self) private var library
     private let catalog = LibraryCatalog.shared
     private let partner = LibraryPartner.shared
@@ -235,7 +242,7 @@ struct StandbyBoard: View {
     // MARK: The light (011)
 
     private func lightStrip(height: CGFloat) -> some View {
-        let health = monitor.health
+        let health = monitor.health(asClient: asClient)
         return HStack(spacing: 14) {
             Image(systemName: health.symbol)
                 .font(.system(size: height * 0.55, weight: .bold))
@@ -284,7 +291,14 @@ struct StandbyBoard: View {
                 if let lyceum = system.lyceum {
                     row("externaldrive", "Lyceum", lyceum.summary(named: true), warn: lyceum.missing || lyceum.low, id: "standbyLyceum")
                 } else {
-                    row("externaldrive", "Lyceum", "No library folder on this Mac", id: "standbyLyceum")
+                    // REM  A CLIENT HAS NO LYCEUM FOLDER OF ITS OWN, AND THAT'S FINE — his word 2026-11-08 08:3x: "the macbook is a
+                    // REM  client so it would not normally have a lyceum library folder picked on this one i would list that line
+                    // REM  in yellow because the lyceum i am seeing as a 'mesh' library just yellow because choosing one is
+                    // REM  optional". Yellow line, not the light. ("mesh" was his description; the app's word is hybrid library.)
+                    row("externaldrive", "Lyceum", partner.servers.isEmpty
+                        ? "None picked — optional"
+                        : "None picked — reading the hybrid library from \(partner.servers.sorted().joined(separator: ", "))",
+                        caution: true, id: "standbyLyceum")
                 }
                 if system.lyceum?.sameAsMacDisk != true {
                     // REM  No drive name on this line — his screen 08:18 showed "Macintosh HD · 104.24 GB fre…" cut off; the label says it.
@@ -299,18 +313,21 @@ struct StandbyBoard: View {
         }
     }
 
-    private func row(_ symbol: String, _ name: String, _ value: String, warn: Bool = false, id: String) -> some View {
+    /// `warn`: orange, something is wrong. `caution`: worth knowing but not a fault (it never lights the strip) — his colors,
+    /// 2026-11-08 08:3x: "the glyph is yellow 'lyceum' is blue and No library folder on this mack is green".
+    private func row(_ symbol: String, _ name: String, _ value: String, warn: Bool = false, caution: Bool = false,
+                     id: String) -> some View {
         GridRow {
             Image(systemName: symbol)
                 .font(.system(size: 22))
-                .foregroundStyle(warn ? Color.orange : Color.secondary)
+                .foregroundStyle(warn ? Color.orange : caution ? Color.yellow : Color.secondary)
                 .frame(width: 30)
                 .accessibilityHidden(true)
-            Text(name).foregroundStyle(.secondary)
+            Text(name).foregroundStyle(caution ? Color.blue : Color.secondary)
             Text(value)
                 .lineLimit(2)
                 .minimumScaleFactor(0.8)
-                .foregroundStyle(warn ? Color.orange : Color.primary)
+                .foregroundStyle(warn ? Color.orange : caution ? Color.green : Color.primary)
                 .monospacedDigit()
                 .textSelection(.enabled)
         }
@@ -342,8 +359,9 @@ struct StandbyBoard: View {
 
 /// The colored edge around the Status page when the light is yellow or red (011). Green has none.
 struct StandbyOutline: View {
+    var asClient = false
     var body: some View {
-        let health = StandbyMonitor.shared.health
+        let health = StandbyMonitor.shared.health(asClient: asClient)
         if health.level != .green {
             Rectangle()
                 .strokeBorder(health.color, lineWidth: 14)
