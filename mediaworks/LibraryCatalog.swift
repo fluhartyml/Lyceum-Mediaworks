@@ -218,6 +218,9 @@ final class LibraryCatalog {
         guard let own = ownSnapshot else { return }
         let partner = LibraryPartner.shared
         var merged = PartnerMerge.merge(own, partner.slices)
+        // REM  Tell the devices which ticked servers are not answering (his word 2026-11-08; LibrarySnapshot.missing).
+        let down = partner.servers.filter { partner.snapshots[$0] == nil }.sorted()
+        merged.missing = down.isEmpty ? nil : down
         // THE MASTER'S ORDERS over every file — this Mac's copy of the whole library's marks (MasterMarks).
         if partner.masterMode {
             merged.root = Self.marking(merged.root, "", unchecked)

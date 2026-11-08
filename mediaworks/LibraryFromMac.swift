@@ -376,6 +376,28 @@ struct MacLibraryView: View {
         if let snapshot = library.snapshot {
             NavigationStack {
                 CachedFolderList(folder: snapshot.root, path: "", isTop: true, mediaOnly: mediaOnly)
+                    #if os(tvOS)
+                    // REM  A SERVER DOWN, SAID AT THE TOP — his word, 2026-11-08 12:2x: "i would think the alert to the apple tv
+                    // REM  client is needed" · "yes build it". The serving Mac lists the ticked servers it cannot hear
+                    // REM  (LibrarySnapshot.missing); their media is not in this library until they answer. Only while this
+                    // REM  TV is hearing a Mac — a saved or iCloud copy would show an old list.
+                    .safeAreaInset(edge: .top, spacing: 0) {
+                        if let down = snapshot.missing, !down.isEmpty, library.heard != nil, !library.fromCloud {
+                            VStack(spacing: 4) {
+                                ForEach(down, id: \.self) { name in
+                                    Label("\(name) not responding — its media is missing", systemImage: "exclamationmark.triangle.fill")
+                                        .symbolRenderingMode(.multicolor)
+                                }
+                            }
+                            .font(.lyceumBody)
+                            .frame(maxWidth: .infinity)
+                            .padding(12)
+                            .background(Self.barMaterial)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityIdentifier("serversDown")
+                        }
+                    }
+                    #endif
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         // REM  ONE THING PER LINE — his layout, 2026-10-17, after "the status / feedback to user is disorganized
                         // REM  and doesnt look good": "from homelab b, build ca7b105, oct 17 2026 10:18, 69/2280 on this device

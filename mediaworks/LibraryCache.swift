@@ -90,6 +90,12 @@ nonisolated struct LibrarySnapshot: Codable, Sendable {
     /// still keeps its own marks.
     var marksFrom: String?
     var marksMade: Date?
+    // REM  A SERVER DOWN IS NEWS TO THE TV — his word, 2026-11-08 12:2x: "i would think the alert to the apple tv client is
+    // REM  needed". Each server holds its own slice (audio on Lab A, video on Lab B), so one down means its media is gone
+    // REM  from every client. Before this, that slice dropped out of the TV's library after a minute with no word.
+    /// The servers ticked on the serving Mac whose slice is not arriving — nil when every one is answering, or from a Mac
+    /// older than build 254, which never sent it.
+    var missing: [String]?
 }
 
 /// One follower's change to the master's checkmarks and playlists — adds and removes only, so a change made while the master
