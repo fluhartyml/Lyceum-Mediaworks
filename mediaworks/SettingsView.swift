@@ -25,6 +25,8 @@ struct SettingsView: View {
             #if !os(macOS)
             // REM  WHICH MAC — his ask, 2026-10-11 (MacFinder.swift).
             MacPickerSection()
+            // REM  LOCAL NETWORK — amber 001.13 / 002.2, 2026-11-07 (MacFinder.swift).
+            LocalNetworkSection()
             #if os(iOS)
             // REM  SYNC TO THIS DEVICE — moved here from the Library, his word 2026-10-21 (LibraryFromMac.swift).
             DeviceSyncSettingsSection()

@@ -64,6 +64,44 @@ final class mediaworksUITests: XCTestCase {
                       "Swiping right did not come back to the Library page")
     }
 
+    // REM  AMBER 001.13 / 002.2, coded 2026-11-07 at his "yes start 001.13": Settings has a Local Network section with a
+    // REM  status line and an Access Local Network button, reachable with no eyes (identifiers) and passing Apple's audit.
+    // REM  ⚠️ The Simulator never asks for Local Network (only real devices enforce it), so the "off" path can't be shown
+    // REM  here — this checks the section, the button, and that nothing on the Settings sheet fails the audit.
+    @MainActor
+    func testLocalNetworkSettingsSection() throws {
+        continueAfterFailure = true
+        let app = XCUIApplication()
+        app.launch()
+        // REM  FIXED 2026-11-07 (his Xcode run on iPhone Duo): tapping buttons["Settings"].firstMatch hit the 12-point
+        // REM  "Settings" page dot at the top and the screen stayed on Media. On iPhone, Settings is page 4 of the
+        // REM  sideways pager (PhonePlayer.swift) — swipe to it the way he does, and wait for its title.
+        let settingsTitle = app.navigationBars["Settings"]
+        var pages = 0
+        // REM  2026-11-07 run 2: app.swipeLeft() (mid-window) moved Media→Library→Theater, then nothing on Theater. A
+        // REM  thumb swipe across the upper third (where the Theater's content sits) tells "swipe dead" from "target small".
+        let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.3))
+        let to = app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.3))
+        while !settingsTitle.exists && pages < 4 { from.press(forDuration: 0.05, thenDragTo: to); pages += 1; _ = settingsTitle.waitForExistence(timeout: 2) }
+        XCTAssertTrue(settingsTitle.exists, "Swiping left never reached the Settings page")
+        let button = app.buttons["accessLocalNetwork"]
+        var swipes = 0
+        while !(button.exists && button.isHittable) && swipes < 8 { app.swipeUp(); swipes += 1 }
+        XCTAssertTrue(button.exists && button.isHittable, "No Access Local Network button in Settings")
+        let status = app.staticTexts.matching(identifier: "localNetworkStatus").firstMatch
+        XCTAssertTrue(status.exists, "No Local Network status line in Settings")
+        print("LOCALNET status: \(status.label)")
+        snap("Settings — Local Network", app)
+        do {
+            try app.performAccessibilityAudit(for: [.contrast, .elementDetection, .hitRegion, .sufficientElementDescription]) { issue in
+                print("AUDIT [Settings] \(issue.auditType) — \(issue.compactDescription) — \(issue.element?.label ?? "?")")
+                return false
+            }
+        } catch {
+            XCTFail("Accessibility audit failed on Settings: \(error)")
+        }
+    }
+
     private func snap(_ name: String, _ app: XCUIApplication) {
         let a = XCTAttachment(screenshot: app.screenshot()); a.name = name; a.lifetime = .keepAlways; add(a)
     }

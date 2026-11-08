@@ -201,20 +201,25 @@ struct PhoneHome: View {
         // Under the clock, so they never cover the "From your Mac" line at the bottom of the Library.
         .overlay(alignment: .top) {
             // Which page is showing — tap a dot to go there.
-            HStack(spacing: 14) {
+            // REM  FIXED 2026-11-07 (amber 001.13 robot): Apple's accessibility audit failed all four dots, "Hit area is too
+            // REM  small" — each was a 12-pt button, under Apple's 44-pt minimum. Each dot is now a 44×44 tap target; the
+            // REM  frosted capsule behind them is inset so it still LOOKS as small as before.
+            HStack(spacing: 0) {
                 ForEach([(PhonePlayer.mediaPage, "Media"), (PhonePlayer.libraryPage, "Library"),
                          (PhonePlayer.theaterPage, "Theater"), (PhonePlayer.settingsPage, "Settings")], id: \.0) { page, name in
                     Button { go(to: page) } label: {
                         Label(name, systemImage: player.page == page ? "circle.fill" : "circle")
                             .labelStyle(.iconOnly)
                             .font(.system(size: 10))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                     .accessibilityLabel(name)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(.bar, in: Capsule())
+            .padding(.horizontal, 4)
+            .background { Capsule().fill(.bar).padding(.vertical, 10).padding(.horizontal, 6) }
+            .padding(.top, -10)
         }
         .environment(player)
         .environment(library)

@@ -35,17 +35,50 @@ final class MacFinder {
             NotificationCenter.default.post(name: Self.changed, object: nil)
         }
     }
+    /// True once iOS / tvOS has refused the search because Local Network is off for Mediaworks (amber 001.13).
+    private(set) var localNetworkOff = false
     @ObservationIgnored private var browser: NWBrowser?
 
     private init() {
+        start()
+    }
+
+    // REM  LOCAL NETWORK — amber line 001.13, his word 2026-11-06 ("yes same pattern for mediaworks"), coded 2026-11-07
+    // REM  at his "yes start 001.13". Apple gives an app NO call to read the Local Network switch. What it does give: a
+    // REM  Bonjour search that the system refuses comes back as .waiting with DNS error -65570 (kDNSServiceErr_PolicyDenied).
+    // REM  That refusal is how Mediaworks knows the switch is off; a Mac found is how it knows it is on. Neither seen →
+    // REM  unknown, and the screens say so rather than guess.
+    private func start() {
         let browser = NWBrowser(for: .bonjour(type: LibraryCache.serviceType, domain: nil), using: .tcp)
         browser.browseResultsChangedHandler = { results, _ in
             MainActor.assumeIsolated {
                 MacFinder.shared.names = Set(results.compactMap(MacFinder.name(of:))).sorted()
+                if !MacFinder.shared.names.isEmpty { MacFinder.shared.localNetworkOff = false }
+            }
+        }
+        browser.stateUpdateHandler = { state in
+            MainActor.assumeIsolated {
+                switch state {
+                case .waiting(let error), .failed(let error):
+                    if case let .dns(code) = error, code == MacFinder.policyDenied { MacFinder.shared.localNetworkOff = true }
+                default:
+                    break
+                }
             }
         }
         browser.start(queue: .main)
         self.browser = browser
+    }
+
+    /// kDNSServiceErr_PolicyDenied — the system refused the search (Local Network is off for this app).
+    static let policyDenied: Int32 = -65570
+
+    /// Starts the search over — on coming back from the Settings app, where Local Network may have been switched.
+    func lookAgain() {
+        browser?.cancel()
+        browser = nil
+        localNetworkOff = false
+        start()
     }
 
     static func name(of result: NWBrowser.Result) -> String? {
@@ -112,6 +145,108 @@ struct MacPickerSection: View {
                 Spacer()
                 if finder.chosen == name { Image(systemName: "checkmark") }
             }
+        }
+    }
+}
+
+// MARK: - Local Network (amber 001.13, 002.2)
+
+// REM  HIS RULE 002.2, every app, 2026-11-06: "in settings you should always be able to change your mind and take back a
+// REM  permission." The first-launch ask is Apple's own pop-up: it appears the first time Mediaworks searches for your Mac,
+// REM  which is at launch (ContentView / TVHome .task → keepUpToDate → MacFinder). After that first answer Apple never asks
+// REM  again and never lets an app flip the switch, so the button always opens Mediaworks' page in the Settings app —
+// REM  for an "oops, I said no" and for taking a yes back alike.
+// REM  ⚠️ Apple TV: UIApplication.openSettingsURLString compiles for tvOS; whether the TV opens the app's own page or just
+// REM  the Settings app was NOT verified on his TV (a Claude inference). The footnote names where to look either way.
+
+/// Whether Local Network is on, as far as Mediaworks can tell.
+enum LocalNetworkState {
+    case on, off, unknown
+
+    @MainActor static var now: LocalNetworkState {
+        let finder = MacFinder.shared
+        if finder.localNetworkOff { return .off }
+        return finder.names.isEmpty ? .unknown : .on
+    }
+
+    var words: String {
+        switch self {
+        case .on: "Local Network is on"
+        case .off: "Local Network is off"
+        case .unknown: "No Mac found yet"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .on: "checkmark.circle.fill"
+        case .off: "xmark.circle.fill"
+        case .unknown: "questionmark.circle"
+        }
+    }
+
+    var footnote: String {
+        switch self {
+        case .on: "To turn it off, tap Access Local Network and change it in the Settings app, under Local Network."
+        case .off: "Mediaworks can't see your Mac. Apple won't ask again after a no — tap Access Local Network to turn it on in the Settings app, under Local Network."
+        case .unknown: "If Local Network is off, Mediaworks can't see your Mac. Tap Access Local Network to check it in the Settings app."
+        }
+    }
+}
+
+/// Opens Mediaworks' own page in the Settings app.
+@MainActor func openLocalNetworkSettings() {
+    if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+}
+
+/// The Access Local Network button — Settings, and the "Waiting for your Mac" screen when Local Network is off.
+struct AccessLocalNetworkButton: View {
+    var body: some View {
+        Button(action: openLocalNetworkSettings) {
+            Label("Access Local Network", systemImage: "network").font(.lyceumBody)
+                .foregroundStyle(Self.textBlue)
+        }
+        .buttonStyle(.bordered)
+        .accessibilityIdentifier("accessLocalNetwork")
+        .accessibilityHint("Opens the Settings app.")
+    }
+
+    // REM  FIXED 2026-11-07 (amber 001.13 robot): Apple's audit failed this button's text for contrast — the tint on the
+    // REM  gray bordered button. A deeper blue in light mode, bright blue in dark mode, passes. The same fix Milestones'
+    // REM  Access Location button got that morning. This button only; the app's accent color is untouched.
+    static let textBlue = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.45, green: 0.70, blue: 1.0, alpha: 1)
+            : UIColor(red: 0.0, green: 0.30, blue: 0.75, alpha: 1)
+    })
+}
+
+/// "Local Network" — the Settings section on iPhone, iPad and Apple TV.
+struct LocalNetworkSection: View {
+    @State private var finder = MacFinder.shared
+    @Environment(\.scenePhase) private var scenePhase
+
+    var body: some View {
+        let state = LocalNetworkState.now
+        Section {
+            Label(state.words, systemImage: state.symbol)
+                .font(.lyceumBody.weight(.semibold))
+                .foregroundStyle(state == .on ? Color.green : Color.secondary)
+                .accessibilityIdentifier("localNetworkStatus")
+            AccessLocalNetworkButton()
+            Text(state.footnote)
+                .font(.lyceumBody)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        } header: {
+            Text("Local Network").font(.lyceumHeadline)
+        } footer: {
+            Text("Mediaworks uses your home network to find your Mac and play your library from it.")
+                .font(.lyceumBody)
+        }
+        // Back from the Settings app: search again, so the status shows what changed there.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active, finder.names.isEmpty { finder.lookAgain() }
         }
     }
 }

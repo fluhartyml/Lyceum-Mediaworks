@@ -641,6 +641,8 @@ struct TVSettingsSheet: View {
                     InfoButton("Always show the file name on — it stays at the bottom of the screen the whole time.\n\nOff — it shows for 5 seconds when each video starts, and after a remote press.")
                 }
                 MacPickerSection()
+                // REM  LOCAL NETWORK — amber 001.13 / 002.2, 2026-11-07 (MacFinder.swift).
+                LocalNetworkSection()
                 Section { Text("Build \(BuildStamp.number) · \(BuildStamp.commit)").foregroundStyle(.secondary) }
             }
             .navigationTitle("Settings")

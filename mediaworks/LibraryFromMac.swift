@@ -47,6 +47,9 @@ final class MacLibrary {
     /// Looks for the Mac now and every minute after. Call from a `.task`.
     /// Choosing a different Mac (MacFinder) fetches from it at once, and forgets the old stream address.
     func keepUpToDate() async {
+        // REM  001.13: start the Mac search (and with it Apple's Local Network question) at launch, so the
+        // REM  Local Network status is known from the first screen (MacFinder.swift).
+        _ = MacFinder.shared
         let watch = Task { @MainActor in
             for await _ in NotificationCenter.default.notifications(named: MacFinder.changed) {
                 MacLibrary.streamBase = nil
