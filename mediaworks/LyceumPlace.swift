@@ -151,7 +151,7 @@ enum LyceumPlace {
     /// One request carried out where it belongs. Returns a problem, or nil.
     private static func send(_ request: CacheRequest, to target: String?) async -> String? {
         if let target {
-            return await LibraryPartner.shared.ask(request, to: target, timeout: 3600) == nil ? "\(target) did not answer" : nil
+            return await LibraryPartner.shared.ask(request, to: target, timeout: 3600) == nil ? "\(target) did not respond" : nil
         }
         await LibraryCatalog.shared.carryOut(request)
         return nil
@@ -252,7 +252,7 @@ enum LyceumPlace {
     private static func download(_ rel: String, size: Int64?, to target: URL) async -> String? {
         let name = (rel as NSString).lastPathComponent
         if let host = holder(of: rel) {
-            guard let url = await LibraryPartner.shared.previewURL(rel, on: host) else { return "\(host) is not answering" }
+            guard let url = await LibraryPartner.shared.previewURL(rel, on: host) else { return "\(host) is not responding" }
             do {
                 let (temp, response) = try await URLSession.shared.download(from: url)
                 guard (response as? HTTPURLResponse)?.statusCode == 200 else {

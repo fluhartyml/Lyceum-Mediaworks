@@ -399,7 +399,7 @@ nonisolated enum Downloader {
             let (temp, response) = try await URLSession.shared.download(from: url)
             if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
                 try? FileManager.default.removeItem(at: temp)
-                return "\(address): the site answered \(http.statusCode)."
+                return "\(address): the site responded \(http.statusCode)."
             }
             let expected = response.expectedContentLength
             let got = FileJob.size(temp)

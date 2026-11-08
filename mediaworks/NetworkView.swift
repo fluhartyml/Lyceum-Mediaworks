@@ -36,7 +36,7 @@ struct NetworkView: View {
         for name in partner.servers.sorted() {
             let snap = partner.snapshots[name]
             out.append(Server(name: name, folders: snap?.root.folders.map(\.name) ?? [], files: snap?.root.fileCount ?? 0,
-                              problem: snap == nil ? (partner.problems[name] ?? "Not answering") : nil,
+                              problem: snap == nil ? (partner.problems[name] ?? "Not responding") : nil,
                               isMaster: partner.decidedMaster == name))
         }
         return out.sorted { a, b in a.isMaster != b.isMaster ? a.isMaster : a.name < b.name }

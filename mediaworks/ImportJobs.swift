@@ -489,7 +489,7 @@ final class ImportOutbox {
         for server in Set(entries.map(\.server)) {
             guard let data = await LibraryPartner.shared.ask(CacheRequest(op: .importList, device: ImportDesk.me), to: server, timeout: 20),
                   let reply = try? JSONDecoder().decode(ImportReply.self, from: data), reply.ok, let jobs = reply.jobs else {
-                problem = "\(server) is not answering — the originals stay here until it says they arrived."
+                problem = "\(server) is not responding — the originals stay here until it says they arrived."
                 continue
             }
             problem = nil
@@ -557,7 +557,7 @@ final class ImportRelay {
 
     private func pass() async {
         guard let data = await MacLibrary.ask(CacheRequest(op: .importList, device: ImportDesk.me)),
-              let reply = try? JSONDecoder().decode(ImportReply.self, from: data) else { status = "Your Mac is not answering."; return }
+              let reply = try? JSONDecoder().decode(ImportReply.self, from: data) else { status = "Your Mac is not responding."; return }
         guard reply.ok, let jobs = reply.jobs else { status = reply.problem ?? "Your Mac said no."; return }
         // Copies of jobs the master has DONE go; nothing else is ever deleted here.
         for job in jobs where job.state == .done {

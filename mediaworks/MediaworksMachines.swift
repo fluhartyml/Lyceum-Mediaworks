@@ -33,7 +33,7 @@ struct MachinesList: View {
         if partner.following, let m = partner.decidedMaster { return "Master: \(m). Every Mac keeps the whole library's marks; \(m)'s settle disagreements." + waiting }
         if partner.following {
             let when = partner.ordersMade.map { " from \($0.formatted(date: .abbreviated, time: .shortened))" } ?? ""
-            return "No master answering — using its last orders\(when)." + waiting
+            return "No master responding — using its last orders\(when)." + waiting
         }
         return "No master — each server keeps the marks for its own files."
     }

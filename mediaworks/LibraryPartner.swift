@@ -277,7 +277,7 @@ final class LibraryPartner {
             guard let data = await ask(request, to: master, timeout: 30),
                   let orders = try? LibraryCache.decoder.decode(LibrarySnapshot.self, from: data),
                   orders.marksFrom == master else {
-                masterProblem = "\(master) did not take the changes — \(waiting.count) waiting; they go when it answers."
+                masterProblem = "\(master) did not take the changes — \(waiting.count) waiting; they go when it responds."
                 return
             }
             waiting.removeFirst()
@@ -387,7 +387,7 @@ final class LibraryPartner {
                let snap = try? LibraryCache.decoder.decode(LibrarySnapshot.self, from: data) {
                 snapshots[name] = snap; heard[name] = .now; problems[name] = nil
             } else {
-                problems[name] = "\(name) did not answer."
+                problems[name] = "\(name) did not respond."
                 if let h = heard[name], Date.now.timeIntervalSince(h) > 60 { snapshots[name] = nil }
                 if heard[name] == nil { snapshots[name] = nil }
             }
@@ -407,7 +407,7 @@ final class LibraryPartner {
             LibraryCatalog.shared.mergeFromServers()
         }
         if claimants.count > 1 { masterProblem = "More than one Mac says it is the master: \(claimants.joined(separator: ", "))." }
-        else if following, decidedMaster == nil { masterProblem = "The master is not answering — using its last orders." }
+        else if following, decidedMaster == nil { masterProblem = "The master is not responding — using its last orders." }
         else if waiting.isEmpty { masterProblem = nil }
         LibraryCatalog.shared.republishMerged()
     }
@@ -495,7 +495,7 @@ final class LibraryPartner {
         var request = CacheRequest(op: .takeIn, path: relative)
         request.newName = base + "/outbox/" + token
         guard let data = await ask(request, to: name, timeout: 3600),
-              let reply = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return "\(name) did not answer." }
+              let reply = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return "\(name) did not respond." }
         guard reply["ok"] as? Bool == true else { return reply["problem"] as? String ?? "\(name) refused it." }
         await refresh()
         let size = Int64((try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)

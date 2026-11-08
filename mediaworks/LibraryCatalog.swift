@@ -1576,7 +1576,7 @@ extension LibraryCatalog {
                 if let data = await partner.ask(request, to: master, timeout: 30) {
                     connection.send(content: Framing.frame(data), completion: .contentProcessed { _ in connection.cancel() })
                 } else {
-                    reply(ImportReply(ok: false, problem: "\(master), the master, is not answering — nothing is deleted until it does."))
+                    reply(ImportReply(ok: false, problem: "\(master), the master, is not responding — nothing is deleted until it does."))
                 }
             }
             return

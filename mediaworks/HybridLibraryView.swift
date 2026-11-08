@@ -257,7 +257,7 @@ struct HybridLibraryView: View {
             for host in holders {
                 var request = CacheRequest(op: .renamePlaylist, path: old, device: Host.current().localizedName ?? "Mac")
                 request.newName = name
-                if await partner.ask(request, to: host) == nil { problem = "\(host) did not answer — “\(old)” was not renamed there." }
+                if await partner.ask(request, to: host) == nil { problem = "\(host) did not respond — “\(old)” was not renamed there." }
             }
             if place == .playlist(old) { place = .playlist(name) }
             await partner.refresh()
@@ -278,7 +278,7 @@ struct HybridLibraryView: View {
         Task {
             for host in holders {
                 let request = CacheRequest(op: .deletePlaylist, path: name, device: Host.current().localizedName ?? "Mac")
-                if await partner.ask(request, to: host) == nil { problem = "\(host) did not answer — “\(name)” was not deleted there." }
+                if await partner.ask(request, to: host) == nil { problem = "\(host) did not respond — “\(name)” was not deleted there." }
             }
             if place == .playlist(name) { place = nil }
             await partner.refresh()
@@ -314,7 +314,7 @@ struct HybridLibraryView: View {
             for host in holders {
                 var request = CacheRequest(op: .renameFolder, path: path, device: Host.current().localizedName ?? "Mac")
                 request.newName = name
-                if await partner.ask(request, to: host) == nil { problem = "\(host) did not answer — “\(old)” was not renamed there." }
+                if await partner.ask(request, to: host) == nil { problem = "\(host) did not respond — “\(old)” was not renamed there." }
             }
             await partner.refresh()
             if place == .folder(path) { place = .folder(renamed) }
@@ -327,7 +327,7 @@ struct HybridLibraryView: View {
         Task {
             for host in holders {
                 let request = CacheRequest(op: .playlistFromFolder, path: path, device: Host.current().localizedName ?? "Mac")
-                if await partner.ask(request, to: host) == nil { problem = "\(host) did not answer — its files were not added to “\(name)”." }
+                if await partner.ask(request, to: host) == nil { problem = "\(host) did not respond — its files were not added to “\(name)”." }
             }
             await partner.refresh()
             place = .playlist(name)
@@ -341,7 +341,7 @@ struct HybridLibraryView: View {
                 guard let host = snapshot?.file(at: path)?.host else { continue }
                 var request = CacheRequest(op: op, path: path, device: Host.current().localizedName ?? "Mac")
                 request.playlist = playlist
-                if await partner.ask(request, to: host) == nil { problem = "\(host) did not answer — “\((path as NSString).lastPathComponent)” was not changed." }
+                if await partner.ask(request, to: host) == nil { problem = "\(host) did not respond — “\((path as NSString).lastPathComponent)” was not changed." }
             }
             await partner.refresh()
         }

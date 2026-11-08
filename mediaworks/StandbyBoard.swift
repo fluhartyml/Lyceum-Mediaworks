@@ -114,7 +114,14 @@ final class StandbyMonitor {
             if lyceum.missing { red.append("Lyceum drive missing") } else if lyceum.low { yellow.append("Lyceum drive low") }
         }
         if system.macDisk.low { yellow.append("Mac disk low") }
-        for name in partner.servers.sorted() where partner.snapshots[name] == nil { yellow.append("\(name) not answering") }
+        // REM  NOT ANOTHER MAC'S TROUBLE — his catch, 2026-11-08 08:2x, on the MacBook: "you are sounding an alarm (amber) if
+        // REM  this is the server i dont see why you are at a yellow alert". The light is THIS Mac's health only. Another
+        // REM  server not answering belongs in the Network section (amber 006), never on this light.
+        // REM  …EXCEPT A CLIENT WITH NO SERVER — his word, same minute: "an amber alert would be fine if the macbook was in
+        // REM  client mode and no server was reachable". A client's whole job is reading the servers, so none = this Mac's trouble.
+        if !partner.thisMacServes, !partner.servers.isEmpty, partner.servers.allSatisfy({ partner.snapshots[$0] == nil }) {
+            yellow.append("No server reachable")
+        }
         if restartSkipped { yellow.append("5 AM restart skipped") }
         if !red.isEmpty { return StandbyHealth(level: .red, reasons: red + yellow) }
         if !yellow.isEmpty { return StandbyHealth(level: .yellow, reasons: yellow) }

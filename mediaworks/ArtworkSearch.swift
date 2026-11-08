@@ -114,7 +114,7 @@ enum ArtworkSearch {
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         let (data, response) = try await URLSession.shared.data(for: request)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-            throw FileProblem(message: "The search did not answer. Check the internet connection and try again.")
+            throw FileProblem(message: "The search did not respond. Check the internet connection and try again.")
         }
         return try JSONSerialization.jsonObject(with: data)
     }

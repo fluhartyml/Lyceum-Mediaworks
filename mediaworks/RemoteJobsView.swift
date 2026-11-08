@@ -207,7 +207,7 @@ struct RemoteJobsView: View {
 
     private func ask(_ request: JobRequest) async -> JobReply? {
         guard let mac else { return nil }
-        guard let reply = await JobDirector.ask(mac, request) else { problem = "\(mac.name) did not answer."; return nil }
+        guard let reply = await JobDirector.ask(mac, request) else { problem = "\(mac.name) did not respond."; return nil }
         if !reply.ok { problem = reply.problem; return nil }
         return reply
     }

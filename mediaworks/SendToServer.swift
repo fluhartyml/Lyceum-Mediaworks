@@ -244,7 +244,7 @@ final class SendQueue {
             var request = CacheRequest(op: op, path: sendName, device: Self.me)
             request.newName = base + "/outbox/" + token
             guard let reply = await ask(request, to: to, timeout: 6 * 3600) else {
-                items[i].state = .failed("\(to) did not answer — is Mediaworks build \(LibraryCache.sendInBuild) or newer running there?"); return
+                items[i].state = .failed("\(to) did not respond — is Mediaworks build \(LibraryCache.sendInBuild) or newer running there?"); return
             }
             guard reply["ok"] as? Bool == true else { items[i].state = .failed(reply["problem"] as? String ?? "\(to) refused it."); return }
             let instant = UserDefaults.standard.bool(forKey: "instantDelete")
@@ -267,7 +267,7 @@ final class SendQueue {
         guard let data = await LibraryPartner.shared.ask(request, to: to, timeout: 30),
               let reply = try? JSONDecoder().decode(ImportReply.self, from: data) else {
             ImportOutbox.shared.forget(job.id)
-            items[i].state = .failed("\(to) did not answer — is Mediaworks build \(LibraryCache.relayBuild) or newer running there?"); return
+            items[i].state = .failed("\(to) did not respond — is Mediaworks build \(LibraryCache.relayBuild) or newer running there?"); return
         }
         guard reply.ok else { ImportOutbox.shared.forget(job.id); items[i].state = .failed(reply.problem ?? "\(to) refused it."); return }
         items[i].jobID = job.id
