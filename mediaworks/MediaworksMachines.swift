@@ -125,9 +125,8 @@ struct MachinesList: View {
 struct MachinesOnboardingView: View {
     @State private var partner = LibraryPartner.shared
     @Environment(LibraryStore.self) private var library
-
-    /// Something to show: a folder on this Mac, or at least one server ticked.
-    private var ready: Bool { library.root != nil || !partner.servers.isEmpty }
+    /// Closes the welcome screen for this launch (ContentView.setupOpen).
+    var done: () -> Void = {}
 
     var body: some View {
         ScrollView {
@@ -140,16 +139,29 @@ struct MachinesOnboardingView: View {
                     .padding(20)
                     .frame(maxWidth: 720, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 14).fill(.quaternary.opacity(0.4)))
-                Button { partner.machinesChosen = true; partner.start() } label: { Text("Continue").font(.lyceumBody) }
-                    .help("Tick at least one server, or choose a folder for this Mac")
-                    .buttonStyle(.borderedProminent).controlSize(.large)
-                    .disabled(!ready)
+                // REM  HIS FEEDBACK, build 251 (2026-11-08): he was setting up the Macs out of order, so the Macs on the network
+                // REM  then were not the final set — Continue no longer demands a server or a folder, and Set Up Later leaves
+                // REM  everything as it is. Nothing here picks a master for him; that box stays his to tick.
+                HStack(spacing: 16) {
+                    Button { done() } label: { Text("Set Up Later").font(.lyceumBody) }
+                        .help("Close setup and choose the machines later in Settings → General")
+                        .keyboardShortcut(.cancelAction)
+                        .controlSize(.large)
+                        .accessibilityIdentifier("setupLater")
+                    Button { partner.start(); done() } label: { Text("Continue").font(.lyceumBody) }
+                        .help("Keep what is ticked now; change it any time in Settings → General")
+                        .keyboardShortcut(.defaultAction)
+                        .buttonStyle(.borderedProminent).controlSize(.large)
+                        .accessibilityIdentifier("setupContinue")
+                }
                 Text("Change this any time in Settings → General.").font(.lyceumBody).foregroundStyle(.secondary)
                 Text(BuildStamp.summary).font(.lyceumBody).foregroundStyle(.secondary).textSelection(.enabled).padding(.top, 16)
             }
             .padding(40)
             .frame(maxWidth: .infinity)
         }
+        // REM  Seen once is done: a force quit from here opens the normal tabs next time (his feedback, build 251).
+        .onAppear { partner.machinesChosen = true }
     }
 }
 

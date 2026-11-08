@@ -23,6 +23,14 @@ struct ContentView: View {
     @State private var showingAbout = false
     @State private var showingSettings = false
     #endif
+    #if os(macOS)
+    // REM  SETUP IS OPTIONAL AND NEVER STALE — his TestFlight feedback on build 251, 2026-11-08: "this first se up process
+    // REM  should NOT be manditory and you should be able to cancel out of any time" · "if it was force quit it should snart
+    // REM  new or start where the user has to go into settings and manually set up". So the welcome screen shows at most
+    // REM  once: decided at launch, and MachinesOnboardingView marks it seen the moment it appears. A force quit, Set Up
+    // REM  Later or Continue all lead to the normal tabs; the machines are chosen in Settings → General from then on.
+    @State private var setupOpen = !LibraryPartner.shared.machinesChosen
+    #endif
 
     var body: some View {
         Group {
@@ -49,7 +57,7 @@ struct ContentView: View {
                 }
             } else if library.needsWriteAccess {
                 OnboardingView()
-            } else if !LibraryPartner.shared.servers.isEmpty {
+            } else if !LibraryPartner.shared.servers.isEmpty || !setupOpen {
                 // REM  N20 — a Mac with no library folder of its own: the hybrid library from the servers.
                 // REM  THE SAME THREE TABS ON EVERY MAC — his word, 2026-10-17: "it should also list the tabs library commander
                 // REM  and theater. on all servers and clients". Commander starts in the Lyceum (LyceumPlace.swift).
@@ -61,8 +69,8 @@ struct ContentView: View {
                 }
             } else {
                 // REM  N20 — "the choose library folder to be choose media works machines". Shown whenever this Mac has no
-                // REM  folder of its own AND no servers ticked — there is nothing to show until it has one or the other.
-                MachinesOnboardingView()
+                // REM  folder of its own AND no servers ticked — and only on the first launch (setupOpen, above).
+                MachinesOnboardingView { setupOpen = false }
             }
             #endif
         }
