@@ -22,9 +22,13 @@ enum MorningRestart {
     static let enabledKey = "morningRestartOn"
     private static let lastDayKey = "morningRestartLastDay"
     private static let waitArgument = "-lyceumWaitForPID"
+    private static let lastRestartKey = "morningRestartLastAt"
 
     /// On unless turned off in Settings.
     static var isOn: Bool { UserDefaults.standard.object(forKey: enabledKey) as? Bool ?? true }
+
+    /// When the last morning restart began — shown on the waiting-for-caller page (StandbyBoard.swift).
+    static var lastRestartAt: Date? { UserDefaults.standard.object(forKey: lastRestartKey) as? Date }
 
     /// Call once at launch: holds a freshly reopened copy until the old one has quit, then watches the clock.
     static func start() {
@@ -59,6 +63,7 @@ enum MorningRestart {
         guard busyWith == nil else { return }
         // Written BEFORE the restart, so the reopened copy does not restart again the same morning.
         UserDefaults.standard.set(today, forKey: lastDayKey)
+        UserDefaults.standard.set(now, forKey: lastRestartKey)
         relaunch()
     }
 

@@ -27,7 +27,8 @@ struct mediaworksApp: App {
 
     // REM  THE 5 AM RESTART (MorningRestart.swift) — started here, before any window, so a reopened copy first waits
     // REM  for the old one to quit before the library starts.
-    init() { MorningRestart.start() }
+    // REM  BuildLog notes which build this launch is, so the waiting-for-caller page can say "Updated from build N".
+    init() { MorningRestart.start(); BuildLog.noteLaunch() }
     #endif
 
     var body: some Scene {
@@ -57,6 +58,10 @@ struct mediaworksApp: App {
                 CommanderMenu()
             }
         }
+        // REM  THE MAIN WINDOW ALWAYS OPENS AT LAUNCH — found 2026-11-08 by the robot: a Mac that quit with its window
+        // REM  closed (serving from the menu bar) came back with NO window. The lab's screen is the waiting-for-caller
+        // REM  page 24x7 (his ask, 2026-11-08), so after the 5 AM restart it must be on screen again.
+        .defaultLaunchBehavior(.presented)
         #endif
 
         #if os(macOS)

@@ -65,6 +65,9 @@ struct NetworkView: View {
             let phase = context.date.timeIntervalSinceReferenceDate * 24
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
+                    // REM  THE BUILD, HUGE, AND THE MAC'S HEALTH — his ask, 2026-11-08 (StandbyBoard.swift). On the
+                    // REM  waiting-for-caller page only; the separate Network window stays the map.
+                    if embedded { StandbyBoard() }
                     header
                     // Servers
                     HStack(alignment: .top, spacing: 24) {

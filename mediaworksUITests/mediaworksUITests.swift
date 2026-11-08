@@ -102,6 +102,38 @@ final class mediaworksUITests: XCTestCase {
         }
     }
 
+    #if os(macOS)
+    // REM  HIS ASK 2026-11-08: the Mac's waiting-for-caller (Status) page shows the build really big, whether it was
+    // REM  updated, and the system/network status (StandbyBoard.swift). Reached by keyboard-free click on the Status
+    // REM  mode button; every line found by identifier; Apple's audit on the page.
+    @MainActor
+    func testMacStandbyBoardShowsBuild() throws {
+        continueAfterFailure = true
+        let app = XCUIApplication()
+        app.launch()
+        let status = app.buttons["Status"].firstMatch
+        if status.waitForExistence(timeout: 10) { status.click() }
+        let number = app.staticTexts["standbyBuildNumber"]
+        XCTAssertTrue(number.waitForExistence(timeout: 10), "No build number on the Status page")
+        print("STANDBY build label: \(number.label)")
+        for id in ["standbyUpdateLine", "standbyRestartLine", "standbyMac", "standbyNetwork", "standbyServing",
+                   "standbyStreams", "standbyLastCaller", "standbyDisk", "standbyMacUptime", "standbyAppUptime"] {
+            let e = app.descendants(matching: .any)[id].firstMatch
+            XCTAssertTrue(e.exists, "Missing \(id) on the Status page")
+            print("STANDBY \(id): \(e.label)")
+        }
+        snap("Mac Status — standby board", app)
+        do {
+            try app.performAccessibilityAudit(for: [.contrast, .elementDetection, .sufficientElementDescription]) { issue in
+                print("AUDIT [Mac Status] \(issue.auditType) — \(issue.compactDescription) — \(issue.element?.label ?? "?")")
+                return false
+            }
+        } catch {
+            XCTFail("Accessibility audit failed on the Mac Status page: \(error)")
+        }
+    }
+    #endif
+
     private func snap(_ name: String, _ app: XCUIApplication) {
         let a = XCTAttachment(screenshot: app.screenshot()); a.name = name; a.lifetime = .keepAlways; add(a)
     }

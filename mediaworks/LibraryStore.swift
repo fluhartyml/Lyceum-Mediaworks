@@ -134,6 +134,12 @@ final class LibraryStore {
     init() {
         expanded = Set(UserDefaults.standard.stringArray(forKey: Keys.expandedFolders) ?? [])
         mode = AppMode(rawValue: UserDefaults.standard.string(forKey: Keys.mode) ?? "") ?? .library
+        #if os(macOS)
+        // REM  THE MAC OPENS ON STATUS — his ask, 2026-11-08 07:4x, looking at the new build board: "can it be centered and
+        // REM  open on this tab?" The lab's screen is the waiting-for-caller page 24x7, and the 5 AM restart must land
+        // REM  there. The tab you switch to during the day is still remembered until the next launch.
+        mode = .status
+        #endif
         if let path = UserDefaults.standard.string(forKey: Keys.nowPlaying) {
             nowPlaying = URL(fileURLWithPath: path)
         }
