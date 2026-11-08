@@ -117,7 +117,7 @@ final class mediaworksUITests: XCTestCase {
         XCTAssertTrue(number.waitForExistence(timeout: 10), "No build number on the Status page")
         print("STANDBY build label: \(number.label)")
         for id in ["standbyUpdateLine", "standbyRestartLine", "standbyMac", "standbyNetwork", "standbyServing",
-                   "standbyStreams", "standbyLastCaller", "standbyDisk", "standbyMacUptime", "standbyAppUptime"] {
+                   "standbyStreams", "standbyLastConnection", "standbyDisk", "standbyMacUptime", "standbyAppUptime"] {
             let e = app.descendants(matching: .any)[id].firstMatch
             XCTAssertTrue(e.exists, "Missing \(id) on the Status page")
             print("STANDBY \(id): \(e.label)")

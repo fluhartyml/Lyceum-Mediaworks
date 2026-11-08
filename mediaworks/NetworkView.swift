@@ -75,7 +75,7 @@ struct NetworkView: View {
                     }
                     // Devices
                     if clients.isEmpty {
-                        Text("No device has called this Mac in the last hour.").foregroundStyle(.secondary)
+                        Text("No device has connected to this Mac in the last hour.").foregroundStyle(.secondary)
                     } else {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 18)], alignment: .leading, spacing: 18) {
                             ForEach(clients) { client in clientCard(client).anchorPreference(key: NodeKey.self, value: .bounds) { [client.name: $0] } }
@@ -146,7 +146,7 @@ struct NetworkView: View {
                  ?? (partner.claimants.count > 1 ? "More than one Mac says it is the master: \(partner.claimants.joined(separator: ", "))"
                      : "No master — each server keeps the marks for its own files"))
                 .foregroundStyle(partner.claimants.count > 1 ? .orange : .secondary)
-            Text("Devices shown are the ones that called \(me). \(catalog.activeStreams == 0 ? "Nothing streaming." : "Streaming to \(catalog.activeStreams).")")
+            Text("Devices shown are the ones that connected to \(me). \(catalog.activeStreams == 0 ? "Nothing streaming." : "Streaming to \(catalog.activeStreams).")")
                 .foregroundStyle(.secondary)
         }
     }

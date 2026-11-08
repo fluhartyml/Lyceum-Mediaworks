@@ -15,6 +15,8 @@ import SwiftUI
 // REM  show what build it is on really big and be its "waiting for call" screen because it is supposed to recycle at 5 am
 // REM  and do its testflight update to the next build, its screen is open on the home lab 24x7 so it shoul dhow its been
 // REM  updated and its system/network status" — then "yes make it so and push to testflight".
+// REM  WORDS — his catch, 2026-11-08 07:4x: "they are connections and not calls" · "waiting for caller screen is a metephore".
+// REM  On screen it is "connection" / "connected"; "waiting for caller" stays our name for the page, never shown text.
 // REM  WHY THE BUILD IS HUGE: the lab's screen is read from across the room. One glance answers "did the 5 AM restart
 // REM  pick up the new TestFlight build?" without opening About.
 // REM  WHY IT NOTES THE LAST BUILD AT LAUNCH: a restart that brings up the same build looks the same as one that updated.
@@ -156,9 +158,9 @@ struct StandbyBoard: View {
                 ? "Yes" + (catalog.listenerPort.map { " · port \($0)" } ?? "")
                 : "Not announced on the network", warn: !catalog.isServing && partner.thisMacServes, id: "standbyServing")
             row("Streams", catalog.activeStreams == 0 ? "None now" : "\(catalog.activeStreams) playing", id: "standbyStreams")
-            row("Last caller", catalog.lastCaller.map { name in
+            row("Last connection", catalog.lastCaller.map { name in
                 name + (catalog.lastCallAt.map { " · \(Self.when($0))" } ?? "")
-            } ?? "No calls since launch", id: "standbyLastCaller")
+            } ?? "No connections since launch", id: "standbyLastConnection")
             row("Disk free", system.diskFree, warn: system.diskLow, id: "standbyDisk")
             row("Mac up", Self.duration(system.macUptime), id: "standbyMacUptime")
             row("App up", "\(Self.duration(Date.now.timeIntervalSince(BuildLog.launchedAt))) · since \(Self.when(BuildLog.launchedAt))",

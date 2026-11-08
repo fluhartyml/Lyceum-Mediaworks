@@ -25,7 +25,7 @@ struct ServingMenu: View {
         // The Import Drive's last word, while one is chosen (I01).
         if LibraryIntake.shared.drop != nil { Text("Import: \(LibraryIntake.shared.status)") }
         if let caller = catalog.lastCaller, let at = catalog.lastCallAt {
-            Text("Last call: \(caller) at \(at.formatted(date: .omitted, time: .shortened))")
+            Text("Last connection: \(caller) at \(at.formatted(date: .omitted, time: .shortened))")
         }
         Divider()
         // REM  His idea, 2026-10-17 — the network, from the "waiting for caller" status (NetworkView.swift).
