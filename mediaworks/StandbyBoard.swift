@@ -295,9 +295,8 @@ struct StandbyBoard: View {
                     // REM  client so it would not normally have a lyceum library folder picked on this one i would list that line
                     // REM  in yellow because the lyceum i am seeing as a 'mesh' library just yellow because choosing one is
                     // REM  optional". Yellow line, not the light. ("mesh" was his description; the app's word is hybrid library.)
-                    row("externaldrive", "Lyceum", partner.servers.isEmpty
-                        ? "None picked — optional"
-                        : "None picked — reading the hybrid library from \(partner.servers.sorted().joined(separator: ", "))",
+                    // REM  Short — his screen 08:35 showed "None picked — reading the hybrid libr…" cut off.
+                    row("externaldrive", "Lyceum", partner.servers.isEmpty ? "None picked — optional" : "None picked — hybrid library",
                         caution: true, id: "standbyLyceum")
                 }
                 if system.lyceum?.sameAsMacDisk != true {
@@ -326,6 +325,7 @@ struct StandbyBoard: View {
             Text(name).foregroundStyle(caution ? Color.blue : Color.secondary)
             Text(value)
                 .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
                 .minimumScaleFactor(0.8)
                 .foregroundStyle(warn ? Color.orange : caution ? Color.green : Color.primary)
                 .monospacedDigit()
