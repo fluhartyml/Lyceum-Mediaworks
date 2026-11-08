@@ -62,47 +62,124 @@ enum BuildLog {
     }
 }
 
-struct StandbyBoard: View {
-    @Environment(LibraryStore.self) private var library
-    private let catalog = LibraryCatalog.shared
-    private let partner = LibraryPartner.shared
-    @State private var system = SystemSnapshot.now(libraryURL: nil)
+// REM  STATUS PAGE, PIECE 1 — his "yes build it", 2026-11-08 ~08:1x, from Mediaworks-Status-Page-DRAFT-2026-11-08.html:
+// REM  001 two columns (Mac name a large heading, macOS a subheading, then body) · 002 the Lyceum's drive and its free space
+// REM  · 010 revised: ONE layout for HomeLAB B's ~5-inch screen (the KVM's 15-inch is for the other tabs), scaled to fit · 011 "a large light strip in the middle
+// REM  red green yellow and an outline around the screen when the status is bad". Glyphs carry the meaning on the small
+// REM  screen (his: "images can make up for not being able to read 18 point fonts").
 
-    var body: some View {
-        // REM  CENTERED — his ask, 2026-11-08 07:4x: "can it be centered". Read from across the room, so it sits in the middle.
-        VStack(alignment: .center, spacing: 18) {
-            buildBlock
-            Divider()
-            statusGrid
-        }
-        .multilineTextAlignment(.center)
-        .padding(24)
-        .frame(maxWidth: .infinity, alignment: .center)
-        .background(RoundedRectangle(cornerRadius: 16).fill(.background))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.secondary.opacity(0.4)))
-        // REM  Every 30 seconds — the disk, addresses and uptime change slowly; the build line only at launch.
-        .task {
+/// How this Mac is doing, as one color and the reasons in words.
+struct StandbyHealth: Equatable {
+    enum Level { case green, yellow, red }
+    var level: Level
+    var reasons: [String]
+
+    var color: Color { level == .green ? .green : level == .yellow ? .yellow : .red }
+    var symbol: String { level == .green ? "checkmark.circle.fill" : level == .yellow ? "exclamationmark.triangle.fill" : "xmark.octagon.fill" }
+    var words: String { reasons.isEmpty ? "All good" : reasons.joined(separator: " · ") }
+}
+
+/// Keeps the slow facts about this Mac current (every 30 seconds) and judges its health — read by the board and the outline.
+@MainActor
+@Observable
+final class StandbyMonitor {
+    static let shared = StandbyMonitor()
+    private(set) var system = SystemSnapshot.now(libraryURL: nil)
+    @ObservationIgnored private var loop: Task<Void, Never>?
+    @ObservationIgnored private var libraryURL: URL?
+
+    /// Starts the 30-second refresh once; later calls only update which folder is the library.
+    func watch(libraryURL: URL?) {
+        self.libraryURL = libraryURL
+        system = SystemSnapshot.now(libraryURL: libraryURL)
+        guard loop == nil else { return }
+        loop = Task { @MainActor [weak self] in
             while !Task.isCancelled {
-                system = SystemSnapshot.now(libraryURL: library.root?.url)
                 try? await Task.sleep(for: .seconds(30))
+                guard let self else { return }
+                self.system = SystemSnapshot.now(libraryURL: self.libraryURL)
             }
         }
     }
 
+    // REM  THE RULES FOR THE LIGHT (011). Red = not working; yellow = needs a look. The reasons are Claude's picks on the
+    // REM  amber sheet; "a device dropping frames" waits for the device reports (004).
+    var health: StandbyHealth {
+        let catalog = LibraryCatalog.shared
+        let partner = LibraryPartner.shared
+        var red: [String] = [], yellow: [String] = []
+        if system.addresses.isEmpty { red.append("No network") }
+        if partner.thisMacServes && !catalog.isServing { red.append("Not serving") }
+        if let lyceum = system.lyceum {
+            if lyceum.missing { red.append("Lyceum drive missing") } else if lyceum.low { yellow.append("Lyceum drive low") }
+        }
+        if system.macDisk.low { yellow.append("Mac disk low") }
+        for name in partner.servers.sorted() where partner.snapshots[name] == nil { yellow.append("\(name) not answering") }
+        if restartSkipped { yellow.append("5 AM restart skipped") }
+        if !red.isEmpty { return StandbyHealth(level: .red, reasons: red + yellow) }
+        if !yellow.isEmpty { return StandbyHealth(level: .yellow, reasons: yellow) }
+        return StandbyHealth(level: .green, reasons: [])
+    }
+
+    /// Past 7 AM, this copy started before today's 5 AM, the restart is on — and it never ran today.
+    private var restartSkipped: Bool {
+        guard LibraryPartner.shared.thisMacServes, MorningRestart.isOn else { return false }
+        let calendar = Calendar.current
+        let now = Date.now
+        guard let five = calendar.date(bySettingHour: 5, minute: 0, second: 0, of: now),
+              calendar.component(.hour, from: now) >= 7, BuildLog.launchedAt < five else { return false }
+        return !(MorningRestart.lastRestartAt.map { calendar.isDateInToday($0) } ?? false)
+    }
+}
+
+struct StandbyBoard: View {
+    /// The fixed canvas the board is drawn on; the page scales it to the window (NetworkView).
+    static let canvas = CGSize(width: 1024, height: 600)
+    @Environment(LibraryStore.self) private var library
+    private let catalog = LibraryCatalog.shared
+    private let partner = LibraryPartner.shared
+    private var monitor: StandbyMonitor { .shared }
+    private var system: SystemSnapshot { monitor.system }
+
+    var body: some View {
+        board
+        .task(id: library.root?.url) { monitor.watch(libraryURL: library.root?.url) }
+    }
+
+    // MARK: The board (001), on the 5-inch screen
+
+    private var board: some View {
+        VStack(spacing: 18) {
+            HStack(alignment: .top, spacing: 24) {
+                buildBlock.frame(maxWidth: .infinity)
+                Divider()
+                macColumn.frame(maxWidth: .infinity, alignment: .leading)
+            }
+            Spacer(minLength: 0)
+            lightStrip(height: 72)
+        }
+        .padding(28)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     // MARK: Build
+
+    private func buildNumber(size: CGFloat) -> some View {
+        Text(BuildStamp.number)
+            .font(.system(size: size, weight: .bold, design: .rounded))
+            .monospacedDigit()
+            .minimumScaleFactor(0.2)
+            .lineLimit(1)
+            .accessibilityLabel("Build \(BuildStamp.number)")
+            .accessibilityIdentifier("standbyBuildNumber")
+    }
 
     private var buildBlock: some View {
         VStack(alignment: .center, spacing: 6) {
             Text("Build")
                 .font(.lyceumHeadline)
                 .foregroundStyle(.secondary)
-            Text(BuildStamp.number)
-                .font(.system(size: 180, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .minimumScaleFactor(0.4)
-                .lineLimit(1)
-                .accessibilityLabel("Build \(BuildStamp.number)")
-                .accessibilityIdentifier("standbyBuildNumber")
+            buildNumber(size: 180)
             Text(BuildStamp.isStamped
                  ? "Version \(BuildStamp.version) · commit \(BuildStamp.commit) · built \(BuildStamp.built)"
                  : "Version \(BuildStamp.version) · unstamped build")
@@ -113,6 +190,7 @@ struct StandbyBoard: View {
             restartLine
                 .accessibilityIdentifier("standbyRestartLine")
         }
+        .multilineTextAlignment(.center)
     }
 
     @ViewBuilder
@@ -147,35 +225,84 @@ struct StandbyBoard: View {
         return Text(text).font(.lyceumBody).foregroundStyle(.secondary)
     }
 
-    // MARK: System and network
+    // MARK: The light (011)
 
-    private var statusGrid: some View {
-        Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 8) {
-            row("Mac", "\(system.macName) · macOS \(system.osVersion)", id: "standbyMac")
-            row("Network", system.addresses.isEmpty ? "No network address" : system.addresses.joined(separator: " · "),
-                warn: system.addresses.isEmpty, id: "standbyNetwork")
-            row("Serving", catalog.isServing
-                ? "Yes" + (catalog.listenerPort.map { " · port \($0)" } ?? "")
-                : "Not announced on the network", warn: !catalog.isServing && partner.thisMacServes, id: "standbyServing")
-            row("Streams", catalog.activeStreams == 0 ? "None now" : "\(catalog.activeStreams) playing", id: "standbyStreams")
-            row("Last connection", catalog.lastCaller.map { name in
-                name + (catalog.lastCallAt.map { " · \(Self.when($0))" } ?? "")
-            } ?? "No connections since launch", id: "standbyLastConnection")
-            row("Disk free", system.diskFree, warn: system.diskLow, id: "standbyDisk")
-            row("Mac up", Self.duration(system.macUptime), id: "standbyMacUptime")
-            row("App up", "\(Self.duration(Date.now.timeIntervalSince(BuildLog.launchedAt))) · since \(Self.when(BuildLog.launchedAt))",
-                id: "standbyAppUptime")
+    private func lightStrip(height: CGFloat) -> some View {
+        let health = monitor.health
+        return HStack(spacing: 14) {
+            Image(systemName: health.symbol)
+                .font(.system(size: height * 0.55, weight: .bold))
+            Text(health.words)
+                .font(.system(size: max(20, height * 0.36), weight: .semibold))
+                .lineLimit(2)
+                .minimumScaleFactor(0.6)
         }
-        .font(.lyceumBody)
+        // REM  Black on green and yellow, white on red — the words stay readable on every color.
+        .foregroundStyle(health.level == .red ? Color.white : Color.black)
+        .padding(.horizontal, 20)
+        .frame(maxWidth: .infinity, minHeight: height)
+        .background(RoundedRectangle(cornerRadius: height / 2).fill(health.color))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Status: \(health.words)")
+        .accessibilityIdentifier("standbyHealth")
     }
 
-    private func row(_ name: String, _ value: String, warn: Bool = false, id: String) -> some View {
-        // REM  The grid sits centered; inside it, names right-aligned and values left, so the pairs read as a column.
+    // MARK: This Mac (001, 002)
+
+    private var macColumn: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // REM  His revise to 001: "HomeLAB B can that be a large heading and MacOS 27.x be a sub heading followed by the body".
+            Text(system.macName)
+                .font(.system(size: 44, weight: .bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("standbyMac")
+            Text("macOS \(system.osVersion)")
+                .font(.lyceumTitle)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("standbyMacOS")
+            Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 8) {
+                row("network", "Network", system.addresses.isEmpty ? "No network address" : system.addresses.joined(separator: " · "),
+                    warn: system.addresses.isEmpty, id: "standbyNetwork")
+                row("dot.radiowaves.left.and.right", "Serving", catalog.isServing
+                    ? "Yes" + (catalog.listenerPort.map { " · port \($0)" } ?? "")
+                    : "Not announced on the network", warn: !catalog.isServing && partner.thisMacServes, id: "standbyServing")
+                row("play.rectangle", "Streams", catalog.activeStreams == 0 ? "None now" : "\(catalog.activeStreams) playing",
+                    id: "standbyStreams")
+                row("link", "Last connection", catalog.lastCaller.map { name in
+                    name + (catalog.lastCallAt.map { " · \(Self.when($0))" } ?? "")
+                } ?? "No connections since launch", id: "standbyLastConnection")
+                // REM  002 — the Lyceum's drive first, then the Mac's own disk; one line when they are the same drive.
+                if let lyceum = system.lyceum {
+                    row("externaldrive", "Lyceum", lyceum.summary(named: true), warn: lyceum.missing || lyceum.low, id: "standbyLyceum")
+                } else {
+                    row("externaldrive", "Lyceum", "No library folder on this Mac", id: "standbyLyceum")
+                }
+                if system.lyceum?.sameAsMacDisk != true {
+                    // REM  No drive name on this line — his screen 08:18 showed "Macintosh HD · 104.24 GB fre…" cut off; the label says it.
+                    row("internaldrive", "Mac disk", system.macDisk.summary(named: false), warn: system.macDisk.low, id: "standbyDisk")
+                }
+                row("clock.arrow.circlepath", "Mac up", Self.duration(system.macUptime), id: "standbyMacUptime")
+                row("app.badge.clock", "App up",
+                    "\(Self.duration(Date.now.timeIntervalSince(BuildLog.launchedAt))) · since \(Self.when(BuildLog.launchedAt))",
+                    id: "standbyAppUptime")
+            }
+            .font(.lyceumBody)
+        }
+    }
+
+    private func row(_ symbol: String, _ name: String, _ value: String, warn: Bool = false, id: String) -> some View {
         GridRow {
-            Text(name).foregroundStyle(.secondary).gridColumnAlignment(.trailing)
+            Image(systemName: symbol)
+                .font(.system(size: 22))
+                .foregroundStyle(warn ? Color.orange : Color.secondary)
+                .frame(width: 30)
+                .accessibilityHidden(true)
+            Text(name).foregroundStyle(.secondary)
             Text(value)
-                .multilineTextAlignment(.leading)
-                .gridColumnAlignment(.leading)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
                 .foregroundStyle(warn ? Color.orange : Color.primary)
                 .monospacedDigit()
                 .textSelection(.enabled)
@@ -206,33 +333,77 @@ struct StandbyBoard: View {
     }
 }
 
+/// The colored edge around the Status page when the light is yellow or red (011). Green has none.
+struct StandbyOutline: View {
+    var body: some View {
+        let health = StandbyMonitor.shared.health
+        if health.level != .green {
+            Rectangle()
+                .strokeBorder(health.color, lineWidth: 14)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+    }
+}
+
+/// One drive: its name, free and total space.
+struct DriveInfo: Equatable {
+    var name: String
+    var free: Int64
+    var total: Int64
+    var missing = false
+    var sameAsMacDisk = false
+
+    /// Under 10% free.
+    var low: Bool { !missing && total > 0 && Double(free) / Double(total) < 0.10 }
+
+    /// "Library B · 1.2 TB free of 4 TB"; without the name, "104 GB free of 494 GB".
+    func summary(named: Bool) -> String {
+        if missing { return "\(name) — missing" }
+        let f = ByteCountFormatter.string(fromByteCount: free, countStyle: .file)
+        let t = ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        return named ? "\(name) · \(f) free of \(t)" : "\(f) free of \(t)"
+    }
+
+    static func at(_ url: URL) -> DriveInfo? {
+        guard let v = try? url.resourceValues(forKeys: [.volumeNameKey, .volumeAvailableCapacityForImportantUsageKey,
+                                                        .volumeTotalCapacityKey]),
+              let free = v.volumeAvailableCapacityForImportantUsage, let total = v.volumeTotalCapacity else { return nil }
+        return DriveInfo(name: v.volumeName ?? url.lastPathComponent, free: free, total: Int64(total))
+    }
+}
+
 /// The slow-changing facts about this Mac, read every 30 seconds.
-struct SystemSnapshot {
+struct SystemSnapshot: Equatable {
     var macName: String
     var osVersion: String
     var addresses: [String]
-    var diskFree: String
-    var diskLow: Bool
+    /// The drive the Lyceum library folder is on — nil when this Mac has no library folder of its own.
+    var lyceum: DriveInfo?
+    var macDisk: DriveInfo
     var macUptime: TimeInterval
 
     static func now(libraryURL: URL?) -> SystemSnapshot {
         let info = ProcessInfo.processInfo
         let v = info.operatingSystemVersion
-        let (free, low) = diskFree(at: libraryURL ?? URL(fileURLWithPath: NSHomeDirectory()))
+        let home = URL(fileURLWithPath: NSHomeDirectory())
+        let macDisk = DriveInfo.at(home) ?? DriveInfo(name: "Mac disk", free: 0, total: 0)
+        var lyceum: DriveInfo?
+        if let libraryURL {
+            // REM  A library folder that can't be read means its drive is gone (unplugged, asleep, renamed) — red, not hidden.
+            if var drive = DriveInfo.at(libraryURL), FileManager.default.fileExists(atPath: libraryURL.path) {
+                drive.sameAsMacDisk = drive.name == macDisk.name && drive.total == macDisk.total
+                lyceum = drive
+            } else {
+                let name = libraryURL.pathComponents.count > 2 && libraryURL.pathComponents[1] == "Volumes"
+                    ? libraryURL.pathComponents[2] : libraryURL.lastPathComponent
+                lyceum = DriveInfo(name: name, free: 0, total: 0, missing: true)
+            }
+        }
         return SystemSnapshot(macName: Host.current().localizedName ?? info.hostName,
                               osVersion: "\(v.majorVersion).\(v.minorVersion)" + (v.patchVersion > 0 ? ".\(v.patchVersion)" : ""),
-                              addresses: ipv4Addresses(),
-                              diskFree: free, diskLow: low,
+                              addresses: ipv4Addresses(), lyceum: lyceum, macDisk: macDisk,
                               macUptime: info.systemUptime)
-    }
-
-    /// Free space on the drive that holds the library (or the home folder when this Mac has none). Low = under 10 GB.
-    private static func diskFree(at url: URL) -> (String, Bool) {
-        guard let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeNameKey]),
-              let bytes = values.volumeAvailableCapacityForImportantUsage else { return ("Unknown", false) }
-        let size = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
-        let name = values.volumeName.map { " on \($0)" } ?? ""
-        return (size + name, bytes < 10_000_000_000)
     }
 
     /// This Mac's IPv4 addresses on its network ports (Ethernet, Wi-Fi), loopback left out — "en0 192.168.1.20".

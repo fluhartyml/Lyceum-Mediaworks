@@ -116,8 +116,9 @@ final class mediaworksUITests: XCTestCase {
         let number = app.staticTexts["standbyBuildNumber"]
         XCTAssertTrue(number.waitForExistence(timeout: 10), "No build number on the Status page")
         print("STANDBY build label: \(number.label)")
-        for id in ["standbyUpdateLine", "standbyRestartLine", "standbyMac", "standbyNetwork", "standbyServing",
-                   "standbyStreams", "standbyLastConnection", "standbyDisk", "standbyMacUptime", "standbyAppUptime"] {
+        // REM  Big-window lines; standbyDisk is left out on purpose — it only shows when the Lyceum is on another drive.
+        for id in ["standbyUpdateLine", "standbyRestartLine", "standbyHealth", "standbyMac", "standbyMacOS", "standbyNetwork",
+                   "standbyServing", "standbyStreams", "standbyLastConnection", "standbyLyceum", "standbyMacUptime", "standbyAppUptime"] {
             let e = app.descendants(matching: .any)[id].firstMatch
             XCTAssertTrue(e.exists, "Missing \(id) on the Status page")
             print("STANDBY \(id): \(e.label)")

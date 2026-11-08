@@ -61,13 +61,35 @@ struct NetworkView: View {
     }
 
     var body: some View {
+        // REM  THE STATUS PAGE LIVES ON HOMELAB B'S ~5-INCH SCREEN — his word, 2026-11-08: "the WFC is geared toards a 5 inch
+        // REM  screen normally where as the other tabs use a 15 inch monitor because the KVM has to be connected to change
+        // REM  from the WFC screen" · "the WFC CAN have two colums". So the board is ONE layout, drawn on a fixed 1024×600
+        // REM  canvas and scaled to fill whatever window it is in — the 5-inch screen shows all of it, the same as the 15-inch.
+        // REM  The colored outline (011) runs around the window edge when the light is yellow or red.
+        // REM  The servers-and-devices map stays in its own window (Window menu, or the menu bar's Show Network…) until the
+        // REM  Network glyphs (amber 006) bring it onto the board.
+        if embedded {
+            GeometryReader { geo in
+                let scale = min(geo.size.width / StandbyBoard.canvas.width, geo.size.height / StandbyBoard.canvas.height)
+                StandbyBoard()
+                    .frame(width: StandbyBoard.canvas.width, height: StandbyBoard.canvas.height)
+                    .scaleEffect(scale)
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .overlay { StandbyOutline() }
+            }
+            .font(.lyceumBody)
+        } else {
+            mapPage
+                .font(.lyceumBody)
+                .frame(minWidth: 900, minHeight: 600)
+        }
+    }
+
+    private var mapPage: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 20)) { context in
             let phase = context.date.timeIntervalSinceReferenceDate * 24
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
-                    // REM  THE BUILD, HUGE, AND THE MAC'S HEALTH — his ask, 2026-11-08 (StandbyBoard.swift). On the
-                    // REM  waiting-for-caller page only; the separate Network window stays the map.
-                    if embedded { StandbyBoard() }
                     header
                     // Servers
                     HStack(alignment: .top, spacing: 24) {
@@ -89,8 +111,6 @@ struct NetworkView: View {
                 }
             }
         }
-        .font(.lyceumBody)
-        .frame(minWidth: embedded ? 0 : 900, minHeight: embedded ? 0 : 600)
     }
 
     // REM  WHAT THIS MAC IS, IN PLAIN WORDS — his catch, 2026-10-17: "not all macs will be servers. the screen says this
