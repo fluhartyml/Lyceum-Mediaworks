@@ -71,9 +71,10 @@ struct SettingsView: View {
             SendersSettingsSection()
             // REM  THE 5 AM RESTART — his "update or recycle lab b at 5 in the morning", 2026-11-03 (MorningRestart.swift).
             Section {
-                Toggle("Restart at 5 AM each day", isOn: $morningRestart)
+                // REM  Check first, restart only if needed — his ask 2026-11-08 (MorningRestart.check).
+                Toggle("Check at 5 AM, restart if needed", isOn: $morningRestart)
                     .font(.lyceumBody)
-                    .info("On — when this Mac serves your library, it quits and reopens itself once each morning between 5 and 7 AM, only while nothing is playing, importing, transcoding or syncing.\n\nOff — it keeps running until you quit it.")
+                    .info("On — when this Mac serves your library, each morning between 5 and 7 AM, while nothing is playing, importing, transcoding or syncing, it checks that deletes still reach the drive and the server still answers. Only if something fails does it quit and reopen itself.\n\nOff — no check and no restart; it keeps running until you quit it.")
             } header: {
                 Text("Daily Restart").font(.lyceumHeadline)
             }

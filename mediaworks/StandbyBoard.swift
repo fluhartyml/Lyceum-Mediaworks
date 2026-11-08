@@ -140,7 +140,8 @@ final class StandbyMonitor {
         let now = Date.now
         guard let five = calendar.date(bySettingHour: 5, minute: 0, second: 0, of: now),
               calendar.component(.hour, from: now) >= 7, BuildLog.launchedAt < five else { return false }
-        return !(MorningRestart.lastRestartAt.map { calendar.isDateInToday($0) } ?? false)
+        // REM  The morning CHECK is what must run each day; a restart only follows when it finds a problem.
+        return !(MorningRestart.lastCheckAt.map { calendar.isDateInToday($0) } ?? false)
     }
 }
 
@@ -231,10 +232,12 @@ struct StandbyBoard: View {
             text = "5 AM restart: off — this Mac does not serve the library"
         } else if !MorningRestart.isOn {
             text = "5 AM restart: off in Settings"
+        } else if let last = MorningRestart.lastCheckAt {
+            text = "5 AM check \(Self.when(last)): \(MorningRestart.lastOutcome ?? "done")"
         } else if let last = MorningRestart.lastRestartAt {
             text = "5 AM restart: on · last restart \(Self.when(last))"
         } else {
-            text = "5 AM restart: on · no morning restart yet"
+            text = "5 AM check: on · not run yet"
         }
         return Text(text).font(.lyceumBody).foregroundStyle(.secondary)
     }

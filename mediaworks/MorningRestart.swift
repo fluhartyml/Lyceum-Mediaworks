@@ -8,6 +8,7 @@
 
 import AppKit
 import Foundation
+import Network
 
 // REM  THE 5 AM RESTART — his words, 2026-11-03 21:45: "can you cause the lab to refresh pieriodically like it was closed and
 // REM  reopened", then 21:47: "update or recycle lab b at 5 in the morning", then "yes build it".
@@ -23,12 +24,18 @@ enum MorningRestart {
     private static let lastDayKey = "morningRestartLastDay"
     private static let waitArgument = "-lyceumWaitForPID"
     private static let lastRestartKey = "morningRestartLastAt"
+    private static let lastCheckKey = "morningCheckLastAt"
+    private static let lastOutcomeKey = "morningCheckOutcome"
+    private static var checking = false
 
     /// On unless turned off in Settings.
     static var isOn: Bool { UserDefaults.standard.object(forKey: enabledKey) as? Bool ?? true }
 
     /// When the last morning restart began — shown on the waiting-for-caller page (StandbyBoard.swift).
     static var lastRestartAt: Date? { UserDefaults.standard.object(forKey: lastRestartKey) as? Date }
+    /// When the last morning check ran, restart or not, and what it found — for the Status page.
+    static var lastCheckAt: Date? { UserDefaults.standard.object(forKey: lastCheckKey) as? Date }
+    static var lastOutcome: String? { UserDefaults.standard.string(forKey: lastOutcomeKey) }
 
     /// Call once at launch: holds a freshly reopened copy until the old one has quit, then watches the clock.
     static func start() {
@@ -53,18 +60,74 @@ enum MorningRestart {
         return nil
     }
 
+    // REM  CHECK FIRST, RESTART ONLY IF NEEDED — his ask, 2026-11-08 09:2x: "can it check if it actually needs to restart
+    // REM  instead of a blanket restart for the deletes from an apple tv". Three checks, all of them this Mac's own:
+    // REM    1. the Apple TV's Move to Trash path still reaches the drive (LibraryCatalog.trashPathProblem — a real test move);
+    // REM    2. the server still accepts a connection on its own port;
+    // REM    3. no device's delete has failed since this copy started (LibraryCatalog.failedDeletes).
+    // REM  All pass → it stays up and the Status page says so. Any fails → the same restart as before, with the reason saved.
     private static func check() {
-        guard isOn, LibraryPartner.shared.thisMacServes else { return }
+        guard isOn, LibraryPartner.shared.thisMacServes, !checking else { return }
         let now = Date.now
         let hour = Calendar.current.component(.hour, from: now)
         guard hour >= 5, hour < 7 else { return }
         let today = ISO8601DateFormatter.string(from: now, timeZone: .current, formatOptions: [.withFullDate])
         guard UserDefaults.standard.string(forKey: lastDayKey) != today else { return }
         guard busyWith == nil else { return }
-        // Written BEFORE the restart, so the reopened copy does not restart again the same morning.
-        UserDefaults.standard.set(today, forKey: lastDayKey)
-        UserDefaults.standard.set(now, forKey: lastRestartKey)
-        relaunch()
+        checking = true
+        Task { @MainActor in
+            defer { checking = false }
+            var problems: [String] = []
+            let catalog = LibraryCatalog.shared
+            if let problem = catalog.trashPathProblem() { problems.append(problem) }
+            if let problem = await serverProblem() { problems.append(problem) }
+            if catalog.failedDeletes > 0 {
+                problems.append("\(catalog.failedDeletes) delete\(catalog.failedDeletes == 1 ? "" : "s") from a device did not reach the drive")
+            }
+            // Written BEFORE any restart, so the reopened copy does not check or restart again the same morning.
+            UserDefaults.standard.set(today, forKey: lastDayKey)
+            UserDefaults.standard.set(now, forKey: lastCheckKey)
+            guard !problems.isEmpty else {
+                UserDefaults.standard.set("no restart needed", forKey: lastOutcomeKey)
+                return
+            }
+            UserDefaults.standard.set("restarted — " + problems.joined(separator: "; "), forKey: lastOutcomeKey)
+            UserDefaults.standard.set(now, forKey: lastRestartKey)
+            relaunch()
+        }
+    }
+
+    /// Nil when the library server accepts a connection on its own port within 5 seconds.
+    private static func serverProblem() async -> String? {
+        let catalog = LibraryCatalog.shared
+        guard catalog.isServing, let raw = catalog.listenerPort, let port = NWEndpoint.Port(rawValue: raw) else {
+            return "the library server is not running"
+        }
+        let connection = NWConnection(host: "127.0.0.1", port: port, using: .tcp)
+        let answered = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            let once = Once()
+            let finish: @Sendable (Bool) -> Void = { ok in
+                guard once.first() else { return }
+                connection.cancel()
+                continuation.resume(returning: ok)
+            }
+            connection.stateUpdateHandler = { state in
+                switch state {
+                case .ready: finish(true)
+                case .failed, .cancelled: finish(false)
+                default: break
+                }
+            }
+            connection.start(queue: .main)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { finish(false) }
+        }
+        return answered ? nil : "the library server did not accept a connection"
+    }
+
+    /// Lets a continuation resume exactly once; every caller runs on the main queue.
+    private final class Once: @unchecked Sendable {
+        private var done = false
+        func first() -> Bool { if done { return false }; done = true; return true }
     }
 
     private static func relaunch() {

@@ -38,6 +38,8 @@ final class LibraryCatalog {
     var listenerPort: UInt16? { listener?.port?.rawValue }
     /// For the menu-bar status ("waiting for caller"): true once announced on the network.
     private(set) var isServing = false
+    /// Deletes from a device that never reached the drive since this copy started — the morning check reads it (MorningRestart).
+    private(set) var failedDeletes = 0
     /// Video streams open right now, and the last device that called and when.
     private(set) var activeStreams = 0
     private(set) var lastCaller: String?
@@ -525,9 +527,29 @@ final class LibraryCatalog {
     private func trashPlaylistFile(_ name: String) -> Bool {
         guard let file = playlistFile(name), FileManager.default.fileExists(atPath: file.path) else { return true }
         guard let root = running, let trash = store?.trashFolder,
-              (try? LibraryStore.moveToTrash([file], libraryRoot: root, trash: trash)) != nil else { return false }
+              (try? LibraryStore.moveToTrash([file], libraryRoot: root, trash: trash)) != nil else { failedDeletes += 1; return false }
         writtenPlaylists.remove(name)
         return true
+    }
+
+    // REM  THE 5 AM CHECK'S DRIVE TEST — his ask, 2026-11-08 09:2x: "can it check if it actually needs to restart instead of
+    // REM  a blanket restart for the deletes from an apple tv". It runs the SAME Move to Trash the Apple TV's delete uses
+    // REM  (running root + store's .Lyceum Trash), on a small file of its own, then removes only that file — and the day
+    // REM  folder only if it is left empty. nil = the delete path works, or this Mac has no folder of its own to test.
+    func trashPathProblem() -> String? {
+        guard let root = running else { return nil }
+        guard let trash = store?.trashFolder else { return "the library's Trash cannot be reached" }
+        let fm = FileManager.default
+        let probe = root.appending(path: ".lyceum-morning-check-\(UUID().uuidString)")
+        do { try Data("Lyceum Mediaworks morning check".utf8).write(to: probe) } catch { return "cannot write to the library drive" }
+        guard let moved = (try? LibraryStore.moveToTrash([probe], libraryRoot: root, trash: trash))?.first?.1 else {
+            try? fm.removeItem(at: probe)
+            return "Move to Trash is not reaching the drive"
+        }
+        try? fm.removeItem(at: moved)
+        let day = moved.deletingLastPathComponent()
+        if (try? fm.contentsOfDirectory(atPath: day.path))?.isEmpty == true { try? fm.removeItem(at: day) }
+        return nil
     }
 
     private func renamePlaylistFile(_ old: String, to new: String) {
@@ -629,7 +651,11 @@ final class LibraryCatalog {
     func carryOut(_ request: CacheRequest) async {
         // A new folder at the very top of the library (a new trunk) has the library itself as its place.
         let place = libraryFile(request.path) ?? (request.op == .newFolder && request.path == "" ? running : nil)
-        guard let url = place, let path = request.path, let store, let root = running else { return }
+        guard let url = place, let path = request.path, let store, let root = running else {
+            // REM  A device's delete that could not even start (no open library here) counts for the 5 AM check.
+            if request.op == .trash { failedDeletes += 1 }
+            return
+        }
         let who = request.device ?? "A device"
         var change = DeviceChange(when: .now, device: who, op: request.op, path: path,
                                   wasChecked: !unchecked.contains(path),
@@ -728,7 +754,7 @@ final class LibraryCatalog {
             report("\(who) moved “\(url.lastPathComponent)” to “\(destination)”")
         case .trash:
             guard let trash = store.trashFolder,
-                  let moved = try? LibraryStore.moveToTrash([url], libraryRoot: root, trash: trash).first else { return }
+                  let moved = try? LibraryStore.moveToTrash([url], libraryRoot: root, trash: trash).first else { failedDeletes += 1; return }
             let base = root.standardizedFileURL.path + "/"
             change.trashedTo = String(moved.1.standardizedFileURL.path.dropFirst(base.count))
             report("\(who) moved “\(url.lastPathComponent)” to the Trash")
