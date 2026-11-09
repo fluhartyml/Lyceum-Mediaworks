@@ -417,7 +417,10 @@ struct TVPlayer: View {
         // REM  right button is next file and left button is rewind and previous file if long pressed" · "5" · "keep the
         // REM  iphone at 10". Replaces D004e's tap = next / previous and hold = scrub.
         case .tapRight: theater.skip(5); light(.forward)
-        case .tapLeft: theater.skip(-5); light(.rewind)
+        // REM  ◀︎ TAP IS ALSO A MARK — his idea 2026-11-09 ~12:5x: "i press back button to rewind at where every sound drop
+        // REM  occurs ... so it 'tags' where the sound drops happened" → "yes add the marks". Logged at the spot BEFORE the
+        // REM  jump back (just after the drop), into the stats Events and the Mac's Playback Log. The button is unchanged.
+        case .tapLeft: theater.stats.mark("◀︎ pressed — your mark (sound drop?)"); theater.skip(-5); light(.rewind)
         case .holdRight: theater.next(); light(.next)
         case .holdLeft: theater.previous(); light(.previous)
         case .playPause, .center: if theater.isPlaying { theater.player.pause() } else { theater.player.play() }; light(.playPause)

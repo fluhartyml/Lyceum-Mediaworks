@@ -94,6 +94,9 @@ final class PlaybackStats {
         Task { await readTracks(item) }
     }
 
+    /// A mark he made with the remote — logged like any event, at the spot where it was pressed.
+    func mark(_ text: String) { log(text) }
+
     // MARK: Reading
 
     private func refresh() {
