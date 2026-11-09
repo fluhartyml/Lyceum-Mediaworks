@@ -1093,6 +1093,16 @@ final class LibraryCatalog {
         readHeader()
     }
 
+    /// Takes back the "stream open" count streamHTTP added, for a request that isn't a video.
+    private func uncount(_ connection: NWConnection) {
+        connection.stateUpdateHandler = nil
+        activeStreams = max(0, activeStreams - 1)
+        if case .hostPort(let host, _) = connection.endpoint, let address = "\(host)".components(separatedBy: "%").first {
+            streamsByAddress[address] = max(0, (streamsByAddress[address] ?? 1) - 1)
+            if streamsByAddress[address] == 0 { streamsByAddress[address] = nil }
+        }
+    }
+
     /// A smart TV asking for a file through DLNA (DLNAServer.swift) — the same streaming, plus the DLNA headers.
     func streamForDLNA(_ connection: NWConnection, request: String) {
         activeStreams += 1
@@ -1109,6 +1119,9 @@ final class LibraryCatalog {
             let reply = "HTTP/1.1 \(status)\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
             connection.send(content: Data(reply.utf8), completion: .contentProcessed { _ in connection.cancel() })
         }
+        // REM  NOT A VIDEO — /log, /now and /status arrive on the streaming path and were counted as a video playing while
+        // REM  open, which also made the 5 AM check see "a video is playing" (found 2026-11-09 via /status). Uncounted here.
+        if !dlna, parts.count >= 2, ["/log?", "/now?", "/status"].contains(where: { parts[1].hasPrefix($0) }) { uncount(connection) }
         // REM  /log — A DEVICE'S PLAYBACK EVENT for the Playback Log (PlaybackLog.swift, his "yes build the playback log on
         // REM  lab b", 2026-11-09). Kept on this Mac; answered with no body.
         if parts.count >= 2, parts[1].hasPrefix("/log?") {
@@ -1708,11 +1721,17 @@ extension LibraryCatalog {
 
 extension LibraryCatalog {
     fileprivate func noteCaller(_ connection: NWConnection, _ request: CacheRequest) {
-        guard let name = request.device, !name.isEmpty else { return }
         var address: String?
         if case .hostPort(let host, _) = connection.endpoint { address = "\(host)".components(separatedBy: "%").first }
+        // REM  THE BUILD COUNTS EVEN WITHOUT A NAME — found 2026-11-09 17:5x through the new /status: Lab B's newest-build-seen
+        // REM  was still 0 at build 275. Everyday library requests carry the build but no device name, and this used to return
+        // REM  before noting the build, so the 5 AM build check (267) and the update band (273) never learned of newer builds.
+        if let build = request.build {
+            let who = request.device.flatMap { $0.isEmpty ? nil : $0 } ?? clientName(at: address ?? "") ?? address ?? "a device"
+            MorningRestart.saw(build: build, on: who)
+        }
+        guard let name = request.device, !name.isEmpty else { return }
         clients[name] = SeenClient(name: name, address: address, lastSeen: .now, lastWhat: DeviceChangesView.what(request.op))
-        if let build = request.build { MorningRestart.saw(build: build, on: name) }
     }
 
     /// A server ticked here, or a device he approved, calling from this address.
