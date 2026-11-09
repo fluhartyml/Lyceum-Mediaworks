@@ -329,6 +329,7 @@ final class LibraryCatalog {
             var change = DeviceChange(when: .now, device: device, op: request.op, path: path,
                                       wasChecked: !unchecked.contains(path),
                                       wasThumbedUp: thumbedUp(path))
+            change.wasThumbedDown = thumbedDown(path)
             if request.op == .renamePlaylist { change.newName = request.newName?.trimmingCharacters(in: .whitespaces) }
             if request.op == .deletePlaylist { change.deletedList = playlists[path] }
             if request.op == .uncheckAll { change.checkedBefore = (playlists[path] ?? []).filter { !unchecked.contains($0) } }
@@ -355,7 +356,15 @@ final class LibraryCatalog {
             var list = playlists[name] ?? []
             if !list.contains(path) { list.append(path) }
             playlists[name] = list
-        case .thumbsDown: unchecked.insert(path)
+            // REM  👍 takes it out of Thumbs Down — a file is in one or the other (Claude's call, 2026-11-09).
+            takeOutOfThumbsDown(path)
+        case .thumbsDown:
+            unchecked.insert(path)
+            // REM  ONE Thumbs Down list for every kind (his word 2026-11-09); 👎 takes it out of Thumbs Up.
+            var list = playlists[LibraryCache.thumbsDown] ?? []
+            if !list.contains(path) { list.append(path) }
+            playlists[LibraryCache.thumbsDown] = list
+            takeOutOfThumbsUp(path)
         case .unthumb:
             takeOutOfThumbsUp(path)
         case .renamePlaylist:
@@ -384,7 +393,7 @@ final class LibraryCatalog {
         case .removeFromPlaylist:
             guard let name = request.playlist, var list = playlists[name] else { return }
             list.removeAll { $0 == path }
-            playlists[name] = list.isEmpty && LibraryCache.isThumbsUp(name) ? nil : list
+            playlists[name] = list.isEmpty && (LibraryCache.isThumbsUp(name) || name == LibraryCache.thumbsDown) ? nil : list
         }
         saveMarksAndPublish()
     }
@@ -405,6 +414,15 @@ final class LibraryCatalog {
     func thumbsUpList(for path: String) -> String { LibraryCache.thumbsUp(forKind: snapshot?.file(at: path)?.info?.mediaKind) }
 
     func thumbedUp(_ path: String) -> Bool { playlists.contains { LibraryCache.isThumbsUp($0.key) && $0.value.contains(path) } }
+
+    func thumbedDown(_ path: String) -> Bool { playlists[LibraryCache.thumbsDown]?.contains(path) == true }
+
+    /// Out of Thumbs Down; an emptied list goes away (the next 👎 starts it again).
+    private func takeOutOfThumbsDown(_ path: String) {
+        guard var list = playlists[LibraryCache.thumbsDown], list.contains(path) else { return }
+        list.removeAll { $0 == path }
+        playlists[LibraryCache.thumbsDown] = list.isEmpty ? nil : list
+    }
 
     /// Out of every Thumbs Up list; an emptied one goes away (the next 👍 of that kind starts it again).
     private func takeOutOfThumbsUp(_ path: String) {
@@ -606,7 +624,7 @@ final class LibraryCatalog {
             var list = playlists[name] ?? []
             if change.op == .addToPlaylist { list.removeAll { $0 == change.path } }
             else if !list.contains(change.path) { list.append(change.path) }
-            playlists[name] = list.isEmpty && LibraryCache.isThumbsUp(name) ? nil : list
+            playlists[name] = list.isEmpty && (LibraryCache.isThumbsUp(name) || name == LibraryCache.thumbsDown) ? nil : list
             deviceChanges[index].undone = .now
             saveChanges()
             saveMarksAndPublish()
@@ -631,6 +649,11 @@ final class LibraryCatalog {
         else if !thumbedUp(change.path) {
             let name = thumbsUpList(for: change.path)
             playlists[name, default: []].append(change.path)
+        }
+        // REM  Thumbs Down back as it was (changes from before build 260 didn't record it: left alone).
+        if let wasDown = change.wasThumbedDown {
+            if !wasDown { takeOutOfThumbsDown(change.path) }
+            else if !thumbedDown(change.path) { playlists[LibraryCache.thumbsDown, default: []].append(change.path) }
         }
         deviceChanges[index].undone = .now
         saveChanges()

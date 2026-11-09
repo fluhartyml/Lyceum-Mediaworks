@@ -199,6 +199,8 @@ nonisolated struct DeviceChange: Codable, Sendable, Hashable, Identifiable {
     var wasChecked: Bool
     /// Whether the file was already in Thumbs Up before the change.
     var wasThumbedUp: Bool
+    /// Whether the file was already in Thumbs Down before the change (nil on changes recorded before build 260).
+    var wasThumbedDown: Bool?
     /// Set once the change is undone on the Mac.
     var undone: Date?
     /// A tag edit: the new values, and what those fields held before.
@@ -281,10 +283,17 @@ nonisolated enum LibraryCache {
     /// Any Thumbs Up list (and the old single one).
     static func isThumbsUp(_ name: String) -> Bool { name == thumbsUp || name.hasPrefix(thumbsUpPrefix) }
 
-    /// Playlist order: the Thumbs Up lists first, then by name.
+    // REM  THUMBS DOWN IS ONE LIST — his word 2026-11-09 ~10:2x, shaking down on the Apple TV: "thumbs down should also be added
+    // REM  to a thumbs down playlist, the platlists thumbs up can be separate like they are now but thumbs down should be one
+    // REM  list no mater the media type or meta tag you have thumbs up splitting playlists by, thumbs down is consolidated".
+    static let thumbsDown = "Thumbs Down"
+
+    /// Playlist order: the Thumbs Up lists first, then Thumbs Down, then by name.
     static func playlistOrder(_ a: String, _ b: String) -> Bool {
         let ta = isThumbsUp(a), tb = isThumbsUp(b)
         if ta != tb { return ta }
+        let da = a == thumbsDown, db = b == thumbsDown
+        if da != db { return da }
         return a.localizedStandardCompare(b) == .orderedAscending
     }
 
