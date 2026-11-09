@@ -30,9 +30,12 @@ final class StartBuffer {
     // REM  "yes make automatic the default on all of them and have a notification that appears and fades away".
     // REM  A stall moves it UP one step for the next video; five videos in a row with no stall move it DOWN one step.
     static let automatic: Double = -1
-    static let choices: [Double] = [automatic, 0, 5, 10, 20, 30]
+    // REM  1, 2 AND 3 MINUTES — his word 2026-11-09 ~12:0x: "yes build the 1 2 and 3 minute choices" — a head start big enough
+    // REM  that a Wi-Fi dip between the Mac and this device can't reach the picture for minutes, so a sound drop left over
+    // REM  points at the AirPlay speaker link instead. Automatic may climb to 3 minutes too (Claude's offer, his yes).
+    static let choices: [Double] = [automatic, 0, 5, 10, 20, 30, 60, 120, 180]
     static let defaultSeconds: Double = automatic
-    static let autoSteps: [Double] = [5, 10, 20, 30]
+    static let autoSteps: [Double] = [5, 10, 20, 30, 60, 120, 180]
     static let autoKey = "startBufferAutoSeconds"
     static let cleanToStepDown = 5
 
@@ -47,14 +50,20 @@ final class StartBuffer {
     }
     /// Seconds loaded ahead before Play is pressed.
     nonisolated static var headStart: Double { choice == automatic ? autoSeconds : choice }
-    /// Seconds the player is asked to keep loaded ahead while playing.
-    static let cushion: Double = 60
+    /// Seconds the player is asked to keep loaded ahead while playing — always more than the head start.
+    static var cushion: Double { max(60, headStart * 2) }
     /// Longest wait before playing anyway — always a good margin past the head start.
     static var limit: Double { max(20, headStart * 2 + 5) }
 
     static func label(_ seconds: Double) -> String {
-        if seconds == automatic { return "Automatic — \(Int(autoSeconds)) seconds now" }
-        return seconds == 0 ? "None — start at once" : "\(Int(seconds)) seconds"
+        if seconds == automatic { return "Automatic — \(span(autoSeconds)) now" }
+        return seconds == 0 ? "None — start at once" : span(seconds)
+    }
+
+    /// "30 seconds", "1 minute", "3 minutes".
+    static func span(_ seconds: Double) -> String {
+        if seconds >= 60 { let m = Int(seconds / 60); return m == 1 ? "1 minute" : "\(m) minutes" }
+        return "\(Int(seconds)) seconds"
     }
 
     // MARK: Automatic
@@ -91,7 +100,7 @@ final class StartBuffer {
         let now = Self.autoSeconds
         guard let up = Self.autoSteps.first(where: { $0 > now }) else { return }
         UserDefaults.standard.set(up, forKey: Self.autoKey)
-        show("Buffer raised to \(Int(up)) seconds — the video had to stop and load")
+        show("Buffer raised to \(Self.span(up)) — the video had to stop and load")
     }
 
     // REM  A STALL THAT NEVER STARTED AGAIN — his catch on the Living Room TV, 2026-11-09 ~11:4x: "when it did adjust to
@@ -121,7 +130,7 @@ final class StartBuffer {
         if clean >= Self.cleanToStepDown, let down = Self.autoSteps.last(where: { $0 < now }) {
             UserDefaults.standard.set(down, forKey: Self.autoKey)
             UserDefaults.standard.set(0, forKey: "startBufferClean")
-            show("Buffer lowered to \(Int(down)) seconds — videos are playing smoothly")
+            show("Buffer lowered to \(Self.span(down)) — videos are playing smoothly")
         } else {
             UserDefaults.standard.set(clean, forKey: "startBufferClean")
         }
@@ -213,7 +222,7 @@ struct StartBufferPicker: View {
         #endif
     }
 
-    static let info = "Automatic — after a video has to stop and load, the next one waits longer before it starts; after five smooth videos it waits less. A short notice shows when it changes.\n\nIf buffering issues — a video stops to load, or the sound drops out — you can also pick a longer wait yourself. Mediaworks loads this much of the video before it starts playing, then keeps up to a minute loaded ahead. Videos already on this device start at once."
+    static let info = "Automatic — after a video has to stop and load, the next one waits longer before it starts; after five smooth videos it waits less. A short notice shows when it changes.\n\nIf buffering issues — a video stops to load, or the sound drops out — you can also pick a longer wait yourself. Mediaworks loads this much of the video before it starts playing (up to 3 minutes), then keeps at least twice that loaded ahead while it plays. Videos already on this device start at once."
 }
 
 /// "Buffering…" over the video while the head start fills, and Automatic's notice at the top, fading in and out.
