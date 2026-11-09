@@ -68,16 +68,34 @@ final class PlayPositions {
     // REM  The files this device stopped partway through, newest first — library files only (a mark at 0 = finished or
     // REM  barely started, so it is left out). Each opens at its spot through the same resume as always.
     /// Library files stopped partway on this device, newest first.
-    func recent(limit: Int = 50) -> [(path: String, seconds: Double, when: Date)] {
+    // REM  EVERY FILE TOUCHED — his word 2026-11-09 ~15:0x on the TV: "it shouldnt matter if played skipped or stopped, it
+    // REM  should show here if a media file is 'touched'". Each file a player loads is noted (touch) with the time; Recently
+    // REM  Viewed lists every touched library file, newest first. Stopped partway → its spot (seconds > 0, resumes there);
+    // REM  played through or skipped → seconds 0 ("Played", starts at the top). Newest 200 kept on this device.
+    private static let touchedKey = "recentlyTouched"
+    private static var touched: [String: Date] {
+        (UserDefaults.standard.dictionary(forKey: touchedKey) as? [String: Date]) ?? [:]
+    }
+
+    /// A player loaded this file — it belongs on Recently Viewed whatever happens next.
+    func touch(_ key: String) {
+        guard Self.isSynced(key) else { return }
+        var all = Self.touched
+        all[key] = .now
+        if all.count > 200 { for old in all.sorted(by: { $0.value < $1.value }).prefix(all.count - 200) { all[old.key] = nil } }
+        UserDefaults.standard.set(all, forKey: Self.touchedKey)
+    }
+
+    func recent(limit: Int = 200) -> [(path: String, seconds: Double, when: Date)] {
         let hidden = Self.hiddenFromRecent
-        return marks.filter { entry in
-            guard Self.isSynced(entry.key), entry.value.seconds > 0 else { return false }
-            guard let hiddenAt = hidden[entry.key] else { return true }
-            return entry.value.when > hiddenAt
+        var latest: [String: Date] = Self.touched
+        for (key, mark) in marks where Self.isSynced(key) && mark.seconds > 0 {
+            latest[key] = max(latest[key] ?? .distantPast, mark.when)
         }
-            .sorted { $0.value.when > $1.value.when }
+        return latest.filter { key, when in hidden[key].map { when > $0 } ?? true }
+            .sorted { $0.value > $1.value }
             .prefix(limit)
-            .map { ($0.key, $0.value.seconds, $0.value.when) }
+            .map { ($0.key, marks[$0.key]?.seconds ?? 0, $0.value) }
     }
 
     // REM  REMOVE / CLEAR RECENTLY VIEWED — his yes 2026-11-09 ~14:5x ("yes build both"). Taking a title off the list keeps
@@ -196,6 +214,7 @@ final class PositionKeeper {
     /// elsewhere, then keeps the mark. Does nothing more if the player has moved on to another file meanwhile.
     func resume(_ key: String, for item: AVPlayerItem) async {
         guard let player, player.currentItem === item else { return }
+        PlayPositions.shared.touch(key)
         let here = PlayPositions.shared.local(key)
         if here > 0 { player.seek(to: CMTime(seconds: here, preferredTimescale: 600), completionHandler: { _ in }) }
         let best = await PlayPositions.shared.start(key)

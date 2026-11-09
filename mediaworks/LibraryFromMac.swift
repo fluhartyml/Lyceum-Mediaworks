@@ -825,17 +825,20 @@ private struct RecentlyViewedList: View {
     // REM  saved spots stay, and a title comes back when it is played again.
     @State private var saving = false
     @State private var newName = ""
-    @State private var clearing = false
 
     var body: some View {
         List {
             if recent.isEmpty {
-                Text("Nothing stopped partway yet. Stop a video or song before the end and it shows here, ready to pick up where you left off.")
+                Text("Nothing played yet. Every video or song you play, skip or stop shows here, newest first.")
                     .foregroundStyle(.secondary)
             } else {
                 Section {
                     Button { newName = ""; saving = true } label: { Label("Save as New Playlist…", systemImage: "plus.rectangle.on.rectangle") }
-                    Button { clearing = true } label: { Label("Clear Recently Viewed", systemImage: "clock.badge.xmark") }
+                    // REM  NO "ARE YOU SURE" — his 2026-11-09 catch: Clear took two clicks. Nothing is lost (files and spots stay).
+                    Button {
+                        PlayPositions.shared.hideFromRecent(recent.map(\.path))
+                        recent = PlayPositions.shared.recent()
+                    } label: { Label("Clear Recently Viewed", systemImage: "clock.badge.xmark") }
                 }
             }
             let paths = recent.map(\.path)
@@ -847,7 +850,7 @@ private struct RecentlyViewedList: View {
                                      PlayPositions.shared.hideFromRecent([item.path])
                                      recent = PlayPositions.shared.recent()
                                  }))
-                        Text("Stopped at \(PlayPositions.clock(item.seconds)) · \(item.when.formatted(.relative(presentation: .named)))")
+                        Text("\(item.seconds > 0 ? "Stopped at \(PlayPositions.clock(item.seconds))" : "Played") · \(item.when.formatted(.relative(presentation: .named)))")
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
                     }
@@ -869,15 +872,6 @@ private struct RecentlyViewedList: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Your Mac makes a playlist of these \(recent.count) titles, in this order. Recently Viewed stays as it is.")
-        }
-        .alert("Clear Recently Viewed?", isPresented: $clearing) {
-            Button("Clear") {
-                PlayPositions.shared.hideFromRecent(recent.map(\.path))
-                recent = PlayPositions.shared.recent()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("The list empties on this device. Your files and where you stopped in each stay, and a title comes back when you play it again.")
         }
     }
 }
