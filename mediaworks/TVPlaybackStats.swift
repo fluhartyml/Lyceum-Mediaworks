@@ -39,6 +39,11 @@ final class PlaybackStats {
     private(set) var dropped = "–"
     private(set) var stalls = 0
     private(set) var events: [Event] = []
+    /// The loudness actually going out, from SoundMeter.swift (his "tell if a video is playing and dropped sound", 11-09).
+    private(set) var sound = "–"
+    /// Seconds of silence while playing, right now (0 when there's sound).
+    private(set) var silentFor = 0
+    private(set) var soundDB: Double?
 
     @ObservationIgnored private weak var player: AVPlayer?
     @ObservationIgnored private var sessionObservers: [NSObjectProtocol] = []
@@ -48,6 +53,11 @@ final class PlaybackStats {
     @ObservationIgnored private var errorsSeen = 0
     /// The library path of the file loaded — each event also goes to the Mac's Playback Log under it (PlaybackLog.swift).
     @ObservationIgnored private var path = ""
+    @ObservationIgnored private var meter: SoundMeterBox?
+    @ObservationIgnored private var silenceLogged = false
+    @ObservationIgnored private var silentSince: Double = 0
+    @ObservationIgnored private var heartbeat = 0
+    var filePath: String { path }
 
     /// Starts listening to the player and the TV's sound output. Once per player.
     func attach(_ player: AVPlayer) {
@@ -79,6 +89,7 @@ final class PlaybackStats {
         for observer in itemObservers { NotificationCenter.default.removeObserver(observer) }
         itemObservers = []
         video = "–"; audio = "–"; bitrate = "–"; dropped = "–"; stalls = 0; errorsSeen = 0; lastState = ""
+        meter = nil; sound = "–"; soundDB = nil; silentFor = 0; silenceLogged = false
         log("Started \(name)")
         let center = NotificationCenter.default
         itemObservers.append(center.addObserver(forName: AVPlayerItem.playbackStalledNotification, object: item, queue: .main) { _ in
@@ -120,6 +131,9 @@ final class PlaybackStats {
             .first { $0.start.seconds <= now && now <= $0.end.seconds }
             .map { $0.end.seconds - now } ?? 0
         buffered = String(format: "%.0f s ahead", ahead) + (item.isPlaybackBufferEmpty ? " · EMPTY" : "")
+        readSound(at: now, duration: item.duration.seconds, playing: player.timeControlStatus == .playing)
+        heartbeat += 1
+        if heartbeat % 5 == 0, !path.isEmpty { NowPlayingSender.send(report(at: now, duration: item.duration.seconds)) }
         if let events = item.accessLog()?.events, let last = events.last {
             let observed = last.observedBitrate, indicated = last.indicatedBitrate
             var parts: [String] = []
@@ -129,6 +143,45 @@ final class PlaybackStats {
             let drops = events.map(\.numberOfDroppedVideoFrames).filter { $0 >= 0 }
             dropped = drops.isEmpty ? "not reported" : "\(drops.reduce(0, +))"
         }
+    }
+
+    // REM  SILENCE WHILE PLAYING — 3 s in a row under −60 dB, not in the first or last 3 s of the file, is logged once as
+    // REM  "No sound coming out"; the first loud second after it logs "Sound back after N s". Paused or buffering doesn't count.
+    private func readSound(at now: Double, duration: Double, playing: Bool) {
+        guard let meter else { return }
+        let taken = meter.take()
+        guard taken.readable else { sound = "can't read this file's sound format"; soundDB = nil; return }
+        guard playing, taken.frames > 0 else { sound = playing ? "no samples yet" : "–"; return }
+        let db = SoundMeter.decibels(taken.peak)
+        soundDB = db
+        let quiet = taken.peak < SoundMeter.silentBelow
+        let inBody = now > 3 && (!duration.isFinite || duration <= 0 || now < duration - 3)
+        if quiet {
+            if silentFor == 0 { silentSince = now }
+            silentFor += 1
+            sound = "SILENT \(silentFor) s"
+            if silentFor >= 3, inBody, !silenceLogged {
+                silenceLogged = true
+                log("No sound coming out (silent since \(Self.clock(silentSince)), measured)")
+            }
+        } else {
+            if silenceLogged { log("Sound back after \(silentFor) s (measured)") }
+            silenceLogged = false
+            silentFor = 0
+            sound = String(format: "%.0f dB peak", db)
+        }
+    }
+
+    static func clock(_ seconds: Double) -> String {
+        let s = Int(seconds.isFinite ? max(0, seconds) : 0)
+        return String(format: "%d:%02d", s / 60, s % 60)
+    }
+
+    private func report(at now: Double, duration: Double) -> NowPlayingReport {
+        NowPlayingReport(device: NowPlayingSender.deviceName, build: Int(BuildStamp.number) ?? 0, sentAt: .now, file: path,
+                         state: state, at: now.isFinite ? now : 0, duration: duration.isFinite ? duration : 0,
+                         soundDB: soundDB, silentFor: silentFor, sound: sound, soundOut: output, buffered: buffered,
+                         stalls: stalls, video: video, audio: audio)
     }
 
     private func readOutput() -> String {
@@ -156,6 +209,8 @@ final class PlaybackStats {
             if tracks.count > 1 { line += " · \(tracks.count) audio tracks" }
             guard player?.currentItem === item else { return }
             audio = line
+            meter = SoundMeter.attach(to: item, track: track)
+            if meter == nil { sound = "meter could not start" }
         }
     }
 
@@ -254,6 +309,7 @@ struct TVStatsPanel: View {
             row("Video", stats.video)
             row("Audio", stats.audio)
             row("Sound out", stats.output)
+            row("Sound level", stats.sound)
             row("State", stats.state)
             row("Buffer", stats.buffered)
             row("Bitrate", stats.bitrate)

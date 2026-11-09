@@ -1117,6 +1117,11 @@ final class LibraryCatalog {
             fail("204 No Content")
             return
         }
+        // REM  /now — A DEVICE'S 5-SECOND "WHAT'S PLAYING" REPORT (NowPlaying.swift, his "yes build the tv status too", 11-09).
+        if parts.count >= 2, parts[1].hasPrefix("/now?") {
+            fail(NowPlayingBoard.take(query: String(parts[1].dropFirst("/now?".count))) ? "204 No Content" : "400 Bad Request")
+            return
+        }
         // REM  /status — EVERYTHING THIS MAC KNOWS, as JSON, read-only (StatusReport.swift, his "yes build the status address",
         // REM  2026-11-09). For Claude to read with no screen and no clicks.
         if parts.count >= 2, parts[1] == "/status" || parts[1].hasPrefix("/status?") {

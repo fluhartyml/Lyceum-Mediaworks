@@ -76,6 +76,7 @@ enum StatusReport {
                 "dlna": DLNAServer.shared.status,
             ],
             "clients": clients,
+            "nowPlaying": nowPlaying(),
             "morningCheck": [
                 "on": MorningRestart.isOn,
                 "lastCheckAt": when(MorningRestart.lastCheckAt),
@@ -90,6 +91,24 @@ enum StatusReport {
             ],
         ]
         return (try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])) ?? Data("{}".utf8)
+    }
+    /// What each device reported it is playing (NowPlaying.swift), newest first.
+    private static func nowPlaying() -> [[String: Any]] {
+        let entries = NowPlayingBoard.latest.values.sorted { $0.receivedAt > $1.receivedAt }
+        var out: [[String: Any]] = []
+        for entry in entries {
+            let r = entry.report
+            let age = Date.now.timeIntervalSince(entry.receivedAt)
+            var d: [String: Any] = [:]
+            d["device"] = r.device; d["build"] = r.build
+            d["receivedAt"] = iso.string(from: entry.receivedAt); d["secondsAgo"] = Int(age); d["live"] = age < 15
+            d["file"] = r.file; d["state"] = r.state; d["at"] = r.at; d["duration"] = r.duration
+            d["soundDB"] = r.soundDB ?? NSNull(); d["silentFor"] = r.silentFor; d["sound"] = r.sound
+            d["soundOut"] = r.soundOut; d["buffered"] = r.buffered; d["stalls"] = r.stalls
+            d["video"] = r.video; d["audio"] = r.audio
+            out.append(d)
+        }
+        return out
     }
 }
 #endif
