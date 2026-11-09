@@ -440,8 +440,12 @@ struct LibrarySourceSetupView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16)
+            // REM  FIXED 2026-11-09 (robot run 2): .bordered tints EVERY line of its label, so the words still failed
+            // REM  contrast. A plain button on a drawn gray card keeps the blue title and the plain words as set.
+            .background(Color(UIColor.secondarySystemFill), in: RoundedRectangle(cornerRadius: 18))
+            .contentShape(RoundedRectangle(cornerRadius: 18))
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(.plain)
         .accessibilityIdentifier(source == .mac ? "findYourMac" : "onlyThisDevice")
     }
 }
