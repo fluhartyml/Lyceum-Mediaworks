@@ -106,6 +106,8 @@ final class TVTheater {
     let stats = PlaybackStats()
     /// The folder or playlist playing, in its play order — as listed, or shuffled.
     private(set) var order = PlayOrder()
+    /// The last 👎 from the remote and when — hold ◀︎ within 10 s takes it back (2026-11-09).
+    @ObservationIgnored var recentThumbDown: (path: String, at: Date)?
     private(set) var problem: String?
     var presented = false
     @ObservationIgnored private var listener: NWListener?
@@ -410,7 +412,10 @@ struct TVPlayer: View {
             show("👍")
             if processing { theater.next() }
         case .down:
-            if let path = theater.current { library.change(.thumbsDown, path) }
+            if let path = theater.current {
+                library.change(.thumbsDown, path)
+                theater.recentThumbDown = (path, .now)
+            }
             show("👎")
             theater.next()
         // REM  TAP vs HOLD (platforms N08) — his words, 2026-10-11: "fast forward is or should be right button and long press
@@ -422,7 +427,19 @@ struct TVPlayer: View {
         // REM  jump back (just after the drop), into the stats Events and the Mac's Playback Log. The button is unchanged.
         case .tapLeft: theater.stats.mark("◀︎ pressed — your mark (sound drop?)"); theater.skip(-5); light(.rewind)
         case .holdRight: theater.next(); light(.next)
-        case .holdLeft: theater.previous(); light(.previous)
+        // REM  HOLD ◀︎ WITHIN 10 s OF A 👎 TAKES IT BACK — his yes 2026-11-09 ("yes build the ▼ fix"): the 👎'd file is checked
+        // REM  again, leaves Thumbs Down, and plays again. After 10 s, hold ◀︎ is the previous file as before.
+        case .holdLeft:
+            if let recent = theater.recentThumbDown, Date.now.timeIntervalSince(recent.at) < 10 {
+                theater.recentThumbDown = nil
+                library.change(.check, recent.path)
+                library.send(CacheRequest(op: .removeFromPlaylist, path: recent.path, playlist: LibraryCache.thumbsDown))
+                show("👎 taken back")
+                theater.previous()
+            } else {
+                theater.previous()
+            }
+            light(.previous)
         case .playPause, .center: if theater.isPlaying { theater.player.pause() } else { theater.player.play() }; light(.playPause)
         // REM  HOLD CENTER SHOWS / HIDES THE BAR (platforms N15) — his words, 2026-10-13: "keep it display only and auto hide
         // REM  after 5 seconds" · "center hold shows hides the display bar". A center click stays play / pause.
@@ -576,9 +593,11 @@ struct RemotePlayerView: UIViewControllerRepresentable {
                 }
             case .downArrow:
                 // REM  Down held past half a second = video stats (2026-11-03), once; a short press is 👎 + next, as before.
+                // REM  SOONER: 0.35 s since 2026-11-09 — his shakedown, a hold meant for stats came out as 👎 + skip ("i was trying
+                // REM  to long press down to view stats for nerds and accidentally thumbs downed"); "yes build the ▼ fix".
                 holdFired = false
                 holdTimer?.invalidate()
-                holdTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
+                holdTimer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: false) { [weak self] _ in
                     MainActor.assumeIsolated {
                         guard let self else { return }
                         self.holdFired = true
