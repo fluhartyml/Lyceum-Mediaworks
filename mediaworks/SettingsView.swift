@@ -91,7 +91,7 @@ struct SettingsView: View {
                 // REM  Check first, restart only if needed — his ask 2026-11-08 (MorningRestart.check).
                 Toggle("Check at 5 AM, restart if needed", isOn: $morningRestart)
                     .font(.lyceumBody)
-                    .info("On — when this Mac serves your library, each morning between 5 and 7 AM, while nothing is playing, importing, transcoding or syncing, it checks that deletes still reach the drive and the server still answers. Only if something fails does it quit and reopen itself.\n\nOff — no check and no restart; it keeps running until you quit it.")
+                    .info("On — when this Mac serves your library, each morning between 5 and 7 AM, while nothing is playing, importing, transcoding or syncing, it checks that deletes still reach the drive, the server still answers, and this Mac isn't on an older build than a device it serves. Only if something fails does it quit and reopen itself. When it's behind, it closes for 5 minutes so TestFlight can install the update, then opens again.\n\nOff — no check and no restart; it keeps running until you quit it.")
             } header: {
                 Text("Daily Restart").font(.lyceumHeadline)
             }

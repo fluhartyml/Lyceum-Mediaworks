@@ -1698,6 +1698,7 @@ extension LibraryCatalog {
         var address: String?
         if case .hostPort(let host, _) = connection.endpoint { address = "\(host)".components(separatedBy: "%").first }
         clients[name] = SeenClient(name: name, address: address, lastSeen: .now, lastWhat: DeviceChangesView.what(request.op))
+        if let build = request.build { MorningRestart.saw(build: build, on: name) }
     }
 
     /// A server ticked here, or a device he approved, calling from this address.

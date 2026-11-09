@@ -27,6 +27,27 @@ enum MorningRestart {
     private static let lastCheckKey = "morningCheckLastAt"
     private static let lastOutcomeKey = "morningCheckOutcome"
     private static var checking = false
+    private static let newestBuildKey = "newestBuildSeen"
+    private static let newestBuildWhereKey = "newestBuildSeenOn"
+
+    // REM  THE BUILD CHECK — his question 2026-11-09 ~13:0x, after finding Lab B on 255 while the TV ran 264: "does the build
+    // REM  being unupdated and installed sound like 'a problem'" → "yes add the build check". TestFlight's Automatic Updates
+    // REM  were on, yet Lab B missed nine builds while Mediaworks kept running (Claude's unproven reading: a Mac waits for
+    // REM  the app to quit). Every device and Mac now tells this Mac its build with each request; the newest is kept here.
+    /// A device or Mac called with its build number.
+    static func saw(build: Int, on device: String) {
+        guard build > UserDefaults.standard.integer(forKey: newestBuildKey) else { return }
+        UserDefaults.standard.set(build, forKey: newestBuildKey)
+        UserDefaults.standard.set(device, forKey: newestBuildWhereKey)
+    }
+
+    /// "build 266 is on Living Room; this Mac runs 255" — nil when this Mac is as new as anything that has called.
+    static var behind: String? {
+        let newest = UserDefaults.standard.integer(forKey: newestBuildKey)
+        guard let mine = Int(BuildStamp.number), newest > mine else { return nil }
+        let device = UserDefaults.standard.string(forKey: newestBuildWhereKey) ?? "another device"
+        return "build \(newest) is on \(device); this Mac runs \(mine)"
+    }
 
     /// On unless turned off in Settings.
     static var isOn: Bool { UserDefaults.standard.object(forKey: enabledKey) as? Bool ?? true }
@@ -81,6 +102,8 @@ enum MorningRestart {
             let catalog = LibraryCatalog.shared
             if let problem = catalog.trashPathProblem() { problems.append(problem) }
             if let problem = await serverProblem() { problems.append(problem) }
+            let outdated = behind
+            if let outdated { problems.append(outdated) }
             if catalog.failedDeletes > 0 {
                 problems.append("\(catalog.failedDeletes) delete\(catalog.failedDeletes == 1 ? "" : "s") from a device did not reach the drive")
             }
@@ -93,7 +116,37 @@ enum MorningRestart {
             }
             UserDefaults.standard.set("restarted — " + problems.joined(separator: "; "), forKey: lastOutcomeKey)
             UserDefaults.standard.set(now, forKey: lastRestartKey)
+            if outdated != nil { quitForUpdate() } else { relaunch() }
+        }
+    }
+
+    // REM  QUIT FOR THE UPDATE — the ordinary restart opens the new copy BEFORE the old one quits, so Mediaworks is never
+    // REM  closed and TestFlight never gets its gap. Here: TestFlight is opened (in the background) so it looks for the
+    // REM  update, a small timer outside the app is started that reopens Mediaworks in `updateWait` seconds — whether or
+    // REM  not TestFlight installed anything — and only once that timer is running does Mediaworks quit.
+    // REM  FAIL-SAFE: if the timer can't start, it does the ordinary restart instead. Never quit into nothing.
+    static let updateWait = 300
+
+    private static func quitForUpdate() {
+        if let testFlight = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.TestFlight") {
+            let quiet = NSWorkspace.OpenConfiguration()
+            quiet.activates = false
+            NSWorkspace.shared.openApplication(at: testFlight, configuration: quiet) { _, _ in }
+        }
+        let timer = Process()
+        timer.executableURL = URL(fileURLWithPath: "/bin/sh")
+        let bundle = Bundle.main.bundleIdentifier ?? "com.lyceum.mediaworks"
+        timer.arguments = ["-c", "sleep \(updateWait); /usr/bin/open -g -b \(bundle)"]
+        do {
+            try timer.run()
+        } catch {
+            UserDefaults.standard.set("restarted (the update timer couldn't start) — " + (lastOutcome ?? ""), forKey: lastOutcomeKey)
             relaunch()
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            guard timer.isRunning else { relaunch(); return }
+            NSApp.terminate(nil)
         }
     }
 

@@ -186,6 +186,9 @@ nonisolated struct CacheRequest: Codable, Sendable, Hashable {
     var newName: String?
     /// For `addToPlaylist` / `removeFromPlaylist`: which playlist.
     var playlist: String?
+    /// The asking app's build number — so a serving Mac knows when it is behind the devices it serves (MorningRestart's
+    /// build check, his "yes add the build check", 2026-11-09). Nil from builds before 267; older Macs ignore it.
+    var build: Int? = Int(BuildStamp.number)
 }
 
 /// One change a phone or iPad made, as the Mac recorded it — with what it was before, so it can be undone (platforms 002e/f).
