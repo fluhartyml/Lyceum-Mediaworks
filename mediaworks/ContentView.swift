@@ -96,6 +96,10 @@ struct ContentView: View {
             #endif
         }
         #if os(macOS)
+        // REM  BUFFERING + AUTOMATIC'S NOTICE for the panes' mini players (StartBuffer.swift); the Theater shows its own.
+        .overlay { if library.mode != .theater { BufferingBadge() } }
+        #endif
+        #if os(macOS)
         // REM  THE MAC KEEPS THE CACHE CURRENT while a library is open — for the iPhone, iPad and Apple TV (LibraryCatalog.swift).
         // REM  Started here, but it RUNS IN THE BACKGROUND (LibraryCatalog.start): closing this window no longer stops serving.
         .task(id: library.root?.path) {
