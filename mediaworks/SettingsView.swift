@@ -19,10 +19,19 @@ struct SettingsView: View {
     @AppStorage("paneButtonLabels") private var paneButtonLabels = false
     @AppStorage("hoverHelpOn") private var hoverHelpOn = true
     @AppStorage("morningRestartOn") private var morningRestart = true
+    @AppStorage("librarySource") private var sourceRaw = ""
+    /// Only This iPhone/iPad (004.1) — never true on the Mac or Apple TV.
+    private var deviceOnly: Bool { sourceRaw == "device" }
 
     var body: some View {
         Form {
+            #if os(iOS)
+            // REM  WHERE MEDIAWORKS LOOKS — amber 004.1 (MyVideos.swift). In Only This Device the Mac sections hide: showing
+            // REM  them would start the network search that mode promises not to make.
+            LibrarySourceSection()
+            #endif
             #if !os(macOS)
+            if !deviceOnly {
             // REM  WHICH MAC — his ask, 2026-10-11 (MacFinder.swift).
             MacPickerSection()
             // REM  LOCAL NETWORK — amber 001.13 / 002.2, 2026-11-07 (MacFinder.swift).
@@ -31,6 +40,7 @@ struct SettingsView: View {
             // REM  SYNC TO THIS DEVICE — moved here from the Library, his word 2026-10-21 (LibraryFromMac.swift).
             DeviceSyncSettingsSection()
             #endif
+            }
             // REM  SORTING — on the Mac it is its own Settings tab; here it is a page of its own.
             Section {
                 NavigationLink("Sorting") { SortingSettingsView().navigationTitle("Sorting") }
@@ -38,7 +48,7 @@ struct SettingsView: View {
             }
             // REM  RELAY IMPORTS — his idea, 2026-10-17: "it uses the iphone as the 'media file cloud'". Moved here from the Sync
             // REM  menu 2026-10-18 (it is not a sync choice, and here it can have its (i)).
-            RelaySettingsSection()
+            if !deviceOnly { RelaySettingsSection() }
             #endif
             Section {
                 Toggle("Delete instantly (skip the 30-day Trash)", isOn: $instantDelete)

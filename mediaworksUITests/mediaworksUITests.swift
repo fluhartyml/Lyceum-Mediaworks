@@ -38,6 +38,7 @@ final class mediaworksUITests: XCTestCase {
     @MainActor
     func testPhoneFolderOpensWhenTapped() throws {
         let app = XCUIApplication()
+        app.launchArguments += ["-librarySource", "mac"]   // past the 004.1 setup question
         app.launch()
         let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Music Videos'")).firstMatch
         guard row.waitForExistence(timeout: 90) else {
@@ -72,6 +73,7 @@ final class mediaworksUITests: XCTestCase {
     func testLocalNetworkSettingsSection() throws {
         continueAfterFailure = true
         let app = XCUIApplication()
+        app.launchArguments += ["-librarySource", "mac"]   // past the 004.1 setup question
         app.launch()
         // REM  FIXED 2026-11-07 (his Xcode run on iPhone Duo): tapping buttons["Settings"].firstMatch hit the 12-point
         // REM  "Settings" page dot at the top and the screen stayed on Media. On iPhone, Settings is page 4 of the
@@ -101,6 +103,48 @@ final class mediaworksUITests: XCTestCase {
             XCTFail("Accessibility audit failed on Settings: \(error)")
         }
     }
+
+    #if os(iOS)
+    // REM  AMBER 004.1 — his word 2026-11-06 + his ruling 2026-11-09 "videos i put on my self should play and be copied to the
+    // REM  lyceum" (MyVideos.swift). The setup question shows; Only This iPhone opens the device screen with Your Videos and
+    // REM  both Add buttons; its Settings has Where Mediaworks Looks and NOT the Your Mac section; Apple's audit on each screen.
+    @MainActor
+    func testLibrarySourceSetupAndYourVideos() throws {
+        continueAfterFailure = true
+        let app = XCUIApplication()
+        app.launchArguments += ["-librarySource", ""]     // as on a first launch
+        app.launch()
+        let onlyHere = app.buttons["onlyThisDevice"]
+        XCTAssertTrue(onlyHere.waitForExistence(timeout: 10), "No setup question at first launch")
+        XCTAssertTrue(app.buttons["findYourMac"].exists, "No Find Your Mac choice")
+        XCTAssertTrue(app.buttons["setUpLater"].exists, "No Set Up Later — setup must never be mandatory (his 251 rule)")
+        snap("004.1 setup", app)
+        audit("Setup", app)
+        onlyHere.tap()
+        XCTAssertTrue(app.buttons["addFromPhotos"].waitForExistence(timeout: 5), "No Add From Photos on the device screen")
+        XCTAssertTrue(app.buttons["addFromFiles"].exists, "No Add From Files on the device screen")
+        XCTAssertTrue(app.staticTexts["Synced From Your Mac"].exists, "No Synced From Your Mac section")
+        snap("004.1 only this device", app)
+        audit("On This Device", app)
+        app.buttons["Settings"].firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5), "Settings did not open")
+        XCTAssertTrue(app.staticTexts["Where Mediaworks Looks"].exists, "No Where Mediaworks Looks section")
+        XCTAssertFalse(app.staticTexts["Your Mac"].exists, "Your Mac shows in Only This Device — it would start the network search")
+        snap("004.1 settings", app)
+        audit("Settings (device only)", app)
+    }
+
+    private func audit(_ screen: String, _ app: XCUIApplication) {
+        do {
+            try app.performAccessibilityAudit(for: [.contrast, .elementDetection, .hitRegion, .sufficientElementDescription]) { issue in
+                print("AUDIT [\(screen)] \(issue.auditType) — \(issue.compactDescription) — \(issue.element?.label ?? "?")")
+                return false
+            }
+        } catch {
+            XCTFail("Accessibility audit failed on \(screen): \(error)")
+        }
+    }
+    #endif
 
     #if os(macOS)
     // REM  HIS ASK 2026-11-08: the Mac's waiting-for-caller (Status) page shows the build really big, whether it was

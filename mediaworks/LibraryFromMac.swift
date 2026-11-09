@@ -93,6 +93,10 @@ final class MacLibrary {
 
     /// A change for the Mac: shown here at once, sent now, kept until the Mac takes it.
     func change(_ op: CacheRequest.Op, _ path: String) {
+        // REM  Your own videos (MyVideos.swift) are not in the library until they arrive — no mark goes to the Mac for them.
+        #if os(iOS)
+        guard !MyVideos.isOwn(path) else { return }
+        #endif
         pending.append(CacheRequest(op: op, path: path, device: Self.deviceName))
         if var copy = snapshot {
             if op != .unthumb { copy.root = Self.marking(copy.root, path.split(separator: "/").map(String.init), op) }
@@ -552,8 +556,10 @@ private struct CachedFolderList: View {
             #if os(iOS)
             // REM  SYNC STATS AND WHERE THE COPIES GO — his ask, 2026-10-21: "on this sheet it should show the sync stats and what
             // REM  folders are being synced to what folder on the iphone".
+            // REM  YOUR OWN VIDEOS at the top of Lyceum Media — amber 004.1, his 2026-11-09 word (MyVideos.swift).
+            if isTop, mediaOnly { YourVideosSection() }
             if isTop, mediaOnly { SyncSummarySection() }
-            if mediaOnly, shownFolders.isEmpty, shownFiles.isEmpty {
+            if mediaOnly, shownFolders.isEmpty, shownFiles.isEmpty, !(isTop && !MyVideos.shared.videos.isEmpty) {
                 // REM  HIS CATCH, build 243 on the iPad (2026-11-04): "It says 'on this iPhone' i am on an ipad." Name the device it runs on.
                 Text(isTop ? "Nothing is on this \(SyncSummarySection.device) yet. Turn on syncing in Settings, or switch on Sync to This Device for a folder in Lyceum Library."
                            : "Nothing in this folder is on this \(SyncSummarySection.device).")

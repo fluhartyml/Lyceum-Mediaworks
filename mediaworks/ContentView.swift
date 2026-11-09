@@ -22,6 +22,9 @@ struct ContentView: View {
     #if os(iOS)
     @State private var showingAbout = false
     @State private var showingSettings = false
+    // REM  WHERE MEDIAWORKS LOOKS — amber 004.1 (MyVideos.swift): Find Your Mac, or Only This iPhone/iPad. Asked once.
+    @AppStorage(LibrarySource.key) private var sourceRaw = ""
+    private var source: LibrarySource { LibrarySource(rawValue: sourceRaw) ?? .unasked }
     #endif
     #if os(macOS)
     // REM  SETUP IS OPTIONAL AND NEVER STALE — his TestFlight feedback on build 251, 2026-11-08: "this first se up process
@@ -37,6 +40,18 @@ struct ContentView: View {
             #if !os(macOS)
             // REM  ONLY THE MAC ASKS FOR THE LIBRARY FOLDER — his ruling, 2026-10-10 (FromYourMacView.swift).
             // REM  The Mac's cache once one has arrived (LibraryFromMac.swift); until then, where it comes from.
+            #if os(iOS)
+            if source == .unasked {
+                LibrarySourceSetupView()
+            } else if source.isDeviceOnly {
+                OnThisDeviceView(library: fromMac)
+            } else if fromMac.snapshot != nil {
+                // REM  Library and Theater as two swipeable pages, and the full-screen player (PhonePlayer.swift, P01–P09).
+                PhoneHome(library: fromMac)
+            } else {
+                FromYourMacView()
+            }
+            #else
             if fromMac.snapshot != nil {
                 #if os(iOS)
                 // REM  Library and Theater as two swipeable pages, and the full-screen player (PhonePlayer.swift, P01–P09).
@@ -47,6 +62,7 @@ struct ContentView: View {
             } else {
                 FromYourMacView()
             }
+            #endif
             #else
             if let root = library.root {
                 switch library.mode {
@@ -108,6 +124,10 @@ struct ContentView: View {
         }
         // REM  The Mac watches for an Apple TV running Lyceum, for Play on Apple TV and the remote window.
         .task { await TVRemote.shared.keepWatching() }
+        #elseif os(iOS)
+        // REM  ONLY THIS DEVICE NEVER LOOKS FOR A MAC (004.1): no search, so no Local Network pop-up — and none before the
+        // REM  setup question is answered. Switching in Settings starts or stops the search at once (the task restarts).
+        .task(id: sourceRaw) { if source == .mac { await fromMac.keepUpToDate() } }
         #else
         .task { await fromMac.keepUpToDate() }
         #endif
@@ -122,6 +142,7 @@ struct ContentView: View {
         .sheet(isPresented: $showingSettings) {
             NavigationStack { SettingsView().navigationTitle("Settings") }
                 .environment(library)
+                .environment(fromMac)
         }
         #endif
     }

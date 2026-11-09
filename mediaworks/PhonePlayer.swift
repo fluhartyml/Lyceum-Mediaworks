@@ -67,7 +67,8 @@ final class PhonePlayer {
         keeper.leave()
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
-        let local = DeviceSync.localURL(path)
+        // REM  YOUR OWN VIDEOS (amber 004.1, his 2026-11-09 "videos i put on my self should play") play from My Videos.
+        let local = MyVideos.url(forPlayerPath: path) ?? DeviceSync.localURL(path)
         if FileManager.default.fileExists(atPath: local.path) {
             start(local, path)
         } else {
@@ -376,7 +377,7 @@ private struct RemotePanel: View {
 
 // MARK: - Full screen
 
-private struct FullScreenPlayer: View {
+struct FullScreenPlayer: View {
     @Environment(PhonePlayer.self) private var player
     @Environment(MacLibrary.self) private var library
     @State private var controls = false
