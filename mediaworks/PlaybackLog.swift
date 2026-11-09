@@ -165,8 +165,11 @@ enum PlaybackLogSender {
                 guard let url = URL(string: base + "/log?d=" + value) else { waiting.removeFirst(); continue }
                 var request = URLRequest(url: url)
                 request.timeoutInterval = 5
-                // Unreachable: the line waits for the next send. Any answer (404 = a Mac older than this build) ends it.
-                guard (try? await URLSession.shared.data(for: request)) != nil else { return }
+                // REM  KEPT UNTIL A MAC TAKES IT — his shakedown 2026-11-09 ~14:4x: Lab B was still on 255, answered 404, and
+                // REM  the first version threw his ◀︎ marks away. Only a 2xx means delivered; anything else, the line waits
+                // REM  (newest 200) for the next send, so the marks reach the Mac once it updates.
+                guard let (_, response) = try? await URLSession.shared.data(for: request),
+                      let code = (response as? HTTPURLResponse)?.statusCode, (200..<300).contains(code) else { return }
                 waiting.removeFirst()
             }
         }
