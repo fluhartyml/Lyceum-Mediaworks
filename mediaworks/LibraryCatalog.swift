@@ -1109,6 +1109,14 @@ final class LibraryCatalog {
             let reply = "HTTP/1.1 \(status)\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
             connection.send(content: Data(reply.utf8), completion: .contentProcessed { _ in connection.cancel() })
         }
+        // REM  /log — A DEVICE'S PLAYBACK EVENT for the Playback Log (PlaybackLog.swift, his "yes build the playback log on
+        // REM  lab b", 2026-11-09). Kept on this Mac; answered with no body.
+        if parts.count >= 2, parts[1].hasPrefix("/log?") {
+            guard let line = PlaybackLog.line(fromQuery: String(parts[1].dropFirst("/log?".count))) else { fail("400 Bad Request"); return }
+            PlaybackLog.shared.add(line)
+            fail("204 No Content")
+            return
+        }
         // I01a — a file this Mac's Import Drive is handing to the partner, at its one-time address.
         if parts.count >= 2, parts[1].hasPrefix("/outbox/"), let url = outbox[String(parts[1].dropFirst("/outbox/".count))] {
             serveOutbox(connection, url: url, lines: lines)

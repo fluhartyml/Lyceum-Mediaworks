@@ -94,6 +94,13 @@ struct mediaworksApp: App {
         .defaultSize(width: 560, height: 480)
         .restorationBehavior(.disabled)
 
+        // REM  WINDOW → PLAYBACK LOG — what each Apple TV, iPhone and iPad saw while playing (PlaybackLog.swift).
+        Window("Playback Log", id: "playbacklog") {
+            PlaybackLogView()
+        }
+        .defaultSize(width: 1000, height: 600)
+        .restorationBehavior(.disabled)
+
         // REM  CHANGES FROM DEVICES — every change a phone or iPad made, each with Undo (platforms 002e/f). In the Window menu.
         Window("Changes from Devices", id: "devicechanges") {
             DeviceChangesView()

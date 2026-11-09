@@ -162,7 +162,7 @@ final class TVTheater {
             let item = AVPlayerItem(url: url)
             player.replaceCurrentItem(with: item)
             stats.attach(player)
-            stats.watch(item, name: (path as NSString).lastPathComponent)
+            stats.watch(item, name: (path as NSString).lastPathComponent, path: path)
             elapsed = 0; duration = 0
             watchTime()
             readyMediaCommands()

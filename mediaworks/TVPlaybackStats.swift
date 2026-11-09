@@ -15,7 +15,7 @@
 // REM  a drop with nothing logged is itself a finding (the trouble is likely past the Apple TV — receiver, TV, HDMI).
 //
 
-#if os(tvOS)
+#if os(tvOS) || os(iOS)
 import SwiftUI
 import AVFoundation
 
@@ -46,6 +46,8 @@ final class PlaybackStats {
     @ObservationIgnored private var tick: Timer?
     @ObservationIgnored private var lastState = ""
     @ObservationIgnored private var errorsSeen = 0
+    /// The library path of the file loaded — each event also goes to the Mac's Playback Log under it (PlaybackLog.swift).
+    @ObservationIgnored private var path = ""
 
     /// Starts listening to the player and the TV's sound output. Once per player.
     func attach(_ player: AVPlayer) {
@@ -72,7 +74,8 @@ final class PlaybackStats {
     }
 
     /// A new file is in the player: fresh counts, and its own stall / error watch.
-    func watch(_ item: AVPlayerItem, name: String) {
+    func watch(_ item: AVPlayerItem, name: String, path: String) {
+        self.path = path
         for observer in itemObservers { NotificationCenter.default.removeObserver(observer) }
         itemObservers = []
         video = "–"; audio = "–"; bitrate = "–"; dropped = "–"; stalls = 0; errorsSeen = 0; lastState = ""
@@ -165,6 +168,8 @@ final class PlaybackStats {
         let at = player?.currentTime().seconds ?? 0
         events.append(Event(clock: .now, at: at.isFinite ? at : 0, text: text))
         if events.count > 8 { events.removeFirst(events.count - 8) }
+        // REM  Every event also goes to the Mac's Playback Log — the panel keeps 8, the Mac keeps them all.
+        if !path.isEmpty { PlaybackLogSender.send(file: path, at: at.isFinite ? at : 0, text: text) }
     }
 
     // MARK: Words for the codes
@@ -226,6 +231,9 @@ final class PlaybackStats {
     }
 }
 
+#endif
+
+#if os(tvOS)
 /// The stats panel, top left over the video — the file name first, so it stays on screen while the stats do.
 struct TVStatsPanel: View {
     let stats: PlaybackStats
@@ -258,8 +266,12 @@ struct TVStatsPanel: View {
         .font(.lyceumBody)
         .monospacedDigit()
         .padding(30)
-        .background(.black.opacity(0.75), in: RoundedRectangle(cornerRadius: 20))
+        // REM  MORE SEE-THROUGH — his word 2026-11-09 ~12:4x: "make the stats for nerds back ground more transparent".
+        // REM  The video shows through; a shadow under each line keeps the white text readable over a bright picture.
         .foregroundStyle(.white)
+        .shadow(color: .black, radius: 2)
+        .shadow(color: .black.opacity(0.8), radius: 6)
+        .background(.black.opacity(0.4), in: RoundedRectangle(cornerRadius: 20))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(60)
     }

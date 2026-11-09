@@ -31,6 +31,8 @@ final class PhonePlayer {
     var page = PhonePlayer.mediaPage
     static let mediaPage = 0, libraryPage = 1, theaterPage = 2, settingsPage = 3
     let player = AVPlayer()
+    /// The same stats watch as the TV's, without a panel — its events go to the Mac's Playback Log (PlaybackLog.swift).
+    @ObservationIgnored let stats = PlaybackStats()
     private(set) var isPlaying = false
     @ObservationIgnored private var endObserver: NSObjectProtocol?
     /// Where each file was left (PlayPositions.swift).
@@ -84,6 +86,8 @@ final class PhonePlayer {
         problem = nil
         let item = AVPlayerItem(url: url)
         player.replaceCurrentItem(with: item)
+        stats.attach(player)
+        stats.watch(item, name: (path as NSString).lastPathComponent, path: path)
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { _ in
             MainActor.assumeIsolated { self.advance(ended: true) }
