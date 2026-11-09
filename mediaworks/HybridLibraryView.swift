@@ -55,6 +55,8 @@ struct HybridLibraryView: View {
     @State private var renaming: String?
     @State private var newName = ""
     @State private var deletingPlaylist: String?
+    /// The files waiting for a name for their new watchlist (A-041).
+    @State private var watchlistFor: Set<String>?
     // REM  HIS ASK, 2026-10-13: "can i right click a folder to either rename the folder or make a playlist from folder?" ·
     // REM  "yes build both include subfolders".
     @State private var renamingFolder: String?
@@ -70,6 +72,12 @@ struct HybridLibraryView: View {
 
     private var snapshot: LibrarySnapshot? { catalog.snapshot }
 
+    /// The watchlists to add to — the plain "Watchlist" always offered first (A-041).
+    private var watchlists: [String] {
+        let names = (snapshot?.playlists?.keys.map { $0 } ?? []).filter(LibraryCache.isWatchlist).sorted(by: LibraryCache.playlistOrder)
+        return names.contains(LibraryCache.watchlist) ? names : [LibraryCache.watchlist] + names
+    }
+
     var body: some View {
         NavigationSplitView {
             List(selection: $place) {
@@ -78,7 +86,7 @@ struct HybridLibraryView: View {
                 if let lists = snapshot?.playlists, !lists.isEmpty {
                     Section("Playlists") {
                         ForEach(lists.keys.sorted(by: LibraryCache.playlistOrder), id: \.self) { name in
-                            Label("\(name)  (\(lists[name]?.count ?? 0))", systemImage: LibraryCache.isThumbsUp(name) ? "hand.thumbsup.fill" : "music.note.list")
+                            Label("\(name)  (\(lists[name]?.count ?? 0))", systemImage: LibraryCache.isThumbsUp(name) ? "hand.thumbsup.fill" : LibraryCache.isWatchlist(name) ? "eye" : "music.note.list")
                                 .tag(Place.playlist(name))
                                 .contextMenu {
                                     Button("Rename…") { newName = name; renaming = name }
@@ -126,6 +134,14 @@ struct HybridLibraryView: View {
                         Button("Uncheck") { send(.uncheck, paths) }
                         Button("👍 Thumbs Up") { send(.thumbsUp, paths) }
                         Button("👎 Thumbs Down") { send(.thumbsDown, paths) }
+                        // REM  WATCHLISTS — amber A-041: put the selection on a watchlist; New Watchlist… names one.
+                        Menu("Add to Watchlist") {
+                            ForEach(watchlists, id: \.self) { name in
+                                Button(LibraryCache.watchlistTitle(name)) { send(.addToPlaylist, paths, playlist: name) }
+                            }
+                            Divider()
+                            Button("New Watchlist…") { newName = ""; watchlistFor = paths }
+                        }
                         // REM  HIS ASK, 2026-10-13: "add remove from list on right click too". A Thumbs Up list takes the
                         // REM  opposite of 👍 (unthumb); any other playlist loses just these files — the files themselves never move.
                         if case .playlist(let name) = place {
@@ -160,6 +176,16 @@ struct HybridLibraryView: View {
             Button("Cancel", role: .cancel) { deletingPlaylist = nil }
         } message: {
             Text("The playlist's file goes to the library's Trash. The media files in it are not touched.")
+        }
+        .alert("New Watchlist", isPresented: Binding(get: { watchlistFor != nil }, set: { if !$0 { watchlistFor = nil } })) {
+            TextField("Name, like Weekend Movies", text: $newName)
+            Button("Add") {
+                if let paths = watchlistFor, LibraryCatalog.validName(LibraryCache.watchlistName(newName)) {
+                    send(.addToPlaylist, paths, playlist: LibraryCache.watchlistName(newName))
+                }
+                watchlistFor = nil
+            }
+            Button("Cancel", role: .cancel) { watchlistFor = nil }
         }
         .alert("Rename Folder", isPresented: Binding(get: { renamingFolder != nil }, set: { if !$0 { renamingFolder = nil } })) {
             TextField("Name", text: $newName)

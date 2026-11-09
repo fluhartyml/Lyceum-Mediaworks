@@ -92,6 +92,8 @@ final class LibraryCatalog {
            let saved = try? LibraryCache.decoder.decode([DeviceChange].self, from: data) { deviceChanges = saved }
         snapshot = LibraryCache.load()
         if let snapshot { payload = (try? LibraryCache.encoder.encode(snapshot)) ?? Data() }
+        // A file this Mac plays to the end leaves the watchlists (A-041).
+        PlayPositions.shared.onFinished = { LibraryCatalog.shared.watched($0) }
     }
 
     /// Start keeping `root` current, in the background, for as long as the app runs — windows may close. A second call
@@ -338,8 +340,11 @@ final class LibraryCatalog {
             if request.op == .checkFolder { change.wasUnchecked = folderFiles.filter { unchecked.contains($0) } }
             if [.addToPlaylist, .removeFromPlaylist].contains(request.op) {
                 // REM  Only a real change is recorded — already in (or already out of) the playlist is nothing to undo.
-                guard let name = request.playlist, let list = playlists[name],
+                // REM  A watchlist a device is starting counts as an empty one (A-041).
+                guard let name = request.playlist,
+                      let list = playlists[name] ?? (request.op == .addToPlaylist && LibraryCache.isWatchlist(name) ? [] : nil),
                       list.contains(path) == (request.op == .removeFromPlaylist) else { return }
+                if playlists[name] == nil { change.playlistWasNew = true }
                 change.playlist = name
             }
             deviceChanges.insert(change, at: 0)
@@ -387,13 +392,15 @@ final class LibraryCatalog {
         // REM  MOVING A FILE BETWEEN PLAYLISTS — his words, 2026-10-10 (004c): "just mantenance and upkeep. moving from one
         // REM  playlist to another." Out of one, into another; the file itself never moves (026). Only playlists that exist.
         case .addToPlaylist:
-            guard let name = request.playlist, var list = playlists[name] else { return }
+            // REM  WATCHLISTS (A-041): any device may start one by adding to it; other playlists must already exist.
+            guard let name = request.playlist,
+                  var list = playlists[name] ?? (LibraryCache.isWatchlist(name) && Self.validName(name) ? [] : nil) else { return }
             if !list.contains(path) { list.append(path) }
             playlists[name] = list
         case .removeFromPlaylist:
             guard let name = request.playlist, var list = playlists[name] else { return }
             list.removeAll { $0 == path }
-            playlists[name] = list.isEmpty && (LibraryCache.isThumbsUp(name) || name == LibraryCache.thumbsDown) ? nil : list
+            playlists[name] = list.isEmpty && LibraryCache.goesWhenEmpty(name) ? nil : list
         }
         saveMarksAndPublish()
     }
@@ -408,6 +415,23 @@ final class LibraryCatalog {
         guard list != (playlists[name] ?? []) else { return }
         playlists[name] = list
         saveMarksAndPublish()
+    }
+
+    // REM  WATCHED TO THE END LEAVES THE WATCHLIST — amber A-041, Claude's call 2026-11-09: a watchlist is what is still
+    // REM  to watch. A file this Mac plays to the end (PlayPositions.onFinished) is taken out of every watchlist holding it —
+    // REM  this Mac's own lists here, a partner's through the partner. Played partway, it stays (and shows in Recently Viewed).
+    /// A file this Mac played to the end: out of every watchlist.
+    func watched(_ path: String) {
+        let partner = LibraryPartner.shared
+        let lists = (snapshot?.playlists ?? playlists).filter { LibraryCache.isWatchlist($0.key) && $0.value.contains(path) }.map(\.key)
+        for name in lists {
+            let request = CacheRequest(op: .removeFromPlaylist, path: path, playlist: name)
+            if playlists[name] != nil {
+                apply(request)
+            } else if let holder = partner.slices.first(where: { $0.snapshot.playlists?[name] != nil })?.name {
+                Task { _ = await partner.ask(request, to: holder); await partner.refresh() }
+            }
+        }
     }
 
     /// The Thumbs Up list for a file — by its Media Kind, from the tags read so far.
@@ -624,7 +648,7 @@ final class LibraryCatalog {
             var list = playlists[name] ?? []
             if change.op == .addToPlaylist { list.removeAll { $0 == change.path } }
             else if !list.contains(change.path) { list.append(change.path) }
-            playlists[name] = list.isEmpty && (LibraryCache.isThumbsUp(name) || name == LibraryCache.thumbsDown) ? nil : list
+            playlists[name] = list.isEmpty && (LibraryCache.goesWhenEmpty(name) || change.playlistWasNew == true) ? nil : list
             deviceChanges[index].undone = .now
             saveChanges()
             saveMarksAndPublish()

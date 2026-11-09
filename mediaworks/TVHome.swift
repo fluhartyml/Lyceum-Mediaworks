@@ -749,7 +749,7 @@ struct TVEditSheet: View {
                     Button(thumbedUp ? "✓  Thumbs Up — take out" : "\(library.snapshot?.thumbsUpList(for: path) ?? "Thumbs Up") — add") {
                         library.change(thumbedUp ? .unthumb : .thumbsUp, path)
                     }
-                    ForEach(library.playlistNames.filter { !LibraryCache.isThumbsUp($0) }, id: \.self) { name in
+                    ForEach(library.playlistNames.filter { !LibraryCache.isThumbsUp($0) && !LibraryCache.isWatchlist($0) }, id: \.self) { name in
                         let isIn = library.snapshot?.playlists?[name]?.contains(path) ?? false
                         Button(isIn ? "✓  \(name) — take out" : "\(name) — add") {
                             library.send(CacheRequest(op: isIn ? .removeFromPlaylist : .addToPlaylist, path: path, playlist: name))

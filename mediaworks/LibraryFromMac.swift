@@ -33,6 +33,32 @@ final class MacLibrary {
     /// This device's copies of the files — Off, Automatic or Manual (DeviceSync.swift).
     let sync = DeviceSync()
 
+    init() {
+        // A file played to the end on this device leaves the watchlists (A-041).
+        PlayPositions.shared.onFinished = { [weak self] path in self?.watched(path) }
+    }
+
+    // MARK: Watchlists (amber A-041)
+
+    /// The watchlists — the plain "Watchlist" first, then by name.
+    var watchlistNames: [String] { playlistNames.filter(LibraryCache.isWatchlist) }
+
+    func isIn(_ list: String, _ path: String) -> Bool { snapshot?.playlists?[list]?.contains(path) ?? false }
+
+    /// Into or out of one watchlist; adding to one that is not there yet starts it.
+    func watchlist(_ name: String, add: Bool, _ path: String) {
+        #if os(iOS)
+        guard !MyVideos.isOwn(path) else { return }
+        #endif
+        guard add != isIn(name, path) else { return }
+        send(CacheRequest(op: add ? .addToPlaylist : .removeFromPlaylist, path: path, playlist: name))
+    }
+
+    /// Played to the end: out of every watchlist that holds it.
+    func watched(_ path: String) {
+        for name in watchlistNames where isIn(name, path) { watchlist(name, add: false, path) }
+    }
+
     /// Runs the sync against the copy on hand — after each word from the Mac, and when the mode changes.
     func syncNow() {
         // REM  APPLE TV: the listing syncs, the files never do — "apple tv is synch only with no physical copies" (004d).
@@ -635,7 +661,7 @@ private struct CachedFolderList: View {
                         PlaylistList(name: name).tvFooter()
                     } label: {
                         HStack {
-                            Label(name, systemImage: LibraryCache.isThumbsUp(name) ? "hand.thumbsup.fill" : "music.note.list")
+                            Label(name, systemImage: LibraryCache.isThumbsUp(name) ? "hand.thumbsup.fill" : LibraryCache.isWatchlist(name) ? "eye" : "music.note.list")
                             Spacer()
                             #if os(iOS)
                             if library.sync.mode != .off && library.sync.syncsList(name) {
@@ -715,6 +741,75 @@ private struct CachedFolderList: View {
         func join(_ name: String) -> String { path.isEmpty ? name : path + "/" + name }
         return folder.files.filter { $0.isMedia && sync.hasCopy(join($0.name), size: $0.size) }.count
             + folder.folders.reduce(0) { $0 + copies(in: $1, at: join($1.name), sync: sync) }
+    }
+}
+
+/// Amber A-041: every watchlist as a row, ✓ when this file is on it — select a row to put it on or take it off.
+/// iPhone and iPad can name a new one; the Apple TV starts the plain "Watchlist" (no typing with the remote — his 10-10 rule).
+struct WatchlistSheet: View {
+    let path: String
+    let title: String
+    @Environment(MacLibrary.self) private var library
+    @Environment(\.dismiss) private var dismiss
+    #if os(iOS)
+    @State private var newName = ""
+    #endif
+
+    private var lists: [String] {
+        let names = library.watchlistNames
+        return names.contains(LibraryCache.watchlist) ? names : [LibraryCache.watchlist] + names
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    ForEach(lists, id: \.self) { name in
+                        let isIn = library.isIn(name, path)
+                        Button { library.watchlist(name, add: !isIn, path) } label: {
+                            HStack {
+                                Image(systemName: isIn ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(isIn ? Color.accentColor : .secondary)
+                                Text(LibraryCache.watchlistTitle(name))
+                                Spacer()
+                                Text("\(library.snapshot?.playlists?[name]?.count ?? 0)").foregroundStyle(.secondary).monospacedDigit()
+                            }
+                        }
+                        .accessibilityLabel(isIn ? "\(LibraryCache.watchlistTitle(name)), on it" : LibraryCache.watchlistTitle(name))
+                    }
+                } footer: {
+                    Text("Played to the end, it comes off every watchlist by itself.")
+                }
+                #if os(iOS)
+                Section("New Watchlist") {
+                    TextField("Name, like Weekend Movies", text: $newName)
+                        .submitLabel(.done)
+                        .onSubmit(addNew)
+                    Button("Add to New Watchlist", action: addNew)
+                        .disabled(!LibraryCatalogName.valid(newName))
+                }
+                #endif
+            }
+            .font(.lyceumBody)
+            .navigationTitle(title)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+    }
+
+    #if os(iOS)
+    private func addNew() {
+        guard LibraryCatalogName.valid(newName) else { return }
+        library.watchlist(LibraryCache.watchlistName(newName), add: true, path)
+        newName = ""
+    }
+    #endif
+}
+
+/// The Mac's rule for a playlist name, for devices that cannot see LibraryCatalog (macOS only).
+enum LibraryCatalogName {
+    static func valid(_ typed: String) -> Bool {
+        let name = LibraryCache.watchlistName(typed)
+        return !typed.trimmingCharacters(in: .whitespaces).isEmpty && !name.contains("/") && !name.contains(":") && !name.hasPrefix(".")
     }
 }
 
@@ -935,6 +1030,7 @@ private struct FileLink: View {
     @State private var showInfo = false
     @State private var editing = false
     @State private var moving = false
+    @State private var watching = false
     #endif
 
     var body: some View {
@@ -976,6 +1072,7 @@ private struct FileLink: View {
                 if file.isMedia {
                     Button(file.isChecked ? "Uncheck" : "Check") { library.change(file.isChecked ? .uncheck : .check, path) }
                     Button("Genre, Kind, Title & Playlist…") { editing = true }
+                    Button("Watchlists…") { watching = true }
                 }
                 // REM  MOVE OR TRASH FROM THE TV — his ask, 2026-10-27: "when im browsing the media files with checkmarks and
                 // REM  unchecked i would like to long press on the file name and delete or move to another folder". The Mac
@@ -990,6 +1087,7 @@ private struct FileLink: View {
         .navigationDestination(isPresented: $showInfo) { CachedFileView(path: path, fallback: fallback).tvFooter() }
         .sheet(isPresented: $editing) { TVEditSheet(path: path, file: file).environment(library) }
         .sheet(isPresented: $moving) { TVMoveSheet(path: path).environment(library) }
+        .sheet(isPresented: $watching) { WatchlistSheet(path: path, title: file.info?.title ?? file.name).environment(library) }
     }
 
     // REM  PLAYING AN UNCHECKED SONG CHECKS IT FIRST — his ruling, 2026-10-15: "if a user highlights a media file and pressed
@@ -1091,6 +1189,7 @@ private struct CachedFileView: View {
     /// ▶ Preview is a toggle — on, it stays on as ◀ ▶ moves through the folder, until Stop Preview, Play, or leaving the card.
     @State private var previewOn = false
     @State private var previewProblem: String?
+    @State private var watching = false
     private var current: String { renamedTo ?? path }
     private var picture: Data? { fullArt ?? file.info?.thumbnail }
     private var file: CachedFile { library.snapshot?.file(at: current) ?? fallback }
@@ -1179,6 +1278,7 @@ private struct CachedFileView: View {
             fullArt = await MacLibrary.artwork(current)
         }
         .onDisappear { stopPreview() }
+        .sheet(isPresented: $watching) { WatchlistSheet(path: current, title: file.info?.title ?? file.name).environment(library) }
         .sheet(item: $editingField) { field in
             MediaInfoEditSheet(path: current, file: file, field: field) { renamedTo = $0 }.environment(library)
         }
@@ -1229,6 +1329,16 @@ private struct CachedFileView: View {
         Button { library.change(.thumbsDown, current) } label: {
             Label("Thumbs Down", systemImage: file.isChecked ? "hand.thumbsdown" : "hand.thumbsdown.fill")
         }
+    }
+
+    // REM  WATCHLISTS — amber A-041. One button on the file's card opens the list of watchlists to put it in or take it out.
+    private var watchlistButton: some View {
+        let count = library.watchlistNames.filter { library.isIn($0, current) }.count
+        return Button { watching = true } label: {
+            Label(count > 0 ? "On \(count) Watchlist\(count == 1 ? "" : "s")" : "Add to Watchlist",
+                  systemImage: count > 0 ? "eye.fill" : "eye")
+        }
+        .accessibilityLabel("Watchlists")
     }
 
     private var previewButton: some View {
@@ -1329,6 +1439,7 @@ private struct CachedFileView: View {
                         .disabled(!file.isChecked)
                     previewButton.disabled(!file.isChecked)
                     Button { tvEditing = true } label: { Label("Genre, Kind, Title & Playlist…", systemImage: "slider.horizontal.3") }
+                    watchlistButton
                 }
                 #endif
                 if let previewProblem { Text(previewProblem).foregroundStyle(.secondary) }
@@ -1354,7 +1465,7 @@ private struct CachedFileView: View {
                     }
                     .buttonStyle(.bordered)
                     #else
-                    HStack(spacing: 14) { thumbButtons }.buttonStyle(.bordered)
+                    HStack(spacing: 14) { thumbButtons; watchlistButton }.buttonStyle(.bordered)
                     #endif
                     Text(file.isChecked ? "Checked — in sync rotation" : "Unchecked — out of sync rotation")
                         .foregroundStyle(.secondary)

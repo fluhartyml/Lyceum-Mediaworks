@@ -25,6 +25,10 @@ import CryptoKit
 final class PlayPositions {
     static let shared = PlayPositions()
 
+    /// Told the library path of a file played to the end — the Mac's catalog or the device's library takes it out of
+    /// every watchlist (amber A-041).
+    var onFinished: ((String) -> Void)?
+
     struct Mark: Codable, Sendable {
         var seconds: Double
         var when: Date
@@ -93,6 +97,8 @@ final class PlayPositions {
         guard seconds.isFinite else { return }
         let nearEnd = duration.isFinite && duration > 0 && seconds > duration - Self.tail
         let startOver = seconds < Self.lead || nearEnd
+        // REM  Played to the end — the watchlists let it go (A-041). Only library files; told once per stop, at the stop.
+        if nearEnd, now, Self.isSynced(key) { onFinished?(key) }
         // REM  While playing, "barely started" is not written — the player is still finding its place (a seek in flight).
         if startOver && !now { return }
         let mark = Mark(seconds: startOver ? 0 : seconds, when: .now)

@@ -288,12 +288,41 @@ nonisolated enum LibraryCache {
     // REM  list no mater the media type or meta tag you have thumbs up splitting playlists by, thumbs down is consolidated".
     static let thumbsDown = "Thumbs Down"
 
-    /// Playlist order: the Thumbs Up lists first, then Thumbs Down, then by name.
+    // REM  WATCHLISTS — amber A-041 ("Watchlists: named lists of things to watch", FilmNoir, IMG_0798), the sheet's standing
+    // REM  yes (2026-11-06). A watchlist is a playlist with a name of its own kind — "Watchlist", or "Watchlist — <your name>"
+    // REM  — so it is an ordinary .m3u8 like every other playlist (PL3) and every device already lists it. Claude's calls
+    // REM  (2026-11-09), noted on the sheet: any device may START one by adding to it (other playlists must already exist);
+    // REM  a file played to the end leaves every watchlist it is in; the plain "Watchlist" goes away when emptied (like Thumbs
+    // REM  Down), a named one stays until deleted.
+    static let watchlist = "Watchlist"
+    static let watchlistPrefix = "Watchlist — "
+
+    static func isWatchlist(_ name: String) -> Bool { name == watchlist || name.hasPrefix(watchlistPrefix) }
+
+    /// The full playlist name for a watchlist the user names ("Weekend" → "Watchlist — Weekend"); empty = the plain one.
+    static func watchlistName(_ typed: String) -> String {
+        let t = typed.trimmingCharacters(in: .whitespaces)
+        if t.isEmpty || t.caseInsensitiveCompare(watchlist) == .orderedSame { return watchlist }
+        return isWatchlist(t) ? t : watchlistPrefix + t
+    }
+
+    /// What a watchlist is called on screen — "Watchlist — Weekend" shows as "Weekend".
+    static func watchlistTitle(_ name: String) -> String {
+        name.hasPrefix(watchlistPrefix) ? String(name.dropFirst(watchlistPrefix.count)) : name
+    }
+
+    /// Lists that go away when their last file leaves: Thumbs Up, Thumbs Down and the plain Watchlist.
+    static func goesWhenEmpty(_ name: String) -> Bool { isThumbsUp(name) || name == thumbsDown || name == watchlist }
+
+    /// Playlist order: the Thumbs Up lists first, then Thumbs Down, then the watchlists, then by name.
     static func playlistOrder(_ a: String, _ b: String) -> Bool {
         let ta = isThumbsUp(a), tb = isThumbsUp(b)
         if ta != tb { return ta }
         let da = a == thumbsDown, db = b == thumbsDown
         if da != db { return da }
+        let wa = isWatchlist(a), wb = isWatchlist(b)
+        if wa != wb { return wa }
+        if wa, a == watchlist || b == watchlist { return a == watchlist && b != watchlist }
         return a.localizedStandardCompare(b) == .orderedAscending
     }
 
@@ -454,14 +483,17 @@ nonisolated extension LibrarySnapshot {
             copy.root = Self.removingFile(copy.root, path.split(separator: "/").map(String.init))
             copy.root = Self.addingFile(copy.root, destination.split(separator: "/").map(String.init), file)
         case .addToPlaylist:
-            guard let name = request.playlist, var lists = copy.playlists, var list = lists[name] else { return copy }
+            // A watchlist is started by its first file (A-041); any other playlist must already exist.
+            guard let name = request.playlist else { return copy }
+            var lists = copy.playlists ?? [:]
+            guard var list = lists[name] ?? (LibraryCache.isWatchlist(name) ? [] : nil) else { return copy }
             if !list.contains(path) { list.append(path) }
             lists[name] = list
             copy.playlists = lists
         case .removeFromPlaylist:
             guard let name = request.playlist, var lists = copy.playlists, var list = lists[name] else { return copy }
             list.removeAll { $0 == path }
-            lists[name] = list.isEmpty && LibraryCache.isThumbsUp(name) ? nil : list
+            lists[name] = list.isEmpty && LibraryCache.goesWhenEmpty(name) ? nil : list
             copy.playlists = lists
         default:
             break
