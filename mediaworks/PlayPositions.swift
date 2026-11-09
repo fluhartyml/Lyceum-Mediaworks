@@ -77,6 +77,13 @@ final class PlayPositions {
         (UserDefaults.standard.dictionary(forKey: touchedKey) as? [String: Date]) ?? [:]
     }
 
+    // REM  CLEAR MEANS ALL — his catch 2026-11-09: "i clicked once and it partially cleared so i had to click clear again".
+    // REM  The list shows the newest few and Clear hid only those, so older ones moved up. Now it hides every one.
+    /// Clear Recently Viewed: every title this device has touched or stopped, not just the ones on screen.
+    func clearRecent() {
+        hideFromRecent(Array(Set(Self.touched.keys).union(marks.keys.filter { Self.isSynced($0) })))
+    }
+
     /// A player loaded this file — it belongs on Recently Viewed whatever happens next.
     func touch(_ key: String) {
         guard Self.isSynced(key) else { return }

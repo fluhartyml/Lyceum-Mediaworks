@@ -836,7 +836,7 @@ private struct RecentlyViewedList: View {
                     Button { newName = ""; saving = true } label: { Label("Save as New Playlist…", systemImage: "plus.rectangle.on.rectangle") }
                     // REM  NO "ARE YOU SURE" — his 2026-11-09 catch: Clear took two clicks. Nothing is lost (files and spots stay).
                     Button {
-                        PlayPositions.shared.hideFromRecent(recent.map(\.path))
+                        PlayPositions.shared.clearRecent()
                         recent = PlayPositions.shared.recent()
                     } label: { Label("Clear Recently Viewed", systemImage: "clock.badge.xmark") }
                 }
