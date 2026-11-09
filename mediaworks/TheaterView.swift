@@ -108,7 +108,7 @@ struct TheaterView: View {
             if let item = newPlayer.currentItem {
                 await newKeeper.resume(key, for: item)
                 // REM  THE HEAD START — his ask 2026-11-09, every client (StartBuffer.swift).
-                await StartBuffer.fill(item)
+                await StartBuffer.fill(item, player: newPlayer)
             }
             guard player === newPlayer else { return }
             newPlayer.play()

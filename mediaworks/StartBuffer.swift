@@ -65,10 +65,14 @@ final class StartBuffer {
     @ObservationIgnored private var watched: AVPlayerItem?
     @ObservationIgnored private var watchedStalled = false
     @ObservationIgnored private var stallObserver: NSObjectProtocol?
+    @ObservationIgnored private weak var watchedPlayer: AVPlayer?
+    @ObservationIgnored private var recovery: Task<Void, Never>?
 
     /// A new video is starting: the last one's result counts, and this one is watched for a stall.
-    fileprivate func watch(_ item: AVPlayerItem) {
+    fileprivate func watch(_ item: AVPlayerItem, player: AVPlayer?) {
+        if let player { watchedPlayer = player }
         guard watched !== item else { return }
+        recovery?.cancel()
         if watched != nil, !watchedStalled { smoothVideo() }
         watched = item
         watchedStalled = false
@@ -79,6 +83,7 @@ final class StartBuffer {
     }
 
     private func stalled() {
+        restartAfterStall()
         guard !watchedStalled else { return }
         watchedStalled = true
         UserDefaults.standard.set(0, forKey: "startBufferClean")
@@ -87,6 +92,26 @@ final class StartBuffer {
         guard let up = Self.autoSteps.first(where: { $0 > now }) else { return }
         UserDefaults.standard.set(up, forKey: Self.autoKey)
         show("Buffer raised to \(Int(up)) seconds — the video had to stop and load")
+    }
+
+    // REM  A STALL THAT NEVER STARTED AGAIN — his catch on the Living Room TV, 2026-11-09 ~11:4x: "when it did adjust to
+    // REM  increase the buffer it didnt automatically start playing again". After a stall AVPlayer waits for its OWN guess
+    // REM  that it can keep up — with a 60 s cushion asked for, that guess can take a long time. So after a stall: show
+    // REM  "Buffering…", and once the head start is loaded again, start it. Only while the player still WANTS to play
+    // REM  (waiting to play) — a pause he pressed is left alone. Gives up after `limit`; then it is AVPlayer's own wait again.
+    private func restartAfterStall() {
+        guard let player = watchedPlayer, let item = watched, player.currentItem === item else { return }
+        recovery?.cancel()
+        recovery = Task { @MainActor in
+            let started = Date.now
+            filling += 1
+            defer { filling -= 1 }
+            while Date.now.timeIntervalSince(started) < Self.limit, !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(250))
+                guard player.currentItem === item, player.timeControlStatus == .waitingToPlayAtSpecifiedRate else { return }
+                if Self.ready(item, at: max(Self.headStart, 5)) { player.playImmediately(atRate: 1); return }
+            }
+        }
     }
 
     private func smoothVideo() {
@@ -116,8 +141,8 @@ final class StartBuffer {
     var isFilling: Bool { filling > 0 }
 
     /// Asks for the bigger cushion, then waits for the head start. Call after the item is in the player, before play().
-    static func fill(_ item: AVPlayerItem) async {
-        shared.watch(item)
+    static func fill(_ item: AVPlayerItem, player: AVPlayer? = nil) async {
+        shared.watch(item, player: player)
         guard headStart > 0 else { return }
         item.preferredForwardBufferDuration = cushion
         let started = Date.now
@@ -137,14 +162,15 @@ final class StartBuffer {
         Task { @MainActor in
             guard player.currentItem === item else { return }
             if !ready(item) { player.pause() }
-            await fill(item)
+            await fill(item, player: player)
             guard player.currentItem === item, stillWanted() else { return }
             player.play()
         }
     }
 
     /// Head start loaded ahead of the play point, or everything to the end.
-    private static func ready(_ item: AVPlayerItem) -> Bool {
+    private static func ready(_ item: AVPlayerItem, at seconds: Double = headStart) -> Bool {
+        let headStart = seconds
         if headStart <= 0 { return true }
         guard item.status == .readyToPlay else { return false }
         let now = item.currentTime().seconds

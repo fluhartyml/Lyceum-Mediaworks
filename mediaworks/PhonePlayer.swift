@@ -92,7 +92,7 @@ final class PhonePlayer {
         Task {
             await keeper.resume(path, for: item)
             // REM  THE HEAD START — his ask 2026-11-09, every client (StartBuffer.swift).
-            await StartBuffer.fill(item)
+            await StartBuffer.fill(item, player: player)
             guard player.currentItem === item, isPlaying else { return }
             player.play()
         }

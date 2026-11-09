@@ -173,7 +173,7 @@ final class TVTheater {
             }
             await keeper.resume(path, for: item)
             // REM  THE HEAD START — his ask 2026-11-09 after the 0:06 stall on this TV (StartBuffer.swift).
-            await StartBuffer.fill(item)
+            await StartBuffer.fill(item, player: player)
             guard player.currentItem === item else { return }
             player.play()
         }
