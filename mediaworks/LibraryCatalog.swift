@@ -342,7 +342,7 @@ final class LibraryCatalog {
                 // REM  Only a real change is recorded — already in (or already out of) the playlist is nothing to undo.
                 // REM  A watchlist a device is starting counts as an empty one (A-041).
                 guard let name = request.playlist,
-                      let list = playlists[name] ?? (request.op == .addToPlaylist && LibraryCache.isWatchlist(name) ? [] : nil),
+                      let list = playlists[name] ?? (request.op == .addToPlaylist && (LibraryCache.isWatchlist(name) || request.startsList == true) ? [] : nil),
                       list.contains(path) == (request.op == .removeFromPlaylist) else { return }
                 if playlists[name] == nil { change.playlistWasNew = true }
                 change.playlist = name
@@ -394,7 +394,7 @@ final class LibraryCatalog {
         case .addToPlaylist:
             // REM  WATCHLISTS (A-041): any device may start one by adding to it; other playlists must already exist.
             guard let name = request.playlist,
-                  var list = playlists[name] ?? (LibraryCache.isWatchlist(name) && Self.validName(name) ? [] : nil) else { return }
+                  var list = playlists[name] ?? ((LibraryCache.isWatchlist(name) || request.startsList == true) && Self.validName(name) ? [] : nil) else { return }
             if !list.contains(path) { list.append(path) }
             playlists[name] = list
         case .removeFromPlaylist:

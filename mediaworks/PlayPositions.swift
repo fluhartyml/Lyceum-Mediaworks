@@ -69,10 +69,29 @@ final class PlayPositions {
     // REM  barely started, so it is left out). Each opens at its spot through the same resume as always.
     /// Library files stopped partway on this device, newest first.
     func recent(limit: Int = 50) -> [(path: String, seconds: Double, when: Date)] {
-        marks.filter { Self.isSynced($0.key) && $0.value.seconds > 0 }
+        let hidden = Self.hiddenFromRecent
+        return marks.filter { entry in
+            guard Self.isSynced(entry.key), entry.value.seconds > 0 else { return false }
+            guard let hiddenAt = hidden[entry.key] else { return true }
+            return entry.value.when > hiddenAt
+        }
             .sorted { $0.value.when > $1.value.when }
             .prefix(limit)
             .map { ($0.key, $0.value.seconds, $0.value.when) }
+    }
+
+    // REM  REMOVE / CLEAR RECENTLY VIEWED — his yes 2026-11-09 ~14:5x ("yes build both"). Taking a title off the list keeps
+    // REM  the file AND its saved spot; it is only hidden from Recently Viewed until it is played again (a newer mark).
+    private static let hiddenKey = "recentlyViewedHidden"
+    private static var hiddenFromRecent: [String: Date] {
+        (UserDefaults.standard.dictionary(forKey: hiddenKey) as? [String: Date]) ?? [:]
+    }
+
+    /// Off Recently Viewed on this device; back the next time it's played.
+    func hideFromRecent(_ keys: [String]) {
+        var hidden = Self.hiddenFromRecent
+        for key in keys { hidden[key] = .now }
+        UserDefaults.standard.set(hidden, forKey: Self.hiddenKey)
     }
 
     /// "12:34" or "1:02:03".

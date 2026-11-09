@@ -186,6 +186,9 @@ nonisolated struct CacheRequest: Codable, Sendable, Hashable {
     var newName: String?
     /// For `addToPlaylist` / `removeFromPlaylist`: which playlist.
     var playlist: String?
+    /// For `addToPlaylist`: true = start this playlist if it isn't there yet (Recently Viewed → Save as New Playlist,
+    /// his yes 2026-11-09). Older Macs ignore it and add only to playlists that exist.
+    var startsList: Bool?
     /// The asking app's build number — so a serving Mac knows when it is behind the devices it serves (MorningRestart's
     /// build check, his "yes add the build check", 2026-11-09). Nil from builds before 267; older Macs ignore it.
     var build: Int? = Int(BuildStamp.number)
@@ -489,7 +492,7 @@ nonisolated extension LibrarySnapshot {
             // A watchlist is started by its first file (A-041); any other playlist must already exist.
             guard let name = request.playlist else { return copy }
             var lists = copy.playlists ?? [:]
-            guard var list = lists[name] ?? (LibraryCache.isWatchlist(name) ? [] : nil) else { return copy }
+            guard var list = lists[name] ?? (LibraryCache.isWatchlist(name) || request.startsList == true ? [] : nil) else { return copy }
             if !list.contains(path) { list.append(path) }
             lists[name] = list
             copy.playlists = lists

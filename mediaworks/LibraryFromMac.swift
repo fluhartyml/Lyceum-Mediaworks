@@ -819,17 +819,34 @@ private struct RecentlyViewedList: View {
     @Environment(MacLibrary.self) private var library
     @State private var recent: [(path: String, seconds: Double, when: Date)] = []
 
+    // REM  SAVE AS NEW PLAYLIST + REMOVE + CLEAR — his ask 2026-11-09 ~14:5x on the TV ("can you add delete or rename to
+    // REM  save as new playlist" → "yes build both"). Save makes a real playlist on the Mac from these titles, in this order
+    // REM  (needs the Mac on build 270+ to start a new list). Remove and Clear only hide titles here — the files and their
+    // REM  saved spots stay, and a title comes back when it is played again.
+    @State private var saving = false
+    @State private var newName = ""
+    @State private var clearing = false
+
     var body: some View {
         List {
             if recent.isEmpty {
                 Text("Nothing stopped partway yet. Stop a video or song before the end and it shows here, ready to pick up where you left off.")
                     .foregroundStyle(.secondary)
+            } else {
+                Section {
+                    Button { newName = ""; saving = true } label: { Label("Save as New Playlist…", systemImage: "plus.rectangle.on.rectangle") }
+                    Button { clearing = true } label: { Label("Clear Recently Viewed", systemImage: "clock.badge.xmark") }
+                }
             }
             let paths = recent.map(\.path)
             ForEach(recent, id: \.path) { item in
                 if let file = library.snapshot?.file(at: item.path) {
                     VStack(alignment: .leading, spacing: 4) {
-                        FileLink(path: item.path, fallback: file, queue: paths)
+                        FileLink(path: item.path, fallback: file, queue: paths,
+                                 removal: ("Remove from Recently Viewed", {
+                                     PlayPositions.shared.hideFromRecent([item.path])
+                                     recent = PlayPositions.shared.recent()
+                                 }))
                         Text("Stopped at \(PlayPositions.clock(item.seconds)) · \(item.when.formatted(.relative(presentation: .named)))")
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
@@ -840,6 +857,28 @@ private struct RecentlyViewedList: View {
         .font(.lyceumBody)
         .navigationTitle("Recently Viewed")
         .onAppear { recent = PlayPositions.shared.recent() }
+        .alert("Save as New Playlist", isPresented: $saving) {
+            TextField("Playlist name", text: $newName)
+            Button("Save") {
+                let name = newName.trimmingCharacters(in: .whitespaces)
+                guard !name.isEmpty, !name.contains("/"), !name.contains(":"), !name.hasPrefix(".") else { return }
+                for item in recent {
+                    library.send(CacheRequest(op: .addToPlaylist, path: item.path, playlist: name, startsList: true))
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your Mac makes a playlist of these \(recent.count) titles, in this order. Recently Viewed stays as it is.")
+        }
+        .alert("Clear Recently Viewed?", isPresented: $clearing) {
+            Button("Clear") {
+                PlayPositions.shared.hideFromRecent(recent.map(\.path))
+                recent = PlayPositions.shared.recent()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The list empties on this device. Your files and where you stopped in each stay, and a title comes back when you play it again.")
+        }
     }
 }
 
@@ -920,7 +959,13 @@ private struct PlaylistList: View {
             Section {
                 ForEach(paths, id: \.self) { path in
                     if let file = library.snapshot?.file(at: path) {
-                        FileLink(path: path, fallback: file, queue: paths)
+                        // REM  REMOVE FROM THIS PLAYLIST — his word 2026-11-09: "remove a song from the list and not delete it from
+                        // REM  my library". A Thumbs Up list takes the 👍 back (as on the Mac); any other list just drops the title.
+                        FileLink(path: path, fallback: file, queue: paths,
+                                 removal: ("Remove from This Playlist", {
+                                     if LibraryCache.isThumbsUp(name) { library.change(.unthumb, path) }
+                                     else { library.send(CacheRequest(op: .removeFromPlaylist, path: path, playlist: name)) }
+                                 }))
                     } else {
                         Text(path).foregroundStyle(.secondary)
                     }
@@ -1022,6 +1067,9 @@ private struct FileLink: View {
     var focus: FocusState<String?>.Binding? = nil
     /// Called just before this file is trashed or moved away.
     var onLeave: (() -> Void)? = nil
+    /// Takes this title off the list it is shown in, never out of the library — "Remove from This Playlist" or
+    /// "Remove from Recently Viewed" (his yes 2026-11-09: "remove a song from the list and not delete it from my library").
+    var removal: (label: String, action: () -> Void)? = nil
     @Environment(MacLibrary.self) private var library
 
     private var file: CachedFile { library.snapshot?.file(at: path) ?? fallback }
@@ -1068,6 +1116,7 @@ private struct FileLink: View {
             .modifier(FocusedPath(focus: focus, path: path))
             .onPlayPauseCommand { play() }
             .contextMenu {
+                if let removal { Button(removal.label) { removal.action() } }
                 Button("Info") { showInfo = true }
                 if file.isMedia {
                     Button(file.isChecked ? "Uncheck" : "Check") { library.change(file.isChecked ? .uncheck : .check, path) }
@@ -1141,6 +1190,12 @@ private struct FileLink: View {
                 }
             }
         }
+        #if os(iOS)
+        .swipeActions(edge: .trailing) {
+            if let removal { Button(removal.label) { removal.action() }.tint(.orange) }
+        }
+        .contextMenu { if let removal { Button(removal.label) { removal.action() } } }
+        #endif
     }
 }
 
