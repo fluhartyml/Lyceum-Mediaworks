@@ -1117,6 +1117,15 @@ final class LibraryCatalog {
             fail("204 No Content")
             return
         }
+        // REM  /status — EVERYTHING THIS MAC KNOWS, as JSON, read-only (StatusReport.swift, his "yes build the status address",
+        // REM  2026-11-09). For Claude to read with no screen and no clicks.
+        if parts.count >= 2, parts[1] == "/status" || parts[1].hasPrefix("/status?") {
+            let query = parts[1].split(separator: "?", maxSplits: 1).dropFirst().first.map(String.init)
+            let body = StatusReport.json(query: query)
+            let head = "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n"
+            connection.send(content: Data(head.utf8) + body, completion: .contentProcessed { _ in connection.cancel() })
+            return
+        }
         // I01a — a file this Mac's Import Drive is handing to the partner, at its one-time address.
         if parts.count >= 2, parts[1].hasPrefix("/outbox/"), let url = outbox[String(parts[1].dropFirst("/outbox/".count))] {
             serveOutbox(connection, url: url, lines: lines)
