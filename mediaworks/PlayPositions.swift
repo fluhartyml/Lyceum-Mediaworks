@@ -59,6 +59,24 @@ final class PlayPositions {
     /// This device's mark for `key`, in seconds — no waiting on iCloud.
     func local(_ key: String) -> Double { marks[key]?.seconds ?? 0 }
 
+    // REM  RECENTLY VIEWED — amber A-040, "a 'Recently viewed' row that resumes where you stopped" (FilmNoir, IMG_0798); the
+    // REM  sheet's standing word 2026-11-06, "the rest are yes … please use it as a roadmap to code". Built 2026-11-09.
+    // REM  The files this device stopped partway through, newest first — library files only (a mark at 0 = finished or
+    // REM  barely started, so it is left out). Each opens at its spot through the same resume as always.
+    /// Library files stopped partway on this device, newest first.
+    func recent(limit: Int = 50) -> [(path: String, seconds: Double, when: Date)] {
+        marks.filter { Self.isSynced($0.key) && $0.value.seconds > 0 }
+            .sorted { $0.value.when > $1.value.when }
+            .prefix(limit)
+            .map { ($0.key, $0.value.seconds, $0.value.when) }
+    }
+
+    /// "12:34" or "1:02:03".
+    static func clock(_ seconds: Double) -> String {
+        let t = max(0, Int(seconds))
+        return t >= 3600 ? String(format: "%d:%02d:%02d", t / 3600, t / 60 % 60, t % 60) : String(format: "%d:%02d", t / 60, t % 60)
+    }
+
     /// Where `key` should start, in seconds (0 = the top): the newer of this device's mark and iCloud's.
     func start(_ key: String) async -> Double {
         var best = marks[key]

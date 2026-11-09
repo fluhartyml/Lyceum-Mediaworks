@@ -29,7 +29,7 @@ private struct HybridFolder: Identifiable, Hashable {
     }
 }
 
-private enum Place: Hashable { case folder(String), playlist(String) }
+private enum Place: Hashable { case folder(String), playlist(String), recent }
 
 private struct Row: Identifiable, Hashable {
     var id: String { path }
@@ -73,6 +73,8 @@ struct HybridLibraryView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $place) {
+                // REM  RECENTLY VIEWED — amber A-040: what this Mac stopped partway through, newest first.
+                Label("Recently Viewed", systemImage: "clock.arrow.circlepath").tag(Place.recent)
                 if let lists = snapshot?.playlists, !lists.isEmpty {
                     Section("Playlists") {
                         ForEach(lists.keys.sorted(by: LibraryCache.playlistOrder), id: \.self) { name in
@@ -179,6 +181,9 @@ struct HybridLibraryView: View {
             list = folder.files.filter { $0.kind != "other" }.map { Row(path: path + "/" + $0.name, file: $0) }
         case .playlist(let name):
             list = (snapshot.playlists?[name] ?? []).compactMap { p in snapshot.file(at: p).map { Row(path: p, file: $0) } }
+        case .recent:
+            // Newest first unless a column is clicked; each plays from its spot (the Theater's resume).
+            list = PlayPositions.shared.recent().compactMap { item in snapshot.file(at: item.path).map { Row(path: item.path, file: $0) } }
         }
         return sortOrder.isEmpty ? list : list.sorted(using: sortOrder)
     }

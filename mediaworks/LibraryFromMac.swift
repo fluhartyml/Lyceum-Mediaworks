@@ -619,6 +619,15 @@ private struct CachedFolderList: View {
             }
             // REM  THE THUMBS UP PLAYLIST at the top of the library — every file 👍'd on any device (platforms 001c).
             // REM  EVERY PLAYLIST at the top — Thumbs Up first, then by name (platforms PL5).
+            // REM  RECENTLY VIEWED first — amber A-040 (RecentlyViewedList below).
+            if isTop, !mediaOnly {
+                NavigationLink {
+                    RecentlyViewedList().tvFooter()
+                } label: {
+                    Label("Recently Viewed", systemImage: "clock.arrow.circlepath")
+                }
+                .accessibilityIdentifier("recentlyViewed")
+            }
             if isTop, !mediaOnly {
                 ForEach(library.playlistNames, id: \.self) { name in
                     let list = library.snapshot?.playlists?[name] ?? []
@@ -710,6 +719,35 @@ private struct CachedFolderList: View {
 }
 
 /// A playlist: the files it points to, wherever they live in the library.
+/// Amber A-040: the files this device stopped partway through, newest first; each plays from its spot.
+private struct RecentlyViewedList: View {
+    @Environment(MacLibrary.self) private var library
+    @State private var recent: [(path: String, seconds: Double, when: Date)] = []
+
+    var body: some View {
+        List {
+            if recent.isEmpty {
+                Text("Nothing stopped partway yet. Stop a video or song before the end and it shows here, ready to pick up where you left off.")
+                    .foregroundStyle(.secondary)
+            }
+            let paths = recent.map(\.path)
+            ForEach(recent, id: \.path) { item in
+                if let file = library.snapshot?.file(at: item.path) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        FileLink(path: item.path, fallback: file, queue: paths)
+                        Text("Stopped at \(PlayPositions.clock(item.seconds)) · \(item.when.formatted(.relative(presentation: .named)))")
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                }
+            }
+        }
+        .font(.lyceumBody)
+        .navigationTitle("Recently Viewed")
+        .onAppear { recent = PlayPositions.shared.recent() }
+    }
+}
+
 private struct PlaylistList: View {
     let name: String
     @Environment(MacLibrary.self) private var library
