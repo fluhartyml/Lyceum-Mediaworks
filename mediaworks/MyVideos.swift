@@ -45,6 +45,14 @@ enum LibrarySource: String, CaseIterable, Identifiable {
 
     /// Only This Device: no network search, no Mac.
     var isDeviceOnly: Bool { self == .device }
+
+    /// The robot's way to start at the question: "-resetLibrarySource YES" clears the choice (a launch argument that set
+    /// librarySource itself would pin it, and the tap could never change it — found 2026-11-09).
+    static func resetForTesting() {
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "resetLibrarySource") { UserDefaults.standard.removeObject(forKey: key) }
+        #endif
+    }
 }
 
 // MARK: - Your own videos
@@ -407,6 +415,7 @@ struct LibrarySourceSetupView: View {
                        words: "Plays only what is on this \(SyncSummarySection.device): copies synced from your Mac, and videos you add yourself. It won't look for your Mac.")
                 Button("Set Up Later") { sourceRaw = LibrarySource.mac.rawValue }
                     .font(.lyceumBody)
+                    .foregroundStyle(AccessLocalNetworkButton.textBlue)
                     .accessibilityIdentifier("setUpLater")
                 Text("You can change this any time in Settings.")
                     .font(.lyceumBody)
@@ -422,8 +431,12 @@ struct LibrarySourceSetupView: View {
     private func choice(_ source: LibrarySource, symbol: String, words: String) -> some View {
         Button { sourceRaw = source.rawValue } label: {
             VStack(alignment: .leading, spacing: 8) {
+                // REM  FIXED 2026-11-09 (robot, Apple's audit): the light tint on the gray button failed contrast — the title
+                // REM  takes the deeper blue that fixed Access Local Network, the words are plain text.
                 Label(source.title, systemImage: symbol).font(.lyceumHeadline)
+                    .foregroundStyle(AccessLocalNetworkButton.textBlue)
                 Text(words).font(.lyceumBody).multilineTextAlignment(.leading)
+                    .foregroundStyle(.primary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16)

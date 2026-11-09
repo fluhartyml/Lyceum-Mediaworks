@@ -76,6 +76,7 @@ struct TVHome: View {
         .onAppear { theater.isPlayable = { [library] in library.isPlayable($0) } }
         .fullScreenCover(isPresented: Binding(get: { theater.presented }, set: { theater.presented = $0 })) {
             TVPlayer().environment(theater).environment(library)
+                .overlay { BufferingBadge() }
         }
     }
 }
@@ -171,6 +172,8 @@ final class TVTheater {
                 MainActor.assumeIsolated { self.advance(ended: true) }
             }
             await keeper.resume(path, for: item)
+            // REM  THE HEAD START — his ask 2026-11-09 after the 0:06 stall on this TV (StartBuffer.swift).
+            await StartBuffer.fill(item)
             guard player.currentItem === item else { return }
             player.play()
         }
@@ -640,6 +643,8 @@ struct TVSettingsSheet: View {
                     Toggle("Always show the file name", isOn: $alwaysShowFileName)
                     InfoButton("Always show the file name on — it stays at the bottom of the screen the whole time.\n\nOff — it shows for 5 seconds when each video starts, and after a remote press.")
                 }
+                // REM  BUFFER BEFORE PLAYING — his word 2026-11-09 (StartBuffer.swift).
+                Section("Buffer before playing") { StartBufferPicker() }
                 MacPickerSection()
                 // REM  LOCAL NETWORK — amber 001.13 / 002.2, 2026-11-07 (MacFinder.swift).
                 LocalNetworkSection()

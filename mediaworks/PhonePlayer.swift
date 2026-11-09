@@ -91,6 +91,8 @@ final class PhonePlayer {
         isPlaying = true
         Task {
             await keeper.resume(path, for: item)
+            // REM  THE HEAD START — his ask 2026-11-09, every client (StartBuffer.swift).
+            await StartBuffer.fill(item)
             guard player.currentItem === item, isPlaying else { return }
             player.play()
         }
@@ -397,6 +399,7 @@ struct FullScreenPlayer: View {
             ZStack {
                 Color.black.ignoresSafeArea()
                 PlayerLayer(player: player.player).ignoresSafeArea()
+                BufferingBadge()
                 // Double-tap halves (P09) and the single tap (P04) — one layer, so each gesture has the whole screen.
                 HStack(spacing: 0) {
                     tapZone(back: true)

@@ -30,6 +30,9 @@ struct mediaworksApp: App {
     // REM  BuildLog notes which build this launch is, so the waiting-for-caller page can say "Updated from build N".
     init() { MorningRestart.start(); BuildLog.noteLaunch() }
     #endif
+    #if os(iOS)
+    init() { LibrarySource.resetForTesting() }
+    #endif
 
     var body: some Scene {
         WindowGroup(id: "main") {

@@ -23,6 +23,7 @@ struct TheaterView: View {
         Group {
             if let url = library.nowPlaying, Self.playable(url) {
                 VideoPlayer(player: player)
+                    .overlay { BufferingBadge() }
                     .overlay(alignment: .center) {
                         if isAudio(url) {
                             VStack(spacing: 16) {
@@ -104,7 +105,11 @@ struct TheaterView: View {
         keeper = newKeeper
         player = newPlayer
         Task {
-            if let item = newPlayer.currentItem { await newKeeper.resume(key, for: item) }
+            if let item = newPlayer.currentItem {
+                await newKeeper.resume(key, for: item)
+                // REM  THE HEAD START — his ask 2026-11-09, every client (StartBuffer.swift).
+                await StartBuffer.fill(item)
+            }
             guard player === newPlayer else { return }
             newPlayer.play()
         }

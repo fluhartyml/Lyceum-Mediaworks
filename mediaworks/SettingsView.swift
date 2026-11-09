@@ -50,6 +50,13 @@ struct SettingsView: View {
             // REM  menu 2026-10-18 (it is not a sync choice, and here it can have its (i)).
             if !deviceOnly { RelaySettingsSection() }
             #endif
+            // REM  BUFFER BEFORE PLAYING — his word 2026-11-09: "let the user pick the extra buffer time in settings 'if
+            // REM  buffering issues'" (StartBuffer.swift).
+            Section {
+                StartBufferPicker()
+            } header: {
+                Text("Playback").font(.lyceumHeadline)
+            }
             Section {
                 Toggle("Delete instantly (skip the 30-day Trash)", isOn: $instantDelete)
                     .font(.lyceumBody)

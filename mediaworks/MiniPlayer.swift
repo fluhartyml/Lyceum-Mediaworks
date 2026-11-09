@@ -223,6 +223,8 @@ final class MiniPlayer {
                 let item = AVPlayerItem(url: real)
                 self.player.replaceCurrentItem(with: item)
                 if self.isPlaying { self.player.play() }
+                // REM  THE HEAD START — his ask 2026-11-09, every client (StartBuffer.swift): held until it has loaded.
+                StartBuffer.hold(self.player, item) { [weak self] in self?.isPlaying ?? false }
                 await self.keeper.resume(PlayPositions.key(url), for: item)
                 if let seconds = try? await AVURLAsset(url: real).load(.duration).seconds, seconds.isFinite, self.current == url {
                     self.duration = seconds
@@ -234,6 +236,8 @@ final class MiniPlayer {
         let item = AVPlayerItem(url: url)
         player.replaceCurrentItem(with: item)
         Task { [weak self] in await self?.keeper.resume(PlayPositions.key(url), for: item) }
+        // REM  THE HEAD START — his ask 2026-11-09, every client (StartBuffer.swift). A file on a network share fills here too.
+        StartBuffer.hold(player, item) { [weak self] in self?.isPlaying ?? false }
         current = url
         currentSource = source
         lastPlayed[source] = url

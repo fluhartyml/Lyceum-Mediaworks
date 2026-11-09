@@ -112,7 +112,7 @@ final class mediaworksUITests: XCTestCase {
     func testLibrarySourceSetupAndYourVideos() throws {
         continueAfterFailure = true
         let app = XCUIApplication()
-        app.launchArguments += ["-librarySource", ""]     // as on a first launch
+        app.launchArguments += ["-resetLibrarySource", "YES"]   // as on a first launch (clears the choice, never pins it)
         app.launch()
         let onlyHere = app.buttons["onlyThisDevice"]
         XCTAssertTrue(onlyHere.waitForExistence(timeout: 10), "No setup question at first launch")
