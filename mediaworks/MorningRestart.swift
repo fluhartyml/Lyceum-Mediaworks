@@ -41,6 +41,11 @@ enum MorningRestart {
         UserDefaults.standard.set(device, forKey: newestBuildWhereKey)
     }
 
+    /// The newest build any device or Mac has reported here, and where (0 / nil before any did).
+    static var newestSeen: (build: Int, on: String?) {
+        (UserDefaults.standard.integer(forKey: newestBuildKey), UserDefaults.standard.string(forKey: newestBuildWhereKey))
+    }
+
     /// "build 266 is on Living Room; this Mac runs 255" — nil when this Mac is as new as anything that has called.
     static var behind: String? {
         let newest = UserDefaults.standard.integer(forKey: newestBuildKey)

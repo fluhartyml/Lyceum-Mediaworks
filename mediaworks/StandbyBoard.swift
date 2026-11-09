@@ -165,6 +165,7 @@ struct StandbyBoard: View {
 
     private var board: some View {
         VStack(spacing: 18) {
+            updateBand
             HStack(alignment: .top, spacing: 24) {
                 buildBlock.frame(maxWidth: .infinity)
                 Divider()
@@ -175,6 +176,62 @@ struct StandbyBoard: View {
         }
         .padding(28)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: Update band
+
+    // REM  PEACOCK THE NEED FOR AN UPDATE — his idea 2026-11-09 ~15:4x, after Lab B sat on 255 for nine builds with TestFlight's
+    // REM  Automatic Updates on: "what if it was color coded if it needs a software update? maybe it cant reset itself but it
+    // REM  peacocks its need to have a software update" → "yes build it". Newest build = the highest any device has reported
+    // REM  (MorningRestart.newestSeen, from every request since 267) or any partner server's listing. Behind → a wide orange
+    // REM  band (red at 10+ builds behind) with an Open TestFlight button; up to date → a small green line.
+    private var newest: (build: Int, on: String?) {
+        var best = MorningRestart.newestSeen
+        for slice in partner.slices {
+            if let b = slice.snapshot.serverBuild?.split(separator: " ").first.flatMap({ Int($0) }), b > best.build { best = (b, slice.name) }
+        }
+        return best
+    }
+
+    @ViewBuilder private var updateBand: some View {
+        let mine = Int(BuildStamp.number) ?? 0
+        let top = newest
+        if mine > 0, top.build > mine {
+            let far = top.build - mine >= 10
+            HStack(spacing: 16) {
+                Image(systemName: "arrow.down.circle.fill").font(.system(size: 34, weight: .bold))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Update waiting — build \(top.build) is out, this Mac runs \(mine)")
+                        .font(.system(size: 24, weight: .bold))
+                    Text("\(top.on.map { "Seen on \($0). " } ?? "")Open TestFlight and click Update.")
+                        .font(.lyceumBody)
+                }
+                Spacer(minLength: 0)
+                Button("Open TestFlight") {
+                    if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.TestFlight") {
+                        NSWorkspace.shared.openApplication(at: app, configuration: NSWorkspace.OpenConfiguration()) { _, _ in }
+                    }
+                }
+                .font(.lyceumHeadline)
+                .buttonStyle(.borderedProminent)
+                .tint(.white.opacity(0.25))
+                .accessibilityIdentifier("standbyOpenTestFlight")
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 20).padding(.vertical, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(far ? Color(red: 0.70, green: 0.08, blue: 0.08) : Color(red: 0.80, green: 0.33, blue: 0.0),
+                        in: RoundedRectangle(cornerRadius: 16))
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("standbyUpdateBand")
+        } else if top.build > 0 {
+            Label("Up to date: build \(mine)", systemImage: "checkmark.circle.fill")
+                .font(.lyceumHeadline)
+                .foregroundStyle(.green)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("standbyUpToDate")
+        }
     }
 
     // MARK: Build
