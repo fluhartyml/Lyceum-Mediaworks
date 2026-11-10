@@ -234,7 +234,14 @@ struct PhoneHome: View {
         .task { await remote.keepWatching() }
         // REM  THE iPHONE RELAY for imports (ImportJobs.swift) — while the app is open.
         .task { ImportRelay.shared.start() }
-        .onAppear { player.isPlayable = { [library] in library.isPlayable($0) } }
+        .onAppear {
+            player.isPlayable = { [library] in library.isPlayable($0) }
+            // REM  MW-001: "I chose find your mac and it unintuitively landed here" — land on Settings after that choice.
+            if LibrarySource.openSettingsNext {
+                LibrarySource.openSettingsNext = false
+                player.page = PhonePlayer.settingsPage
+            }
+        }
         .fullScreenCover(isPresented: $player.fullScreen) {
             FullScreenPlayer()
                 .environment(player)

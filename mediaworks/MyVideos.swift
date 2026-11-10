@@ -46,6 +46,20 @@ enum LibrarySource: String, CaseIterable, Identifiable {
     /// Only This Device: no network search, no Mac.
     var isDeviceOnly: Bool { self == .device }
 
+    // REM  MW-001, his TestFlight word on build 276 (iPhone): "It asked only on this iPhone or find your mac. I chose find your
+    // REM  mac and it unintuitively landed here" (the Media page). MW-002, on the Settings page: "it probably would have been
+    // REM  better to land here". So choosing Find Your Mac opens the four pages on Settings, once. In memory only, so a later
+    // REM  launch opens on Media as always (Claude's conservative call: the landing belongs to the moment of choosing).
+    @MainActor static var openSettingsNext = false
+
+    /// The value in Settings' "Videos come from" row — the consequence, not the search.
+    @MainActor var settingsTitle: String {
+        switch self {
+        case .unasked, .mac: "Your Mac"
+        case .device: "Only This \(SyncSummarySection.device)"
+        }
+    }
+
     /// The robot's way to start at the question: "-resetLibrarySource YES" clears the choice (a launch argument that set
     /// librarySource itself would pin it, and the tap could never change it — found 2026-11-09).
     static func resetForTesting() {
@@ -429,7 +443,10 @@ struct LibrarySourceSetupView: View {
     }
 
     private func choice(_ source: LibrarySource, symbol: String, words: String) -> some View {
-        Button { sourceRaw = source.rawValue } label: {
+        Button {
+            if source == .mac { LibrarySource.openSettingsNext = true }
+            sourceRaw = source.rawValue
+        } label: {
             VStack(alignment: .leading, spacing: 8) {
                 // REM  FIXED 2026-11-09 (robot, Apple's audit): the light tint on the gray button failed contrast — the title
                 // REM  takes the deeper blue that fixed Access Local Network, the words are plain text.
@@ -450,22 +467,25 @@ struct LibrarySourceSetupView: View {
     }
 }
 
-// MARK: - Settings: Library Comes From
+// MARK: - Settings: Where Mediaworks Looks
 
+// REM  MW-002, his word on build 276: "Even though it probably would have been better to land here im still confused". Two rows
+// REM  in a row both said "Library from" (Find Your Mac, then HomeLAB B). Now this row says where your videos come from (Your
+// REM  Mac or Only This iPhone/iPad), and the Which Mac section below says which Mac is "Playing from" (MacFinder.swift).
 struct LibrarySourceSection: View {
     @AppStorage(LibrarySource.key) private var sourceRaw = ""
 
     var body: some View {
         Section {
             HStack(spacing: 8) {
-                Picker("Library from", selection: Binding(
+                Picker("Videos come from", selection: Binding(
                     get: { LibrarySource(rawValue: sourceRaw)?.isDeviceOnly == true ? LibrarySource.device : .mac },
                     set: { sourceRaw = $0.rawValue })) {
-                    Text(LibrarySource.mac.title).tag(LibrarySource.mac)
-                    Text(LibrarySource.device.title).tag(LibrarySource.device)
+                    Text(LibrarySource.mac.settingsTitle).tag(LibrarySource.mac)
+                    Text(LibrarySource.device.settingsTitle).tag(LibrarySource.device)
                 }
                 .accessibilityIdentifier("librarySource")
-                InfoButton("Find Your Mac — the library comes from your Mac, and your own videos are copied to the Lyceum.\n\nOnly This \(SyncSummarySection.device) — plays only what is already here, and never looks for your Mac.")
+                InfoButton("Your Mac — your library comes from Lyceum Mediaworks on your Mac, and videos you add to this \(SyncSummarySection.device) are copied to the Lyceum. Pick the Mac under Which Mac.\n\nOnly This \(SyncSummarySection.device) — plays only what is already on this \(SyncSummarySection.device), and never looks for your Mac.")
             }
         } header: {
             Text("Where Mediaworks Looks").font(.lyceumHeadline)

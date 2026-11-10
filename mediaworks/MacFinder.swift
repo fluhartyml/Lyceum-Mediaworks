@@ -112,7 +112,9 @@ struct MacPickerSection: View {
             }
             #else
             HStack(spacing: 8) {
-            Picker("Library from", selection: Binding(get: { finder.chosen ?? "" },
+            // REM  MW-002 (build 276): was a second "Library from" row under Where Mediaworks Looks — "im still confused". It
+            // REM  names WHICH Mac your videos play from.
+            Picker("Playing from", selection: Binding(get: { finder.chosen ?? "" },
                                                       set: { finder.chosen = $0.isEmpty ? nil : $0 })) {
                 Text("Any Mac").tag("")
                 ForEach(finder.names, id: \.self) { Text($0).tag($0) }
@@ -130,11 +132,12 @@ struct MacPickerSection: View {
             InfoButton(Self.info)
             #endif
         } header: {
-            Text("Your Mac")
+            // REM  MW-002: "Your Mac" read like the "Your Mac" choice above it; this section picks one Mac.
+            Text("Which Mac")
         }
     }
 
-    private static let info = "Each Mac running Mediaworks is listed by its computer name. The library, playlists and videos come from the Mac you choose. Any Mac — the first one found, in name order."
+    private static let info = "Playing from — the Mac your library, playlists and videos come from. Each Mac running Mediaworks is listed by its computer name.\n\nAny Mac — the first one found, in name order."
 
     private func choice(_ title: String, _ name: String?) -> some View {
         Button {

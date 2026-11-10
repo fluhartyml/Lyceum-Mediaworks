@@ -129,7 +129,7 @@ final class mediaworksUITests: XCTestCase {
         app.buttons["Settings"].firstMatch.tap()
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5), "Settings did not open")
         XCTAssertTrue(app.staticTexts["Where Mediaworks Looks"].exists, "No Where Mediaworks Looks section")
-        XCTAssertFalse(app.staticTexts["Your Mac"].exists, "Your Mac shows in Only This Device — it would start the network search")
+        XCTAssertFalse(app.staticTexts["Which Mac"].exists, "Which Mac shows in Only This Device — it would start the network search")
         snap("004.1 settings", app)
         audit("Settings (device only)", app)
     }
