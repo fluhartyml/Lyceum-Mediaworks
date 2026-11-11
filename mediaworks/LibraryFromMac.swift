@@ -100,6 +100,13 @@ final class MacLibrary {
         didSet { try? JSONEncoder().encode(pending).write(to: Self.pendingURL, options: .atomic) }
     }
 
+    // REM  CHECK NOW — his word, 2026-11-11 16:3x: "can the label be turned into a button?" · "no add it to media works".
+    // REM  Pressing the server-down bar asks the serving Mac again at once instead of waiting for the minute timer.
+    /// Asks the serving Mac for the library now — the same fetch the minute timer runs.
+    func checkNow() {
+        Task { await fetch() }
+    }
+
     /// An iPad tag edit or Trash move for the Mac to carry out (platforms 003a / 003b). Waits here if the Mac is away.
     func send(_ request: CacheRequest) {
         var request = request
@@ -381,6 +388,8 @@ struct MacLibraryView: View {
     let library: MacLibrary
     /// The iPhone's Lyceum Media page: only what is on this device, for playing (PhonePlayer.swift, the four pages).
     var mediaOnly = false
+    /// The server-down bar was pressed: its details are on show.
+    @State private var showingDown = false
 
     #if os(tvOS)
     static let barMaterial = Material.thin
@@ -400,6 +409,15 @@ struct MacLibraryView: View {
         #endif
     }
 
+    /// The words behind the server-down bar: who is down, what that costs, who is serving, and when this device last heard it.
+    static func downDetails(_ down: [String], _ snapshot: LibrarySnapshot, heard: Date?) -> String {
+        let names = ListFormatter.localizedString(byJoining: down)
+        var lines = ["\(names) is not answering \(snapshot.macName). Its media is missing from the library until it does."]
+        if let heard { lines.append("Last heard from \(snapshot.macName) at \(heard.formatted(date: .omitted, time: .shortened)).") }
+        lines.append("Mediaworks checks again every minute. If its drive was unplugged, plug it back in and reopen Mediaworks on that server, then choose Check Now.")
+        return lines.joined(separator: "\n\n")
+    }
+
     static func size(_ bytes: Int64) -> String { ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) }
 
     var body: some View {
@@ -413,18 +431,33 @@ struct MacLibraryView: View {
                     // REM  TV is hearing a Mac — a saved or iCloud copy would show an old list.
                     .safeAreaInset(edge: .top, spacing: 0) {
                         if let down = snapshot.missing, !down.isEmpty, library.heard != nil, !library.fromCloud {
-                            VStack(spacing: 4) {
-                                ForEach(down, id: \.self) { name in
-                                    Label("\(name) not responding — its media is missing", systemImage: "exclamationmark.triangle.fill")
-                                        .symbolRenderingMode(.multicolor)
+                            // REM  THE BAR IS A BUTTON — his word 2026-11-11 16:3x: "can the label be turned into a button?" ·
+                            // REM  "no add it to media works". Pressed (click, tap, or the Siri Remote), it shows which server
+                            // REM  is down, when this device last heard the serving Mac, and a Check Now. Every client.
+                            Button { showingDown = true } label: {
+                                VStack(spacing: 4) {
+                                    ForEach(down, id: \.self) { name in
+                                        Label("\(name) not responding — its media is missing", systemImage: "exclamationmark.triangle.fill")
+                                            .symbolRenderingMode(.multicolor)
+                                    }
                                 }
+                                .font(.lyceumBody)
+                                .frame(maxWidth: .infinity)
+                                .padding(12)
+                                .contentShape(Rectangle())
                             }
-                            .font(.lyceumBody)
-                            .frame(maxWidth: .infinity)
-                            .padding(12)
+                            .buttonStyle(.plain)
                             .background(Self.barMaterial)
                             .accessibilityElement(children: .combine)
+                            .accessibilityLabel("Server down")
+                            .accessibilityHint("Shows details and checks again")
                             .accessibilityIdentifier("serversDown")
+                            .alert("Server Not Responding", isPresented: $showingDown) {
+                                Button("Check Now") { library.checkNow() }
+                                Button("OK", role: .cancel) {}
+                            } message: {
+                                Text(Self.downDetails(down, snapshot, heard: library.heard))
+                            }
                         }
                     }
                     .safeAreaInset(edge: .bottom, spacing: 0) {
