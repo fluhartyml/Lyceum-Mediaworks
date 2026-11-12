@@ -45,6 +45,10 @@ struct mediaworksApp: App {
                 // the same as Image Producer: every build Xcode puts on his devices shows it;
                 // the App Store build does not. About always has the full stamp.
                 .developmentBuildSubtitle()
+                #if os(macOS)
+                // REM  Settings → "Open full screen" (FullScreenOnLaunch.swift) — his ask 2026-11-11 for Lab B.
+                .fullScreenOnLaunch()
+                #endif
         }
         #if os(macOS)
         .commands {
