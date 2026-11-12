@@ -546,10 +546,7 @@ final class PartnerBuffer {
     private func save() { if let d = try? JSONEncoder().encode(entries) { try? d.write(to: Self.indexURL, options: .atomic) } }
 
     var used: Int64 { entries.values.reduce(0) { $0 + $1.have } }
-    var free: Int64 {
-        let v = try? Self.folder.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey])
-        return v?.volumeAvailableCapacityForImportantUsage ?? Int64(v?.volumeAvailableCapacity ?? 0)
-    }
+    var free: Int64 { Self.folder.volumeFreeBytes }
     var maximum: Int64 { BufferGuard.maximum(free: free, used: used) }
 
     func setLimit(gigabytes: Double) {

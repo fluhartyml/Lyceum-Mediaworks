@@ -568,7 +568,7 @@ final class ImportRelay {
         for job in open where FileManager.default.fileExists(atPath: copy(job).path) && job.holders.contains(ImportDesk.me) {
             ImportSource.shared.offer(copy(job), as: job.id)
         }
-        let room = (try? Self.folder.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage) ?? 0
+        let room = Self.folder.volumeFreeBytes
         var held = open.filter { $0.holders.contains(ImportDesk.me) }.count
         for job in open where !job.holders.contains(ImportDesk.me) {
             // A copy already here that the master never heard about — offer it and say so, no second copy.

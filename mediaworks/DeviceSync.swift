@@ -249,14 +249,7 @@ final class DeviceSync {
         let totalBytes = wanted.reduce(Int64(0)) { $0 + $1.size }
         let need = missing.reduce(Int64(0)) { $0 + $1.size }
         var copiedBytes: Int64 = 0
-        func freeNow() -> Int64 {
-            #if os(tvOS)
-            Int64((try? Self.folder.resourceValues(forKeys: [.volumeAvailableCapacityKey]).volumeAvailableCapacity) ?? 0)
-            #else
-            (try? Self.folder.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
-                .volumeAvailableCapacityForImportantUsage) ?? 0
-            #endif
-        }
+        func freeNow() -> Int64 { Self.folder.volumeFreeBytes }
         // REM  NUMBERS AND WORDS KEPT APART — his catch on build 199, 2026-10-17: "the status / feedback to user is
         // REM  disorganized and doesnt look good". The numbers go to `progress` (a bar and two lined-up rows); `status` keeps
         // REM  only a few words.

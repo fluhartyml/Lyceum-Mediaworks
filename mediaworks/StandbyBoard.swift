@@ -451,10 +451,11 @@ struct DriveInfo: Equatable {
     }
 
     static func at(_ url: URL) -> DriveInfo? {
-        guard let v = try? url.resourceValues(forKeys: [.volumeNameKey, .volumeAvailableCapacityForImportantUsageKey,
-                                                        .volumeTotalCapacityKey]),
-              let free = v.volumeAvailableCapacityForImportantUsage, let total = v.volumeTotalCapacity else { return nil }
-        return DriveInfo(name: v.volumeName ?? url.lastPathComponent, free: free, total: Int64(total))
+        // REM  Free space comes from url.volumeFreeBytes (FreeSpace.swift) — the "important usage" figure alone read 0 on
+        // REM  Lab B's HFS+ drive and lit "Lyceum drive low" with 1.7 TB free (2026-11-11).
+        guard let v = try? url.resourceValues(forKeys: [.volumeNameKey, .volumeTotalCapacityKey]),
+              let total = v.volumeTotalCapacity else { return nil }
+        return DriveInfo(name: v.volumeName ?? url.lastPathComponent, free: url.volumeFreeBytes, total: Int64(total))
     }
 }
 
