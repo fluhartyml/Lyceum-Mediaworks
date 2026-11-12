@@ -19,7 +19,7 @@ struct SettingsView: View {
     @AppStorage("paneButtonLabels") private var paneButtonLabels = false
     @AppStorage("hoverHelpOn") private var hoverHelpOn = true
     @AppStorage("morningRestartOn") private var morningRestart = true
-    @AppStorage("openFullScreen") private var openFullScreen = false
+    @AppStorage("fillScreenOnOpen") private var fillScreenOnOpen = false
     @AppStorage("librarySource") private var sourceRaw = ""
     /// Only This iPhone/iPad (004.1) — never true on the Mac or Apple TV.
     private var deviceOnly: Bool { sourceRaw == "device" }
@@ -96,11 +96,11 @@ struct SettingsView: View {
             } header: {
                 Text("Daily Restart").font(.lyceumHeadline)
             }
-            // REM  OPEN FULL SCREEN — his ask 2026-11-11 21:2x for Lab B (FullScreenOnLaunch.swift). Off by default, per Mac.
+            // REM  FILL THE SCREEN — his ask 2026-11-11 21:3x for Lab B: "fill not full" (FillScreenOnLaunch.swift). Off by default, per Mac.
             Section {
-                Toggle("Open full screen", isOn: $openFullScreen)
+                Toggle("Fill the screen when it opens", isOn: $fillScreenOnOpen)
                     .font(.lyceumBody)
-                    .info("On — each time Mediaworks opens on this Mac, its main window fills the screen. You can still leave full screen; it comes back the next time it opens.\n\nOff — the window opens the way you last left it.")
+                    .info("On — each time Mediaworks opens on this Mac, its main window fills the screen, with the menu bar and Dock still showing. If you resize it, it fills again the next time it opens.\n\nOff — the window opens the way you last left it.")
             } header: {
                 Text("Window").font(.lyceumHeadline)
             }

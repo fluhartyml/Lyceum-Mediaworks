@@ -46,8 +46,8 @@ struct mediaworksApp: App {
                 // the App Store build does not. About always has the full stamp.
                 .developmentBuildSubtitle()
                 #if os(macOS)
-                // REM  Settings → "Open full screen" (FullScreenOnLaunch.swift) — his ask 2026-11-11 for Lab B.
-                .fullScreenOnLaunch()
+                // REM  Settings → "Fill the screen when it opens" (FillScreenOnLaunch.swift) — his ask 2026-11-11 for Lab B.
+                .fillScreenOnLaunch()
                 #endif
         }
         #if os(macOS)
