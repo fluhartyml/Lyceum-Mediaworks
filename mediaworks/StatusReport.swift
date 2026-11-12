@@ -70,6 +70,7 @@ enum StatusReport {
                 "activeStreams": catalog.activeStreams,
                 "streamsByAddress": catalog.streamsByAddress,
                 "lastCaller": catalog.lastCaller ?? NSNull(),
+                "lastCallerAddress": catalog.lastCallerAddress ?? NSNull(),
                 "lastCallAt": when(catalog.lastCallAt),
                 "failedDeletes": catalog.failedDeletes,
                 "partnerServers": partner.servers,

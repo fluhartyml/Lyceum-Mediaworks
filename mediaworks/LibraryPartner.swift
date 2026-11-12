@@ -476,6 +476,11 @@ final class LibraryPartner {
     }
 
     /// An address one of the ticked servers was last reached at (no new lookup — the streaming path must not wait).
+    /// The ticked server last found at this address, if any — so a server calling shows by name.
+    func serverName(at host: String) -> String? {
+        bases.first { $0.value.url.host().map { $0 == host || host.hasSuffix($0) } ?? false }?.key
+    }
+
     func isKnownServerAddress(_ host: String) -> Bool {
         bases.values.contains { b in b.url.host().map { $0 == host || host.hasSuffix($0) } ?? false }
     }

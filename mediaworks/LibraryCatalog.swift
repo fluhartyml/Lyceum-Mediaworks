@@ -42,8 +42,18 @@ final class LibraryCatalog {
     private(set) var failedDeletes = 0
     /// Video streams open right now, and the last device that called and when.
     private(set) var activeStreams = 0
-    private(set) var lastCaller: String?
+    /// The network address of the last caller — kept for matching; people see `lastCaller`.
+    private(set) var lastCallerAddress: String?
     private(set) var lastCallAt: Date?
+    // REM  "LAST CONNECTION" SAYS WHO, NOT AN ADDRESS — his word, 2026-11-11 21:4x, looking at Lab B's board showing
+    // REM  "fe80::89a:55e7:202b:6072": "it should use the network or computer name not the mac or cryptic name it should be
+    // REM  human readble". The name a device gave in its own requests first, then a ticked server's name; an address
+    // REM  nobody has named yet reads "A device not yet named", never the raw address.
+    /// The last caller by name: the device's own name, a server's name, or "A device not yet named".
+    var lastCaller: String? {
+        guard let address = lastCallerAddress else { return nil }
+        return clientName(at: address) ?? LibraryPartner.shared.serverName(at: address) ?? "A device not yet named"
+    }
     // REM  WHO CALLS, BY NAME — for the Network window (his ask, 2026-10-17: "shows the clients and import activity").
     // REM  A device names itself in its requests; a video player only has an address, matched to the name it last used.
     struct SeenClient: Identifiable, Hashable {
@@ -1000,7 +1010,7 @@ final class LibraryCatalog {
     private func serve(_ connection: NWConnection) {
         connection.start(queue: .main)
         if case .hostPort(let host, _) = connection.endpoint {
-            lastCaller = "\(host)".components(separatedBy: "%").first
+            lastCallerAddress = "\(host)".components(separatedBy: "%").first
         }
         lastCallAt = Date()
         // REM  ONE PORT, TWO KINDS OF CALLER: a request starting "GET " / "HEAD" is a video player streaming a file (platforms
