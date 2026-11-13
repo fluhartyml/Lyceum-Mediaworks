@@ -28,6 +28,17 @@ struct TVHome: View {
     @State private var library = MacLibrary()
     @State private var theater = TVTheater()
     @State private var sheets = TVSheets()
+    @Environment(\.scenePhase) private var scenePhase
+    /// A title picked on the Top Shelf, waiting for the library to load (A-042).
+    @State private var shelfPick: String?
+
+    /// Plays the title picked on the Top Shelf from its stop point, Continue Watching queued after it.
+    private func openFromShelf() {
+        guard let path = shelfPick, library.snapshot?.file(at: path) != nil else { return }
+        shelfPick = nil
+        let queue = library.playable(PlayPositions.shared.recent().filter { $0.seconds > 0 }.map(\.path))
+        theater.play(path, in: queue.contains(path) ? queue : [path])
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -74,6 +85,17 @@ struct TVHome: View {
         .task { await library.keepUpToDate() }
         .task { theater.announce() }
         .onAppear { theater.isPlayable = { [library] in library.isPlayable($0) } }
+        // REM  TOP SHELF (amber A-042, TopShelfFeed.swift): the shelf is rewritten whenever the stop points may have moved —
+        // REM  on launch, when the player closes, and when you leave the app. A title picked on the shelf plays from its
+        // REM  stop point; if the library isn't loaded yet it waits for it.
+        .task { await TopShelfFeed.refresh(library) }
+        .onChange(of: theater.presented) { if !theater.presented { Task { await TopShelfFeed.refresh(library) } } }
+        .onChange(of: scenePhase) { if scenePhase != .active { Task { await TopShelfFeed.refresh(library) } } }
+        .onChange(of: library.snapshot == nil) { openFromShelf() }
+        .onOpenURL { url in
+            shelfPick = TopShelfFeed.path(from: url)?.path
+            openFromShelf()
+        }
         .fullScreenCover(isPresented: Binding(get: { theater.presented }, set: { theater.presented = $0 })) {
             TVPlayer().environment(theater).environment(library)
                 .overlay { BufferingBadge() }
