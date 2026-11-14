@@ -174,7 +174,12 @@ struct StandbyBoard: View {
                 macColumn.frame(maxWidth: .infinity, alignment: .leading)
             }
             Divider()
-            NetworkWeb(asClient: asClient).frame(maxWidth: .infinity, minHeight: 300, maxHeight: .infinity)
+            // REM  E-010: Hardware sits beside Network (Claude's call 2026-11-14) so the board stays 1024×900.
+            HStack(alignment: .top, spacing: 20) {
+                NetworkWeb(asClient: asClient).frame(maxWidth: .infinity, minHeight: 300, maxHeight: .infinity)
+                Divider()
+                HardwareMap().frame(width: 330).frame(minHeight: 300, maxHeight: .infinity)
+            }
             throughputRow
             lightStrip(height: 72)
         }
