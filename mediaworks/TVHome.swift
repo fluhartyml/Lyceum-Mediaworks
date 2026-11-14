@@ -349,9 +349,8 @@ struct TVPlayer: View {
             RemotePlayerView(player: theater.player, handle: handle)
                 .ignoresSafeArea()
             // E-012.1: a song's screensaver. Never focused or pressed — the remote still talks to the player under it.
-            if let video = theater.saver.player {
-                PlainVideoView(player: video).ignoresSafeArea().allowsHitTesting(false).focusable(false)
-            }
+            // E-014: or its visualizer.
+            if theater.saver.isShowing { SongBackdrop(saver: theater.saver).ignoresSafeArea() }
             if let flash { Text(flash).font(.system(size: 220)).transition(.scale.combined(with: .opacity)) }
             if showInfo || alwaysShowFileName || theater.problem != nil { infoBar }
             if showStats { TVStatsPanel(stats: theater.stats, path: theater.current) }

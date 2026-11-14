@@ -424,9 +424,9 @@ struct FullScreenPlayer: View {
                 Color.black.ignoresSafeArea()
                 PlayerLayer(player: player.player).ignoresSafeArea()
                 // E-012.1: a song's screensaver, with the song's name at the bottom while the controls are hidden.
-                if let video = player.saver.player {
+                if player.saver.isShowing {
                     ZStack(alignment: .bottomLeading) {
-                        PlainVideoView(player: video).ignoresSafeArea()
+                        SongBackdrop(saver: player.saver).ignoresSafeArea()   // E-014: a screensaver or a visualizer
                         if !controls, let current = player.current {
                             Text(((current as NSString).lastPathComponent as NSString).deletingPathExtension)
                                 .font(.lyceumTitle).foregroundStyle(.white)

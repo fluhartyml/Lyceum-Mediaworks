@@ -208,6 +208,12 @@ final class ScreensaverPairing {
 @Observable
 final class ScreensaverPlayer {
     private(set) var player: AVPlayer?
+    /// E-014 — a visualizer instead of a video, when Settings says so (Visualizers.swift).
+    private(set) var visualizer: VisualizerKind?
+    /// Something is showing behind the song.
+    var isShowing: Bool { player != nil || visualizer != nil }
+    @ObservationIgnored private var lastVisualizer: VisualizerKind?
+    @ObservationIgnored private var turn = false
     @ObservationIgnored private var keeper: PositionKeeper?
     @ObservationIgnored private var ended: NSObjectProtocol?
     @ObservationIgnored private var info: CachedInfo?
@@ -221,13 +227,27 @@ final class ScreensaverPlayer {
     }
     #endif
 
-    /// A song started, with the tags the library read from it.
-    func start(info: CachedInfo?) {
+    /// A song started, with the tags the library read from it. `hearable` is false for Apple Music, whose sound Apple
+    /// keeps from apps — a visualizer would have nothing to follow, so it gets a screensaver.
+    func start(info: CachedInfo?, hearable: Bool = true) {
         self.info = info
-        next()
+        let useVisualizer: Bool
+        switch BehindSong.current {
+        case .screensavers: useVisualizer = false
+        case .visualizers: useVisualizer = hearable
+        case .both:
+            turn.toggle()
+            useVisualizer = hearable && (turn || ScreensaverPairing.shared.screensavers.isEmpty)
+        }
+        guard useVisualizer else { next(); return }
+        stop()
+        let kind = VisualizerKind.next(after: lastVisualizer)
+        lastVisualizer = kind
+        visualizer = kind
     }
 
     func stop() {
+        visualizer = nil
         generation += 1
         keeper?.leave(); keeper = nil
         player?.pause(); player = nil
@@ -326,6 +346,8 @@ struct MusicOverVideoSettings: View {
 
     var body: some View {
         Form {
+            // E-014 — screensavers, visualizers, or both (Visualizers.swift).
+            BehindSongSection()
             Section {
                 ForEach(pairing.tags, id: \.self) { tag in
                     HStack {

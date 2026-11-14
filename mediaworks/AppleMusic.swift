@@ -174,7 +174,7 @@ final class AppleMusicPlayback {
             info.genre = song.genreNames.first
             info.year = song.releaseDate.map { Calendar.current.component(.year, from: $0) }
         }
-        saver.start(info: info)
+        saver.start(info: info, hearable: false)   // E-014: Apple Music's sound isn't handed to apps
     }
 }
 
@@ -277,8 +277,8 @@ struct AppleMusicScreen: View {
     var body: some View {
         ZStack(alignment: .bottomLeading) {
             Color.black.ignoresSafeArea()
-            if let video = music.saver.player {
-                PlainVideoView(player: video).ignoresSafeArea().allowsHitTesting(false)
+            if music.saver.isShowing {
+                SongBackdrop(saver: music.saver).ignoresSafeArea()
             } else {
                 Image(systemName: "music.note")
                     .font(.system(size: 120))

@@ -88,7 +88,7 @@ struct TheaterView: View {
 
     private var hasScreensaver: Bool {
         #if os(macOS)
-        return saver.player != nil
+        return saver.isShowing
         #else
         return false
         #endif
@@ -98,9 +98,9 @@ struct TheaterView: View {
     @ViewBuilder
     private func songScreen(_ url: URL) -> some View {
         #if os(macOS)
-        if isAudio(url), let video = saver.player {
+        if isAudio(url), saver.isShowing {
             ZStack(alignment: .bottomLeading) {
-                PlainVideoView(player: video)
+                SongBackdrop(saver: saver)   // E-014: a screensaver or a visualizer
                 Text(url.deletingPathExtension().lastPathComponent)
                     .font(.lyceumTitle).foregroundStyle(.white)
                     .shadow(color: .black, radius: 6)
@@ -141,6 +141,10 @@ struct TheaterView: View {
 
     /// Plays from where this file was left (PlayPositions.swift), unless it was barely started or nearly finished.
     private func begin(_ newPlayer: AVPlayer, key: String) {
+        #if os(macOS)
+        // E-014: a song's sound feeds the visualizer behind it.
+        if let url = library.nowPlaying, isAudio(url), let item = newPlayer.currentItem { SongSound.shared.tap(item) }
+        #endif
         let newKeeper = PositionKeeper(newPlayer)
         keeper = newKeeper
         player = newPlayer
