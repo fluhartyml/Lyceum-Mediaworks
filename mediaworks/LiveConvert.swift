@@ -47,6 +47,16 @@ final class LiveConvert {
     /// True when the file is above 1080p and Apple's frameworks can read it.
     func isLive(_ url: URL) async -> Bool { await !(source(url)?.tiers.isEmpty ?? true) }
 
+    private var areas: [String: (area: CGRect?, modified: Date?)] = [:]
+
+    func area(_ url: URL) async -> CGRect? {
+        let modified = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+        if let known = areas[url.path], known.modified == modified { return known.area }
+        let found = await PictureArea.measure(url)
+        areas[url.path] = (found, modified)
+        return found
+    }
+
     // MARK: Lists
 
     static func query(_ path: String) -> String {
@@ -150,6 +160,12 @@ final class LiveConvert {
         guard let path, let url = file(path) else { missing(); return }
         let list = "application/vnd.apple.mpegurl"
         Task {
+            // REM  /area — where the picture sits inside the frame, past bars baked into it (FillVideo.swift, his "i dont
+            // REM  want to see black bars"). Measured once per version of the file.
+            if route == "/area" {
+                send("200 OK", "text/plain", Data(PictureArea.text(await area(url)).utf8))
+                return
+            }
             if route == "/which" {
                 send("200 OK", "text/plain", Data((await isLive(url) ? "live" : "media").utf8))
                 return

@@ -570,18 +570,19 @@ struct RemotePlayerView: UIViewControllerRepresentable {
 
     func makeUIViewController(context: Context) -> Controller {
         let controller = Controller()
-        controller.playerLayer.player = player
+        controller.video.player = player
         controller.handle = handle
         return controller
     }
 
     func updateUIViewController(_ controller: Controller, context: Context) {
-        controller.playerLayer.player = player
+        controller.video.player = player
         controller.handle = handle
     }
 
     final class Controller: UIViewController {
-        let playerLayer = AVPlayerLayer()
+        // REM  NO BLACK BARS — his "i dont want to see black bars", 11-14 (FillVideo.swift).
+        let video = FillVideoView()
         var handle: (RemotePress) -> Void = { _ in }
         private var holdTimer: Timer?
         private var holdFired = false
@@ -589,13 +590,12 @@ struct RemotePlayerView: UIViewControllerRepresentable {
         override func viewDidLoad() {
             super.viewDidLoad()
             view.backgroundColor = .black
-            playerLayer.videoGravity = .resizeAspect
-            view.layer.addSublayer(playerLayer)
+            view.addSubview(video)
         }
 
         override func viewDidLayoutSubviews() {
             super.viewDidLayoutSubviews()
-            playerLayer.frame = view.bounds
+            video.frame = view.bounds
         }
 
         // REM  The remote's presses go to the focused view and up its responder chain — so the player's own view takes focus.
@@ -703,6 +703,7 @@ struct TVSettingsSheet: View {
                     InfoButton("Media File Processing on — ▲ 👍 and ▼ 👎 both uncheck the file and go to the next one. Everything you rate leaves rotation, so only unrated files are left to play.\n\nOff — ▲ 👍 rates and keeps playing. ▼ 👎 unchecks the file and goes to the next one.")
                 }
                 Section("While a video plays") {
+                    NoBlackBarsToggle()
                     Toggle("Always show the file name", isOn: $alwaysShowFileName)
                     InfoButton("Always show the file name on — it stays at the bottom of the screen the whole time.\n\nOff — it shows for 5 seconds when each video starts, and after a remote press.")
                 }

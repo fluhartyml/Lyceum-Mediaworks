@@ -614,18 +614,13 @@ struct FullScreenPlayer: View {
 private struct PlayerLayer: UIViewRepresentable {
     let player: AVPlayer
 
-    func makeUIView(context: Context) -> LayerView {
-        let view = LayerView()
-        view.playerLayer.player = player
-        view.playerLayer.videoGravity = .resizeAspect
+    // REM  NO BLACK BARS — his "i dont want to see black bars", 11-14 (FillVideo.swift).
+    func makeUIView(context: Context) -> FillVideoView {
+        let view = FillVideoView()
+        view.player = player
         return view
     }
 
-    func updateUIView(_ view: LayerView, context: Context) { view.playerLayer.player = player }
-
-    final class LayerView: UIView {
-        override static var layerClass: AnyClass { AVPlayerLayer.self }
-        var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
-    }
+    func updateUIView(_ view: FillVideoView, context: Context) { view.player = player }
 }
 #endif

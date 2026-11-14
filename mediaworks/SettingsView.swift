@@ -58,6 +58,9 @@ struct SettingsView: View {
             // REM  buffering issues'" (StartBuffer.swift).
             Section {
                 StartBufferPicker()
+                #if !os(macOS)
+                NoBlackBarsToggle()
+                #endif
             } header: {
                 Text("Playback").font(.lyceumHeadline)
             }
