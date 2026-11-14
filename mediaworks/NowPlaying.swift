@@ -30,6 +30,11 @@ struct NowPlayingReport: Codable, Sendable {
     let stalls: Int
     let video: String
     let audio: String
+    // REM  E-004, his word 2026-11-09 20:1x: "yes add speed and dropped frames." The same numbers as Stats for Nerds:
+    // REM  the network speed the player measured (Mb/s) and the dropped video frames so far for this file. Optional, so a
+    // REM  device on an older build still reports (missing = nil). These are what E-013's step-down will read later.
+    var networkMbps: Double? = nil
+    var droppedFrames: Int? = nil
 }
 
 #if os(macOS)

@@ -107,6 +107,8 @@ enum StatusReport {
             d["soundDB"] = r.soundDB ?? NSNull(); d["silentFor"] = r.silentFor; d["sound"] = r.sound
             d["soundOut"] = r.soundOut; d["buffered"] = r.buffered; d["stalls"] = r.stalls
             d["video"] = r.video; d["audio"] = r.audio
+            // E-004: speed and dropped frames (null from a device on an older build).
+            d["networkMbps"] = r.networkMbps ?? NSNull(); d["droppedFrames"] = r.droppedFrames ?? NSNull()
             out.append(d)
         }
         return out

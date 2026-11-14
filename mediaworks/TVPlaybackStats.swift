@@ -37,6 +37,9 @@ final class PlaybackStats {
     private(set) var buffered = "–"
     private(set) var bitrate = "–"
     private(set) var dropped = "–"
+    /// E-004: the same two as numbers, for the report to the Mac.
+    private var networkMbps: Double?
+    private var droppedFrames: Int?
     private(set) var stalls = 0
     private(set) var events: [Event] = []
     /// The loudness actually going out, from SoundMeter.swift (his "tell if a video is playing and dropped sound", 11-09).
@@ -140,8 +143,10 @@ final class PlaybackStats {
             if observed > 0 { parts.append("network \(Self.megabits(observed))") }
             if indicated > 0 { parts.append("file \(Self.megabits(indicated))") }
             bitrate = parts.isEmpty ? "not reported" : parts.joined(separator: " · ")
+            networkMbps = observed > 0 ? observed / 1_000_000 : nil
             let drops = events.map(\.numberOfDroppedVideoFrames).filter { $0 >= 0 }
             dropped = drops.isEmpty ? "not reported" : "\(drops.reduce(0, +))"
+            droppedFrames = drops.isEmpty ? nil : drops.reduce(0, +)
         }
     }
 
@@ -181,7 +186,7 @@ final class PlaybackStats {
         NowPlayingReport(device: NowPlayingSender.deviceName, build: Int(BuildStamp.number) ?? 0, sentAt: .now, file: path,
                          state: state, at: now.isFinite ? now : 0, duration: duration.isFinite ? duration : 0,
                          soundDB: soundDB, silentFor: silentFor, sound: sound, soundOut: output, buffered: buffered,
-                         stalls: stalls, video: video, audio: audio)
+                         stalls: stalls, video: video, audio: audio, networkMbps: networkMbps, droppedFrames: droppedFrames)
     }
 
     private func readOutput() -> String {

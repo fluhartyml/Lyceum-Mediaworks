@@ -169,14 +169,22 @@ struct NetworkView: View {
         .accessibilityLabel("\(tv.name), \(status.rawValue)")
     }
 
-    /// "Playing · Movie name", "Idle", "Not seen · since 9:14 PM".
+    /// E-004: "42 Mbps · 0 dropped" from the TV's own report, while it is fresh (under 15 s old).
+    private func tvSpeed(_ tv: AppleTVWatch.TV) -> String? {
+        guard let entry = NowPlayingBoard.latest[tv.name], Date.now.timeIntervalSince(entry.receivedAt) < 15 else { return nil }
+        let parts = [entry.report.networkMbps.map { String(format: "%.0f Mbps", $0) },
+                     entry.report.droppedFrames.map { "\($0) dropped" }].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// "Playing · Movie name · 42 Mbps · 0 dropped", "Idle", "Not seen · since 9:14 PM".
     private func tvLine(_ tv: AppleTVWatch.TV) -> String {
         let status = tv.status
         switch status {
         case .playing, .connected:
             let file = tv.state?.path.flatMap { catalog.snapshot?.file(at: $0) }
             let title = file.map { $0.info?.title ?? $0.name }
-            return [status.rawValue, title].compactMap { $0 }.joined(separator: " · ")
+            return [status.rawValue, title, tvSpeed(tv)].compactMap { $0 }.joined(separator: " · ")
         case .idle:
             return status.rawValue
         case .notSeen:
