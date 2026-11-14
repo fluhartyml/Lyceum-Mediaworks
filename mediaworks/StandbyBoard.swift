@@ -439,8 +439,11 @@ struct DriveInfo: Equatable {
     var missing = false
     var sameAsMacDisk = false
 
-    /// Under 10% free.
-    var low: Bool { !missing && total > 0 && Double(free) / Double(total) < 0.10 }
+    /// Under 20 GB free.
+    // REM  His word 2026-11-14 11:3x: "yes change it to 20 gb" — was under 10% free (E-002), which lit "Mac disk low" on
+    // REM  his MacBook with 64 GB free of 995 GB. 20 GB as Finder counts it (decimal, same as the line's own numbers).
+    static let lowBytes: Int64 = 20_000_000_000
+    var low: Bool { !missing && total > 0 && free < Self.lowBytes }
 
     /// "Library B · 1.2 TB free of 4 TB"; without the name, "104 GB free of 494 GB".
     func summary(named: Bool) -> String {
