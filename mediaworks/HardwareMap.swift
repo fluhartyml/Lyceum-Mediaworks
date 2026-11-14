@@ -13,7 +13,7 @@
 //  full a drive is. Every glyph has a one- or two-word VoiceOver name.
 //
 // REM  WHERE IT SITS: beside the Network web, on the right (Claude's call 2026-11-14 — the board was already 900 tall, and
-// REM  growing it again shrinks everything on the 5-inch screen). Drives on the top arc, network ports on the bottom arc.
+// REM  growing it again shrinks everything on the 5-inch screen). Drives in the top row, network ports in the bottom row.
 // REM  MISSING, NOT GONE: every external drive and every network port ever seen with an address is remembered (UserDefaults
 // REM  "hardwareMap.known"). One not here now stays on the map in orange. A drive retired on purpose: click it, Forget.
 // REM  LOW = under 20 GB free, the same line the board uses since his word 2026-11-14 ("yes change it to 20 gb").
@@ -30,6 +30,8 @@ import SystemConfiguration
 struct HardwareMap: View {
     @State private var parts: [Part] = []
     @State private var forgetting: String?
+    /// The map's own size before it is scaled to the space it is given.
+    @State private var natural = CGSize.zero
     @AppStorage("hardwareMap.known") private var knownRaw = ""
 
     enum Kind { case internalDrive, externalDrive, ethernet, wifi, port }
@@ -46,9 +48,20 @@ struct HardwareMap: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 10) {
             Text("Hardware").font(.system(size: 26, weight: .bold)).accessibilityAddTraits(.isHeader)
-            GeometryReader { geo in map(size: geo.size) }
+            // REM  CONTINGENT SIZING — his word 2026-11-14 13:57: "youre supposed to use contengent sizing so enerything fits
+            // REM  naturally". The map is laid out at its natural size, then scaled as one piece to the space the board gives
+            // REM  it — the same way the page scales the whole board (StandbyBoard.canvas). More drives = smaller, never cut off.
+            GeometryReader { g in
+                let scale = natural.width > 0 && natural.height > 0
+                    ? min(1, g.size.width / natural.width, g.size.height / natural.height) : 1
+                map
+                    .fixedSize()
+                    .onGeometryChange(for: CGSize.self) { $0.size } action: { natural = $0 }
+                    .scaleEffect(scale)
+                    .frame(width: g.size.width, height: g.size.height)
+            }
         }
         .task {
             while !Task.isCancelled {
@@ -61,29 +74,53 @@ struct HardwareMap: View {
 
     // MARK: Drawing
 
-    private func map(size: CGSize) -> some View {
-        let center = CGPoint(x: size.width / 2, y: size.height * 0.5)
+    // REM  LAID OUT, NOT PLACED — his "the hardware needs adjusting" 2026-11-14 13:5x on the MacBook Air: pieces set at fixed
+    // REM  spots overlapped — the drives rode up over the heading, each label's background cut off its neighbor's free space
+    // REM  ("148.95 GB" lost "free"), and Wi-Fi covered "This Mac". Now drives (three to a row), this Mac and the ports are
+    // REM  rows that make room for each other, and the lines are drawn from where each piece actually landed.
+    private var map: some View {
         let drives = parts.filter { $0.kind == .internalDrive || $0.kind == .externalDrive }
         let ports = parts.filter { $0.kind == .ethernet || $0.kind == .wifi || $0.kind == .port }
-        let top = spread(drives.count, y: size.height * 0.17, width: size.width)
-        let bottom = spread(ports.count, y: size.height * 0.83, width: size.width)
-        return ZStack {
-            ForEach(Array(drives.enumerated()), id: \.element.id) { i, p in line(center, top[i], p.health) }
-            ForEach(Array(ports.enumerated()), id: \.element.id) { i, p in line(center, bottom[i], p.health) }
+        return VStack(spacing: 28) {
+            rows(drives)
             VStack(spacing: 2) {
                 Image(systemName: Self.macSymbol).font(.system(size: 52, weight: .semibold))
                 Text("This Mac").font(.system(size: 18, weight: .bold))
             }
             .padding(6).background(RoundedRectangle(cornerRadius: 10).fill(.background))
-            .position(center)
             .accessibilityElement(children: .ignore).accessibilityLabel("This Mac")
-            ForEach(Array(drives.enumerated()), id: \.element.id) { i, p in item(p).position(top[i]) }
-            ForEach(Array(ports.enumerated()), id: \.element.id) { i, p in item(p).position(bottom[i]) }
+            .anchorPreference(key: Centers.self, value: .center) { ["mac": $0] }
+            rows(ports)
+        }
+        .padding(8)
+        .backgroundPreferenceValue(Centers.self) { anchors in
+            GeometryReader { g in
+                if let mac = anchors["mac"] {
+                    ForEach(parts) { p in
+                        if let at = anchors[p.id] { line(g[mac], g[at], p.health) }
+                    }
+                }
+            }
         }
     }
 
-    private func spread(_ n: Int, y: CGFloat, width: CGFloat) -> [CGPoint] {
-        (0..<n).map { i in CGPoint(x: width * CGFloat(i + 1) / CGFloat(n + 1), y: y) }
+    /// Pieces three to a row, each as wide as its own words.
+    private func rows(_ list: [Part]) -> some View {
+        let chunks = stride(from: 0, to: list.count, by: 3).map { Array(list[$0..<min($0 + 3, list.count)]) }
+        return VStack(spacing: 16) {
+            ForEach(chunks, id: \.first?.id) { row in
+                HStack(alignment: .top, spacing: 20) {
+                    ForEach(row) { p in item(p).anchorPreference(key: Centers.self, value: .center) { [p.id: $0] } }
+                }
+            }
+        }
+    }
+
+    private struct Centers: PreferenceKey {
+        static let defaultValue: [String: Anchor<CGPoint>] = [:]
+        static func reduce(value: inout [String: Anchor<CGPoint>], nextValue: () -> [String: Anchor<CGPoint>]) {
+            value.merge(nextValue()) { $1 }
+        }
     }
 
     private func line(_ a: CGPoint, _ b: CGPoint, _ h: Health) -> some View {
@@ -96,7 +133,7 @@ struct HardwareMap: View {
     private func item(_ p: Part) -> some View {
         let label = VStack(spacing: 2) {
             glyph(p)
-            Text(p.name).font(.system(size: 18, weight: .semibold)).lineLimit(1).frame(maxWidth: 150)
+            Text(p.name).font(.system(size: 18, weight: .semibold)).lineLimit(1)
             ForEach(p.lines, id: \.self) { Text($0).font(.system(size: 18)).monospacedDigit().foregroundStyle(.secondary).lineLimit(1) }
         }
         .padding(4).background(RoundedRectangle(cornerRadius: 8).fill(.background))
