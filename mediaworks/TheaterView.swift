@@ -18,14 +18,18 @@ struct TheaterView: View {
     /// Where each file was left (PlayPositions.swift) — one per player, as Theater makes a player per file.
     @State private var keeper: PositionKeeper?
     @State private var choosingFile = false
+    #if os(macOS)
+    /// E-012: the muted screensaver behind a song (MusicOverVideo.swift).
+    @State private var saver = ScreensaverPlayer()
+    #endif
 
     var body: some View {
         Group {
             if let url = library.nowPlaying, Self.playable(url) {
-                VideoPlayer(player: player)
+                VideoPlayer(player: player) { songScreen(url) }
                     .overlay { BufferingBadge() }
                     .overlay(alignment: .center) {
-                        if isAudio(url) {
+                        if isAudio(url), !hasScreensaver {
                             VStack(spacing: 16) {
                                 Image(systemName: "music.note")
                                     .font(.system(size: 72))
@@ -66,7 +70,12 @@ struct TheaterView: View {
             library.nowPlaying = url
         }
         .task(id: library.nowPlaying) { start() }
-        .onDisappear { keeper?.leave(); player?.pause() }
+        .onDisappear {
+            keeper?.leave(); player?.pause()
+            #if os(macOS)
+            saver.stop()
+            #endif
+        }
     }
 
     /// A file on this Mac, or a file in the Lyceum on any server.
@@ -77,9 +86,38 @@ struct TheaterView: View {
         return FileManager.default.fileExists(atPath: url.path)
     }
 
+    private var hasScreensaver: Bool {
+        #if os(macOS)
+        return saver.player != nil
+        #else
+        return false
+        #endif
+    }
+
+    /// E-012: under a song's controls, its screensaver with the song's name at the bottom.
+    @ViewBuilder
+    private func songScreen(_ url: URL) -> some View {
+        #if os(macOS)
+        if isAudio(url), let video = saver.player {
+            ZStack(alignment: .bottomLeading) {
+                PlainVideoView(player: video)
+                Text(url.deletingPathExtension().lastPathComponent)
+                    .font(.lyceumTitle).foregroundStyle(.white)
+                    .shadow(color: .black, radius: 6)
+                    .padding(24)
+                    .padding(.bottom, 60)
+            }
+            .allowsHitTesting(false)
+        }
+        #endif
+    }
+
     private func start() {
         keeper?.leave()
         keeper = nil
+        #if os(macOS)
+        if let url = library.nowPlaying, Self.playable(url), isAudio(url) { saver.start(forSong: url) } else { saver.stop() }
+        #endif
         guard let url = library.nowPlaying, Self.playable(url) else {
             player = nil
             return

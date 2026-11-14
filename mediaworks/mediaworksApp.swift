@@ -80,6 +80,9 @@ struct mediaworksApp: App {
                     .tabItem { Label("General", systemImage: "gearshape") }
                 SortingSettingsView()
                     .tabItem { Label("Sorting", systemImage: "arrow.up.arrow.down") }
+                // REM  E-012 music over video — his tags, the pairing grid, the fields to use (MusicOverVideo.swift).
+                MusicOverVideoSettings()
+                    .tabItem { Label("Music Over Video", systemImage: "music.note.tv") }
             }
             .frame(minWidth: 720, minHeight: 640)
         }
