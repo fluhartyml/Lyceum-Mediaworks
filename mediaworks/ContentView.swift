@@ -70,6 +70,7 @@ struct ContentView: View {
                 case .commander: NavigationStack { CommanderView(root: root.url).toolbar { modeSwitch } }
                 case .theater: NavigationStack { TheaterView().toolbar { modeSwitch } }
                 case .status: NavigationStack { NetworkView(embedded: true).toolbar { modeSwitch } }
+                case .appleMusic: NavigationStack { AppleMusicView().toolbar { modeSwitch } }
                 }
             } else if library.needsWriteAccess {
                 OnboardingView()
@@ -82,6 +83,7 @@ struct ContentView: View {
                 case .commander: NavigationStack { CommanderView(root: LyceumPlace.root).toolbar { modeSwitch } }
                 case .theater: NavigationStack { TheaterView().toolbar { modeSwitch } }
                 case .status: NavigationStack { NetworkView(embedded: true).toolbar { modeSwitch } }
+                case .appleMusic: NavigationStack { AppleMusicView().toolbar { modeSwitch } }
                 }
             } else {
                 // REM  N20 — "the choose library folder to be choose media works machines". Shown whenever this Mac has no
@@ -128,6 +130,8 @@ struct ContentView: View {
         }
         // REM  The Mac watches for an Apple TV running Lyceum, for Play on Apple TV and the remote window.
         .task { await TVRemote.shared.keepWatching() }
+        // REM  E-012.1 (2): Apple Music starting stops the Theater's file (AppleMusic.swift).
+        .task { AppleMusicPlayback.shared.stopOthers = { [library] in library.nowPlaying = nil } }
         #elseif os(iOS)
         // REM  ONLY THIS DEVICE NEVER LOOKS FOR A MAC (004.1): no search, so no Local Network pop-up — and none before the
         // REM  setup question is answered. Switching in Settings starts or stops the search at once (the task restarts).

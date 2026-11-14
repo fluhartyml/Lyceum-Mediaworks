@@ -29,7 +29,8 @@ final class PhonePlayer {
     var fullScreen = false
     /// Which page shows.
     var page = PhonePlayer.mediaPage
-    static let mediaPage = 0, libraryPage = 1, theaterPage = 2, settingsPage = 3
+    // REM  APPLE MUSIC PAGE — amber E-012.1 (2), his yes 2026-11-14: between Theater and Settings.
+    static let mediaPage = 0, libraryPage = 1, theaterPage = 2, appleMusicPage = 3, settingsPage = 4
     let player = AVPlayer()
     /// E-012.1: the muted screensaver behind a song (MusicOverVideo.swift).
     let saver = ScreensaverPlayer()
@@ -69,6 +70,7 @@ final class PhonePlayer {
     private func load() {
         guard let path = current else { return }
         keeper.leave()
+        AppleMusicPlayback.shared.yield()
         // REM  E-012.1 — a song gets a screensaver behind it; a video plays alone.
         if let song = ScreensaverPairing.shared.song(path) { saver.start(info: song.info) } else { saver.stop() }
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
@@ -192,6 +194,9 @@ struct PhoneHome: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .contentShape(Rectangle())
                     .transition(slide)
+            } else if player.page == PhonePlayer.appleMusicPage {
+                NavigationStack { AppleMusicView().navigationTitle("Apple Music") }
+                    .transition(slide)
             } else {
                 // The library goes in for Settings' Sync to This Device section.
                 NavigationStack { SettingsView().navigationTitle("Settings") }
@@ -218,7 +223,8 @@ struct PhoneHome: View {
             // REM  frosted capsule behind them is inset so it still LOOKS as small as before.
             HStack(spacing: 0) {
                 ForEach([(PhonePlayer.mediaPage, "Media"), (PhonePlayer.libraryPage, "Library"),
-                         (PhonePlayer.theaterPage, "Theater"), (PhonePlayer.settingsPage, "Settings")], id: \.0) { page, name in
+                         (PhonePlayer.theaterPage, "Theater"), (PhonePlayer.appleMusicPage, "Apple Music"),
+                         (PhonePlayer.settingsPage, "Settings")], id: \.0) { page, name in
                     Button { go(to: page) } label: {
                         Label(name, systemImage: player.page == page ? "circle.fill" : "circle")
                             .labelStyle(.iconOnly)
@@ -241,6 +247,8 @@ struct PhoneHome: View {
         .task { ImportRelay.shared.start() }
         .onAppear {
             player.isPlayable = { [library] in library.isPlayable($0) }
+            // E-012.1 (2): Apple Music starting stops Mediaworks' own player.
+            AppleMusicPlayback.shared.stopOthers = { [player] in player.stop() }
             // REM  MW-001: "I chose find your mac and it unintuitively landed here" — land on Settings after that choice.
             if LibrarySource.openSettingsNext {
                 LibrarySource.openSettingsNext = false

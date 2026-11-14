@@ -22,6 +22,8 @@ import Network
 final class TVSheets {
     var settings = false
     var info = false
+    /// E-012.1 (2): the Apple Music page.
+    var appleMusic = false
 }
 
 struct TVHome: View {
@@ -80,6 +82,11 @@ struct TVHome: View {
         }
         .sheet(isPresented: Binding(get: { sheets.settings }, set: { sheets.settings = $0 })) { TVSettingsSheet().environment(theater) }
         .sheet(isPresented: Binding(get: { sheets.info }, set: { sheets.info = $0 })) { AboutView() }
+        .fullScreenCover(isPresented: Binding(get: { sheets.appleMusic }, set: { sheets.appleMusic = $0 })) {
+            NavigationStack { AppleMusicView().navigationTitle("Apple Music") }
+        }
+        // E-012.1 (2): Apple Music starting stops the TV's own player.
+        .task { AppleMusicPlayback.shared.stopOthers = { [theater] in theater.stop() } }
         .environment(sheets)
         .environment(theater)
         .task { await library.keepUpToDate() }
@@ -112,6 +119,7 @@ struct TVFooter: ViewModifier {
     func body(content: Content) -> some View {
         content.safeAreaInset(edge: .bottom, spacing: 0) {
             HStack(spacing: 40) {
+                Button { sheets.appleMusic = true } label: { Label("Apple Music", systemImage: "music.note.tv") }
                 Button { sheets.settings = true } label: { Label("Settings", systemImage: "gearshape") }
                 Button { sheets.info = true } label: { Label("Info", systemImage: "info.circle") }
             }
@@ -184,6 +192,7 @@ final class TVTheater {
     private func load() {
         guard let path = current else { return }
         keeper.leave()
+        AppleMusicPlayback.shared.yield()
         // REM  E-012.1 — a song gets a screensaver behind it; a video plays alone.
         if let song = ScreensaverPairing.shared.song(path) { saver.start(info: song.info) } else { saver.stop() }
         Task {

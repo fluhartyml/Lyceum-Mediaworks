@@ -117,6 +117,8 @@ struct TheaterView: View {
         keeper = nil
         #if os(macOS)
         if let url = library.nowPlaying, Self.playable(url), isAudio(url) { saver.start(forSong: url) } else { saver.stop() }
+        // E-012.1 (2): a file starting here stops Apple Music.
+        if let url = library.nowPlaying, Self.playable(url) { AppleMusicPlayback.shared.yield() }
         #endif
         guard let url = library.nowPlaying, Self.playable(url) else {
             player = nil
