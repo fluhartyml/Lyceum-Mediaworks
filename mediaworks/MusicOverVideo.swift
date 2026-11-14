@@ -272,7 +272,7 @@ final class ScreensaverPlayer {
         let local = DeviceSync.localURL(rel)
         if FileManager.default.fileExists(atPath: local.path) { return (local, rel) }
         #endif
-        guard let url = await MacLibrary.streamURL(rel) else { return nil }
+        guard let url = await MacLibrary.playURL(rel) else { return nil }   // E-013: a 4K screensaver comes down live, smaller
         return (url, rel)
         #endif
     }

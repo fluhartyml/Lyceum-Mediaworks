@@ -81,7 +81,7 @@ final class PhonePlayer {
             start(local, path)
         } else {
             Task {
-                if let url = await MacLibrary.streamURL(path) { start(url, path) }
+                if let url = await MacLibrary.playURL(path) { start(url, path) }   // E-013
                 else { problem = "Your Mac is out of reach, and this file has no copy on this device."; stop() }
             }
         }

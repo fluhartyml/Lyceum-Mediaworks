@@ -11,6 +11,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		38BE1B400487B95961E334CD /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = C08B476D3075BE750041FC62 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8AB3A4F4590C2884DA8CBD5B;
+			remoteInfo = "Mediaworks Top Shelf";
+		};
 		C08B47833075BE770041FC62 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = C08B476D3075BE750041FC62 /* Project object */;
@@ -25,26 +32,17 @@
 			remoteGlobalIDString = C08B47743075BE750041FC62;
 			remoteInfo = mediaworks;
 		};
-		38BE1B400487B95961E334CD /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = C08B476D3075BE750041FC62 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 8AB3A4F4590C2884DA8CBD5B;
-			remoteInfo = "Mediaworks Top Shelf";
-		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
 		5477C8606AA5F6A181E0D6C0 /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
 			dstPath = "";
-			dstSubfolderSpec = 13;
+			dstSubfolder = PlugIns;
 			files = (
 				63B9525C6E656C37EB210F03 /* Mediaworks Top Shelf.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
 
@@ -56,6 +54,11 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		458D0C425788DD1D380E6FE4 /* TopShelf */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = TopShelf;
+			sourceTree = "<group>";
+		};
 		C08B47773075BE750041FC62 /* mediaworks */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = mediaworks;
@@ -69,11 +72,6 @@
 		C08B478F3075BE770041FC62 /* mediaworksUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = mediaworksUITests;
-			sourceTree = "<group>";
-		};
-		458D0C425788DD1D380E6FE4 /* TopShelf */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = TopShelf;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -127,6 +125,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		8AB3A4F4590C2884DA8CBD5B /* Mediaworks Top Shelf */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1B60560789F06E467FE6FE4D /* Build configuration list for PBXNativeTarget "Mediaworks Top Shelf" */;
+			buildPhases = (
+				E31C259114293D35ADA474D1 /* Sources */,
+				E7E4F3F9335C1DCE496B396D /* Frameworks */,
+				7636CDD1C6492526623BAA44 /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				458D0C425788DD1D380E6FE4 /* TopShelf */,
+			);
+			name = "Mediaworks Top Shelf";
+			productName = "Mediaworks Top Shelf";
+			productReference = C7720EB339C9C6438807246D /* Mediaworks Top Shelf.appex */;
+			productType = "com.apple.product-type.tv-app-extension";
+		};
 		C08B47743075BE750041FC62 /* mediaworks */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = C08B47943075BE770041FC62 /* Build configuration list for PBXNativeTarget "mediaworks" */;
@@ -191,26 +207,6 @@
 			productReference = C08B478C3075BE770041FC62 /* mediaworksUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
-		8AB3A4F4590C2884DA8CBD5B /* Mediaworks Top Shelf */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 1B60560789F06E467FE6FE4D /* Build configuration list for PBXNativeTarget "Mediaworks Top Shelf" */;
-			buildPhases = (
-				E31C259114293D35ADA474D1 /* Sources */,
-				E7E4F3F9335C1DCE496B396D /* Frameworks */,
-				7636CDD1C6492526623BAA44 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			fileSystemSynchronizedGroups = (
-				458D0C425788DD1D380E6FE4 /* TopShelf */,
-			);
-			name = "Mediaworks Top Shelf";
-			productName = "Mediaworks Top Shelf";
-			productReference = C7720EB339C9C6438807246D /* Mediaworks Top Shelf.appex */;
-			productType = "com.apple.product-type.tv-app-extension";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -221,10 +217,10 @@
 				LastSwiftUpdateCheck = 2700;
 				LastUpgradeCheck = 2700;
 				TargetAttributes = {
-					C08B47743075BE750041FC62 = {
+					8AB3A4F4590C2884DA8CBD5B = {
 						CreatedOnToolsVersion = 27.0;
 					};
-					8AB3A4F4590C2884DA8CBD5B = {
+					C08B47743075BE750041FC62 = {
 						CreatedOnToolsVersion = 27.0;
 					};
 					C08B47813075BE770041FC62 = {
@@ -260,6 +256,11 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		7636CDD1C6492526623BAA44 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
 		C08B47733075BE750041FC62 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
@@ -271,11 +272,6 @@
 			);
 		};
 		C08B478A3075BE770041FC62 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			files = (
-			);
-		};
-		7636CDD1C6492526623BAA44 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
 			);
@@ -306,6 +302,14 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		6BDB06A8A277A452CE64D34D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			platformFilters = (
+				tvos,
+			);
+			target = 8AB3A4F4590C2884DA8CBD5B /* Mediaworks Top Shelf */;
+			targetProxy = 38BE1B400487B95961E334CD /* PBXContainerItemProxy */;
+		};
 		C08B47843075BE770041FC62 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = C08B47743075BE750041FC62 /* mediaworks */;
@@ -316,12 +320,6 @@
 			target = C08B47743075BE750041FC62 /* mediaworks */;
 			targetProxy = C08B478D3075BE770041FC62 /* PBXContainerItemProxy */;
 		};
-		6BDB06A8A277A452CE64D34D /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			platformFilters = (tvos, );
-			target = 8AB3A4F4590C2884DA8CBD5B /* Mediaworks Top Shelf */;
-			targetProxy = 38BE1B400487B95961E334CD /* PBXContainerItemProxy */;
-		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -330,7 +328,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 293;
+				CURRENT_PROJECT_VERSION = 294;
 				DEVELOPMENT_TEAM = 3X3F6UJ44H;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
@@ -362,7 +360,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=appletvos*]" = "mediaworks/mediaworks-tvOS.entitlements";
 				"CODE_SIGN_ENTITLEMENTS[sdk=appletvsimulator*]" = "mediaworks/mediaworks-tvOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 293;
+				CURRENT_PROJECT_VERSION = 294;
 				DEVELOPMENT_TEAM = 3X3F6UJ44H;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -540,7 +538,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=appletvos*]" = "mediaworks/mediaworks-tvOS.entitlements";
 				"CODE_SIGN_ENTITLEMENTS[sdk=appletvsimulator*]" = "mediaworks/mediaworks-tvOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 293;
+				CURRENT_PROJECT_VERSION = 294;
 				DEVELOPMENT_TEAM = 3X3F6UJ44H;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -602,7 +600,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=appletvos*]" = "mediaworks/mediaworks-tvOS.entitlements";
 				"CODE_SIGN_ENTITLEMENTS[sdk=appletvsimulator*]" = "mediaworks/mediaworks-tvOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 293;
+				CURRENT_PROJECT_VERSION = 294;
 				DEVELOPMENT_TEAM = 3X3F6UJ44H;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -658,7 +656,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 293;
+				CURRENT_PROJECT_VERSION = 294;
 				DEVELOPMENT_TEAM = 3X3F6UJ44H;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
@@ -684,7 +682,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 293;
+				CURRENT_PROJECT_VERSION = 294;
 				DEVELOPMENT_TEAM = 3X3F6UJ44H;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
@@ -709,7 +707,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 293;
+				CURRENT_PROJECT_VERSION = 294;
 				DEVELOPMENT_TEAM = 3X3F6UJ44H;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
@@ -734,7 +732,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 293;
+				CURRENT_PROJECT_VERSION = 294;
 				DEVELOPMENT_TEAM = 3X3F6UJ44H;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
@@ -755,11 +753,39 @@
 			};
 			name = Release;
 		};
+		CBA796403B7DC97109BB1EA0 /* Debug configuration for PBXNativeTarget "Mediaworks Top Shelf" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = TopShelf.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 294;
+				DEVELOPMENT_TEAM = 3X3F6UJ44H;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "TopShelf-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Mediaworks Top Shelf";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lyceum.mediaworks.TopShelf;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = appletvos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+			};
+			name = Debug;
+		};
 		CE9E7F8DFFD84442B98C469B /* TestFlight configuration for PBXNativeTarget "mediaworksUITests" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 293;
+				CURRENT_PROJECT_VERSION = 294;
 				DEVELOPMENT_TEAM = 3X3F6UJ44H;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
@@ -779,6 +805,62 @@
 				XROS_DEPLOYMENT_TARGET = 27.0;
 			};
 			name = TestFlight;
+		};
+		DBB15B770EDC27E321C5FB33 /* TestFlight configuration for PBXNativeTarget "Mediaworks Top Shelf" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = TopShelf.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 294;
+				DEVELOPMENT_TEAM = 3X3F6UJ44H;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "TopShelf-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Mediaworks Top Shelf";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lyceum.mediaworks.TopShelf;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = appletvos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+			};
+			name = TestFlight;
+		};
+		E15BD6C330A98A58E3F07336 /* Release configuration for PBXNativeTarget "Mediaworks Top Shelf" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = TopShelf.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 294;
+				DEVELOPMENT_TEAM = 3X3F6UJ44H;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "TopShelf-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Mediaworks Top Shelf";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lyceum.mediaworks.TopShelf;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = appletvos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+			};
+			name = Release;
 		};
 		F621E47E4BC94B7E90ED2301 /* TestFlight configuration for PBXProject "mediaworks" */ = {
 			isa = XCBuildConfiguration;
@@ -835,93 +917,18 @@
 			};
 			name = TestFlight;
 		};
-		CBA796403B7DC97109BB1EA0 /* Debug configuration for PBXNativeTarget "Mediaworks Top Shelf" */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = TopShelf.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 293;
-				DEVELOPMENT_TEAM = 3X3F6UJ44H;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = "TopShelf-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Mediaworks Top Shelf";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.lyceum.mediaworks.TopShelf;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				REGISTER_APP_GROUPS = YES;
-				SDKROOT = appletvos;
-				SKIP_INSTALL = YES;
-				SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 3;
-			};
-			name = Debug;
-		};
-		E15BD6C330A98A58E3F07336 /* Release configuration for PBXNativeTarget "Mediaworks Top Shelf" */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = TopShelf.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 293;
-				DEVELOPMENT_TEAM = 3X3F6UJ44H;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = "TopShelf-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Mediaworks Top Shelf";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.lyceum.mediaworks.TopShelf;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				REGISTER_APP_GROUPS = YES;
-				SDKROOT = appletvos;
-				SKIP_INSTALL = YES;
-				SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 3;
-			};
-			name = Release;
-		};
-		DBB15B770EDC27E321C5FB33 /* TestFlight configuration for PBXNativeTarget "Mediaworks Top Shelf" */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = TopShelf.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 293;
-				DEVELOPMENT_TEAM = 3X3F6UJ44H;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = "TopShelf-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Mediaworks Top Shelf";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.lyceum.mediaworks.TopShelf;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				REGISTER_APP_GROUPS = YES;
-				SDKROOT = appletvos;
-				SKIP_INSTALL = YES;
-				SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 3;
-			};
-			name = TestFlight;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		1B60560789F06E467FE6FE4D /* Build configuration list for PBXNativeTarget "Mediaworks Top Shelf" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CBA796403B7DC97109BB1EA0 /* Debug configuration for PBXNativeTarget "Mediaworks Top Shelf" */,
+				E15BD6C330A98A58E3F07336 /* Release configuration for PBXNativeTarget "Mediaworks Top Shelf" */,
+				DBB15B770EDC27E321C5FB33 /* TestFlight configuration for PBXNativeTarget "Mediaworks Top Shelf" */,
+			);
+			defaultConfigurationName = Release;
+		};
 		C08B47703075BE750041FC62 /* Build configuration list for PBXProject "mediaworks" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -955,15 +962,6 @@
 				C08B479B3075BE770041FC62 /* Debug configuration for PBXNativeTarget "mediaworksUITests" */,
 				C08B479C3075BE770041FC62 /* Release configuration for PBXNativeTarget "mediaworksUITests" */,
 				CE9E7F8DFFD84442B98C469B /* TestFlight configuration for PBXNativeTarget "mediaworksUITests" */,
-			);
-			defaultConfigurationName = Release;
-		};
-		1B60560789F06E467FE6FE4D /* Build configuration list for PBXNativeTarget "Mediaworks Top Shelf" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				CBA796403B7DC97109BB1EA0 /* Debug configuration for PBXNativeTarget "Mediaworks Top Shelf" */,
-				E15BD6C330A98A58E3F07336 /* Release configuration for PBXNativeTarget "Mediaworks Top Shelf" */,
-				DBB15B770EDC27E321C5FB33 /* TestFlight configuration for PBXNativeTarget "Mediaworks Top Shelf" */,
 			);
 			defaultConfigurationName = Release;
 		};

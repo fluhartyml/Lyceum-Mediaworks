@@ -196,7 +196,7 @@ final class TVTheater {
         // REM  E-012.1 — a song gets a screensaver behind it; a video plays alone.
         if let song = ScreensaverPairing.shared.song(path) { saver.start(info: song.info) } else { saver.stop() }
         Task {
-            guard let url = await MacLibrary.streamURL(path) else { problem = "Your Mac is out of reach."; return }
+            guard let url = await MacLibrary.playURL(path) else { problem = "Your Mac is out of reach."; return }   // E-013
             problem = nil
             let item = AVPlayerItem(url: url)
             player.replaceCurrentItem(with: item)

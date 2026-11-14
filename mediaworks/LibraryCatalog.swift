@@ -1188,6 +1188,17 @@ final class LibraryCatalog {
             }
             return
         }
+        // REM  E-013 — /which and /live/: a file above 1080p, converted live to a smaller size, in memory only
+        // REM  (LiveConvert.swift). Same rules as /media/: only this Mac's own files, and unchecked = not streamed (PL9).
+        if !dlna, parts.count >= 2, parts[1].hasPrefix("/which?") || parts[1].hasPrefix("/live/") {
+            if parts[1].hasPrefix("/which?") { uncount(connection) }
+            LiveConvert.shared.answer(connection, target: String(parts[1]), isHead: parts[0] == "HEAD") { path in
+                guard !self.unchecked.contains(path), let url = self.libraryFile(path),
+                      FileManager.default.fileExists(atPath: url.path) else { return nil }
+                return url
+            }
+            return
+        }
         // N16 — a file the partner mini holds: served here through the buffer (N17).
         if parts.count >= 2, parts[1].hasPrefix("/media/"),
            let wanted = String(parts[1].dropFirst("/media/".count)).removingPercentEncoding,

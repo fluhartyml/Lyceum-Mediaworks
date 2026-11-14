@@ -331,6 +331,23 @@ final class MacLibrary {
         return data
     }
 
+    /// The address a player should open for `path`: the Mac's live conversion for a file above 1080p (E-013), else the
+    /// file itself. A Mac on an older build doesn't know /which and answers 404 — the file itself is used.
+    // REM  E-013, his "4k is never needed it is always lower than 4k": the Mac decides, because it can read the file's
+    // REM  real size. Asked once per play; a slow answer (5 s) falls back to the file so playing never waits on it.
+    static func playURL(_ path: String) async -> URL? {
+        guard let media = await streamURL(path),
+              let base = media.absoluteString.components(separatedBy: "/media/").first else { return nil }
+        let query = "f=" + (path.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? path)
+        guard let which = URL(string: base + "/which?" + query) else { return media }
+        var request = URLRequest(url: which)
+        request.timeoutInterval = 5
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200, String(decoding: data, as: UTF8.self) == "live",
+              let live = URL(string: base + "/live/index.m3u8?" + query) else { return media }
+        return live
+    }
+
     private static func make(_ base: URL, _ path: String) -> URL? {
         URL(string: base.absoluteString + "/media/" + (path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path))
     }
