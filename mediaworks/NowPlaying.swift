@@ -41,6 +41,8 @@ struct NowPlayingReport: Codable, Sendable {
 @MainActor
 enum NowPlayingBoard {
     private(set) static var latest: [String: (report: NowPlayingReport, receivedAt: Date)] = [:]
+    /// E-008: when each device's dropped frames last went up on the same file — the web shows it orange for 15 s.
+    private(set) static var droppingAt: [String: Date] = [:]
 
     static func take(query: String) -> Bool {
         guard let value = query.split(separator: "&").first(where: { $0.hasPrefix("d=") })?.dropFirst(2) else { return false }
@@ -48,6 +50,10 @@ enum NowPlayingBoard {
         while b64.count % 4 != 0 { b64 += "=" }
         guard let data = Data(base64Encoded: b64),
               let report = try? LibraryCache.decoder.decode(NowPlayingReport.self, from: data) else { return false }
+        if let new = report.droppedFrames, let before = latest[report.device]?.report,
+           before.file == report.file, let old = before.droppedFrames, new > old {
+            droppingAt[report.device] = .now
+        }
         latest[report.device] = (report, .now)
         MorningRestart.saw(build: report.build, on: report.device)
         return true

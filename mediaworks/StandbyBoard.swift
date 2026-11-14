@@ -147,7 +147,9 @@ final class StandbyMonitor {
 
 struct StandbyBoard: View {
     /// The fixed canvas the board is drawn on; the page scales it to the window (NetworkView).
-    static let canvas = CGSize(width: 1024, height: 600)
+    // REM  E-008 put the Network web on the board (his layout: columns, then Network, then Throughput, then the light),
+    // REM  so the canvas grew from 600 to 900 tall; the page still scales the whole board to fit the window.
+    static let canvas = CGSize(width: 1024, height: 900)
     /// Shown in a client tab (Library) rather than Status — see StandbyMonitor.health.
     var asClient = false
     @Environment(LibraryStore.self) private var library
@@ -171,7 +173,8 @@ struct StandbyBoard: View {
                 Divider()
                 macColumn.frame(maxWidth: .infinity, alignment: .leading)
             }
-            Spacer(minLength: 0)
+            Divider()
+            NetworkWeb().frame(maxWidth: .infinity, minHeight: 300, maxHeight: .infinity)
             throughputRow
             lightStrip(height: 72)
         }
