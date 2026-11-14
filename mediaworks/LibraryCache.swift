@@ -96,6 +96,9 @@ nonisolated struct LibrarySnapshot: Codable, Sendable {
     /// The servers ticked on the serving Mac whose slice is not arriving — nil when every one is answering, or from a Mac
     /// older than build 254, which never sent it.
     var missing: [String]?
+    /// E-012.1: his music-over-video tags and pairings, kept on the serving Mac (MusicOverVideo.swift) — nil when he has
+    /// none, or from a Mac older than build 292, which never sent them.
+    var pairing: MusicPairing?
 }
 
 /// One follower's change to the master's checkmarks and playlists — adds and removes only, so a change made while the master
@@ -171,8 +174,9 @@ nonisolated struct CacheRequest: Codable, Sendable, Hashable {
     /// Lyceum folder it goes to — on this server, or handed to the server holding that folder) — Commander in the Lyceum.
     /// `importRegister` (picture = JSON [ImportJob]) · `importList` · `importHold` (path = the job's id) — imports through the
     /// master, with an iPhone as relay (ImportJobs.swift). Only from a device approved in the master's Settings.
+    /// `setPairing` (path = "", picture = a JSON MusicPairing) — music over video's tags and pairings, set on a device (E-012.1).
     /// `marksPatch` (picture = a JSON MarksPatch) — a follower's change to the master's checkmarks and playlists (MasterMarks).
-    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash, unthumb, renamePlaylist, checkAll, addToPlaylist, removeFromPlaylist, getOwn, takeIn, renameFolder, playlistFromFolder, deletePlaylist, uncheckAll, checkFolder, uncheckFolder, sendCheck, sendIn, sendReplace, marksPatch, importRegister, importList, importHold, renameFile, newFolder, moveItem }
+    enum Op: String, Codable, Sendable { case get, check, uncheck, thumbsUp, thumbsDown, file, setTags, trash, unthumb, renamePlaylist, checkAll, addToPlaylist, removeFromPlaylist, getOwn, takeIn, renameFolder, playlistFromFolder, deletePlaylist, uncheckAll, checkFolder, uncheckFolder, sendCheck, sendIn, sendReplace, marksPatch, importRegister, importList, importHold, renameFile, newFolder, moveItem, setPairing }
     var op: Op
     /// The file, relative to the library root ("Music Videos/Rock/1990s/Queensryche - Silent Lucidity.mp4").
     var path: String?
@@ -434,6 +438,9 @@ nonisolated extension LibrarySnapshot {
         var copy = self
         guard let path = request.path else { return copy }
         switch request.op {
+        case .setPairing:
+            // E-012.1 — the whole set replaces the old one.
+            copy.pairing = request.picture.flatMap { try? JSONDecoder().decode(MusicPairing.self, from: $0) }
         case .setTags:
             let tags = request.tags ?? [:]
             copy.root = Self.editingFile(copy.root, path.split(separator: "/").map(String.init)) { original in

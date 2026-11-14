@@ -240,6 +240,9 @@ final class LibraryCatalog {
             if partner.isMasterHere { merged.marksFrom = partner.me; merged.marksMade = .now }
             else if partner.following { merged.marksFrom = partner.masterName; merged.marksMade = partner.ordersMade }
         }
+        // E-012.1 — his music-over-video tags go to every device with the listing (MusicOverVideo.swift).
+        let pairing = ScreensaverPairing.shared.saved
+        merged.pairing = pairing.tags.isEmpty && pairing.pruned.isEmpty ? nil : pairing
         snapshot = merged
         guard let data = try? LibraryCache.encoder.encode(merged) else { return }
         payload = data
@@ -362,7 +365,7 @@ final class LibraryCatalog {
             saveChanges()
         }
         switch request.op {
-        case .get, .file, .setTags, .trash, .getOwn, .takeIn, .renameFolder, .playlistFromFolder, .sendCheck, .sendIn, .sendReplace, .marksPatch, .importRegister, .importList, .importHold, .renameFile, .newFolder, .moveItem: return
+        case .get, .file, .setTags, .trash, .getOwn, .takeIn, .renameFolder, .playlistFromFolder, .sendCheck, .sendIn, .sendReplace, .marksPatch, .importRegister, .importList, .importHold, .renameFile, .newFolder, .moveItem, .setPairing: return
         case .check: unchecked.remove(path)
         case .uncheck: unchecked.insert(path)
         case .thumbsUp:
@@ -1048,6 +1051,14 @@ final class LibraryCatalog {
             if request.op == .marksPatch { receivePatch(request, on: connection); return }
             if [.importRegister, .importList, .importHold].contains(request.op) { receiveImport(request, on: connection); return }
             if [.sendCheck, .sendIn, .sendReplace].contains(request.op) { receiveSend(request, on: connection); return }
+            // E-012.1 — a device's music-over-video tags: kept on this Mac, answered with the listing that carries them.
+            if request.op == .setPairing {
+                if let data = request.picture, let pairing = try? JSONDecoder().decode(MusicPairing.self, from: data) {
+                    ScreensaverPairing.shared.replace(pairing)
+                }
+                connection.send(content: Framing.frame(payload), completion: .contentProcessed { _ in connection.cancel() })
+                return
+            }
             if routeToPartner(request, on: connection) { return }
             if request.op == .file { sendFile(request.path, on: connection); return }
             if [.setTags, .trash, .renameFolder, .playlistFromFolder, .renameFile, .newFolder, .moveItem].contains(request.op) {

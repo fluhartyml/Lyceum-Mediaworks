@@ -31,6 +31,8 @@ final class PhonePlayer {
     var page = PhonePlayer.mediaPage
     static let mediaPage = 0, libraryPage = 1, theaterPage = 2, settingsPage = 3
     let player = AVPlayer()
+    /// E-012.1: the muted screensaver behind a song (MusicOverVideo.swift).
+    let saver = ScreensaverPlayer()
     /// The same stats watch as the TV's, without a panel — its events go to the Mac's Playback Log (PlaybackLog.swift).
     @ObservationIgnored let stats = PlaybackStats()
     private(set) var isPlaying = false
@@ -67,6 +69,8 @@ final class PhonePlayer {
     private func load() {
         guard let path = current else { return }
         keeper.leave()
+        // REM  E-012.1 — a song gets a screensaver behind it; a video plays alone.
+        if let song = ScreensaverPairing.shared.song(path) { saver.start(info: song.info) } else { saver.stop() }
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
         // REM  YOUR OWN VIDEOS (amber 004.1, his 2026-11-09 "videos i put on my self should play") play from My Videos.
@@ -136,6 +140,7 @@ final class PhonePlayer {
         keeper.leave()
         player.pause()
         player.seek(to: .zero)
+        saver.stop()
         isPlaying = false
         fullScreen = false
     }
@@ -410,6 +415,19 @@ struct FullScreenPlayer: View {
             ZStack {
                 Color.black.ignoresSafeArea()
                 PlayerLayer(player: player.player).ignoresSafeArea()
+                // E-012.1: a song's screensaver, with the song's name at the bottom while the controls are hidden.
+                if let video = player.saver.player {
+                    ZStack(alignment: .bottomLeading) {
+                        PlainVideoView(player: video).ignoresSafeArea()
+                        if !controls, let current = player.current {
+                            Text(((current as NSString).lastPathComponent as NSString).deletingPathExtension)
+                                .font(.lyceumTitle).foregroundStyle(.white)
+                                .shadow(color: .black, radius: 6)
+                                .padding(24)
+                        }
+                    }
+                    .allowsHitTesting(false)
+                }
                 BufferingBadge()
                 // Double-tap halves (P09) and the single tap (P04) — one layer, so each gesture has the whole screen.
                 HStack(spacing: 0) {

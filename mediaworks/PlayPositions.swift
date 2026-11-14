@@ -219,9 +219,10 @@ final class PositionKeeper {
 
     /// After `item` is loaded: seeks to this device's mark for `key` at once, then to iCloud's if that is newer and
     /// elsewhere, then keeps the mark. Does nothing more if the player has moved on to another file meanwhile.
-    func resume(_ key: String, for item: AVPlayerItem) async {
+    /// `touch: false` — kept, but not listed in Recently Viewed (a music-over-video screensaver, E-012.1).
+    func resume(_ key: String, for item: AVPlayerItem, touch: Bool = true) async {
         guard let player, player.currentItem === item else { return }
-        PlayPositions.shared.touch(key)
+        if touch { PlayPositions.shared.touch(key) }
         let here = PlayPositions.shared.local(key)
         if here > 0 { player.seek(to: CMTime(seconds: here, preferredTimescale: 600), completionHandler: { _ in }) }
         let best = await PlayPositions.shared.start(key)

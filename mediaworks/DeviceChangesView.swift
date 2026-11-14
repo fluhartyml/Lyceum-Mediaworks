@@ -97,6 +97,7 @@ struct DeviceChangesView: View {
         case .newFolder: "Made a folder"
         case .moveItem: "Moved to another folder"
         case .renameFolder: "Renamed folder"
+        case .setPairing: "Changed music-over-video tags"
         case .playlistFromFolder: "Made a playlist from a folder"
         }
     }

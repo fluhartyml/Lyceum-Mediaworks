@@ -83,6 +83,8 @@ struct TVHome: View {
         .environment(sheets)
         .environment(theater)
         .task { await library.keepUpToDate() }
+        // E-012.1: music over video reads its tags from this listing (MusicOverVideo.swift).
+        .task { ScreensaverPairing.shared.library = library }
         .task { theater.announce() }
         .onAppear { theater.isPlayable = { [library] in library.isPlayable($0) } }
         // REM  TOP SHELF (amber A-042, TopShelfFeed.swift): the shelf is rewritten whenever the stop points may have moved —
@@ -124,6 +126,8 @@ struct TVFooter: ViewModifier {
 @Observable
 final class TVTheater {
     let player = AVPlayer()
+    /// E-012.1: the muted screensaver behind a song (MusicOverVideo.swift).
+    let saver = ScreensaverPlayer()
     /// Video stats, hold ▼ (TVPlaybackStats.swift) — collected from the moment each file loads.
     let stats = PlaybackStats()
     /// The folder or playlist playing, in its play order — as listed, or shuffled.
@@ -180,6 +184,8 @@ final class TVTheater {
     private func load() {
         guard let path = current else { return }
         keeper.leave()
+        // REM  E-012.1 — a song gets a screensaver behind it; a video plays alone.
+        if let song = ScreensaverPairing.shared.song(path) { saver.start(info: song.info) } else { saver.stop() }
         Task {
             guard let url = await MacLibrary.streamURL(path) else { problem = "Your Mac is out of reach."; return }
             problem = nil
@@ -225,7 +231,7 @@ final class TVTheater {
     func skip(_ seconds: Double) {
         player.seek(to: CMTime(seconds: max(0, player.currentTime().seconds + seconds), preferredTimescale: 600))
     }
-    func stop() { keeper.leave(); player.pause(); player.replaceCurrentItem(with: nil); order = PlayOrder(); presented = false }
+    func stop() { keeper.leave(); player.pause(); player.replaceCurrentItem(with: nil); saver.stop(); order = PlayOrder(); presented = false }
 
     // MARK: Forward / reverse buttons — TV remotes over HDMI, Control Center's Apple TV Remote (platforms 004e)
 
@@ -333,6 +339,10 @@ struct TVPlayer: View {
             Color.black.ignoresSafeArea()
             RemotePlayerView(player: theater.player, handle: handle)
                 .ignoresSafeArea()
+            // E-012.1: a song's screensaver. Never focused or pressed — the remote still talks to the player under it.
+            if let video = theater.saver.player {
+                PlainVideoView(player: video).ignoresSafeArea().allowsHitTesting(false).focusable(false)
+            }
             if let flash { Text(flash).font(.system(size: 220)).transition(.scale.combined(with: .opacity)) }
             if showInfo || alwaysShowFileName || theater.problem != nil { infoBar }
             if showStats { TVStatsPanel(stats: theater.stats, path: theater.current) }
@@ -689,6 +699,8 @@ struct TVSettingsSheet: View {
                 }
                 // REM  BUFFER BEFORE PLAYING — his word 2026-11-09 (StartBuffer.swift).
                 Section("Buffer before playing") { StartBufferPicker() }
+                // REM  E-012.1 — the same tags and pairings as the Mac's Settings tab, kept on the Mac.
+                Section { NavigationLink("Music Over Video") { MusicOverVideoSettings().navigationTitle("Music Over Video") } }
                 MacPickerSection()
                 // REM  LOCAL NETWORK — amber 001.13 / 002.2, 2026-11-07 (MacFinder.swift).
                 LocalNetworkSection()

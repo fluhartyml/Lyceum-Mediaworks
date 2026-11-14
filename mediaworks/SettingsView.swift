@@ -46,6 +46,9 @@ struct SettingsView: View {
             Section {
                 NavigationLink("Sorting") { SortingSettingsView().navigationTitle("Sorting") }
                     .font(.lyceumBody)
+                // REM  E-012.1 — on the Mac it is its own Settings tab; here it is a page, like Sorting.
+                NavigationLink("Music Over Video") { MusicOverVideoSettings().navigationTitle("Music Over Video") }
+                    .font(.lyceumBody)
             }
             // REM  RELAY IMPORTS — his idea, 2026-10-17: "it uses the iphone as the 'media file cloud'". Moved here from the Sync
             // REM  menu 2026-10-18 (it is not a sync choice, and here it can have its (i)).

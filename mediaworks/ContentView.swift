@@ -132,6 +132,8 @@ struct ContentView: View {
         // REM  ONLY THIS DEVICE NEVER LOOKS FOR A MAC (004.1): no search, so no Local Network pop-up — and none before the
         // REM  setup question is answered. Switching in Settings starts or stops the search at once (the task restarts).
         .task(id: sourceRaw) { if source == .mac { await fromMac.keepUpToDate() } }
+        // E-012.1: music over video reads its tags from this listing (MusicOverVideo.swift).
+        .task { ScreensaverPairing.shared.library = fromMac }
         #else
         .task { await fromMac.keepUpToDate() }
         #endif
