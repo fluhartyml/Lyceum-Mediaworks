@@ -965,8 +965,9 @@ final class LibraryCatalog {
                 connection.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { _ in connection.cancel() })
                 return
             }
-            connection.send(content: chunk, completion: .contentProcessed { error in
-                if error != nil { try? handle.close(); connection.cancel() } else { next() }
+            // REM  E-007: count each piece as it leaves (Throughput.swift).
+            connection.send(content: chunk, completion: .contentProcessed { [count = chunk.count] error in
+                if error != nil { try? handle.close(); connection.cancel() } else { Throughput.shared.add(count); next() }
             })
         }
         next()
@@ -1236,8 +1237,9 @@ final class LibraryCatalog {
                 return
             }
             left -= chunk.count
-            connection.send(content: chunk, completion: .contentProcessed { error in
-                if error != nil { try? handle.close(); connection.cancel() } else { next() }
+            // REM  E-007: count each piece as it leaves (Throughput.swift).
+            connection.send(content: chunk, completion: .contentProcessed { [count = chunk.count] error in
+                if error != nil { try? handle.close(); connection.cancel() } else { Throughput.shared.add(count); next() }
             })
         }
         next()
@@ -1362,6 +1364,7 @@ extension LibraryCatalog {
                         connection.send(content: chunk, completion: .contentProcessed { done.resume(returning: $0 == nil) })
                     }
                     guard ok else { connection.cancel(); return }
+                    Throughput.shared.add(chunk.count)   // E-007
                     offset += Int64(chunk.count); idle = 0
                 } else {
                     // Waiting on the copy — a minute without a byte and the copy has stalled.
@@ -1423,8 +1426,9 @@ extension LibraryCatalog {
                 connection.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { _ in connection.cancel() })
                 return
             }
-            connection.send(content: chunk, completion: .contentProcessed { error in
-                if error != nil { try? handle.close(); connection.cancel() } else { next() }
+            // REM  E-007: count each piece as it leaves (Throughput.swift).
+            connection.send(content: chunk, completion: .contentProcessed { [count = chunk.count] error in
+                if error != nil { try? handle.close(); connection.cancel() } else { Throughput.shared.add(count); next() }
             })
         }
         next()

@@ -68,6 +68,9 @@ enum StatusReport {
                 "isServing": catalog.isServing,
                 "port": catalog.listenerPort.map { Int($0) } ?? NSNull(),
                 "activeStreams": catalog.activeStreams,
+                // E-007: the Mac's own count of what it sent.
+                "throughput": { let t = Throughput.shared.read()
+                    return ["nowMbps": (t.nowMbps * 10).rounded() / 10, "todayBytes": t.todayBytes, "peakMbps": (t.peakMbps * 10).rounded() / 10] as [String: Any] }(),
                 "streamsByAddress": catalog.streamsByAddress,
                 "lastCaller": catalog.lastCaller ?? NSNull(),
                 "lastCallerAddress": catalog.lastCallerAddress ?? NSNull(),

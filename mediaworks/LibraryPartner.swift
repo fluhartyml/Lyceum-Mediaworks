@@ -671,7 +671,7 @@ nonisolated final class RangeRelay: NSObject, URLSessionDataDelegate, @unchecked
         connection.send(content: data, completion: .contentProcessed { [weak self] error in
             guard let self else { return }
             self.lock.lock(); self.pending -= data.count; self.lock.unlock()
-            if error != nil { dataTask.cancel() }
+            if error != nil { dataTask.cancel() } else { Throughput.shared.add(data.count) }   // E-007
         })
     }
 

@@ -172,6 +172,7 @@ struct StandbyBoard: View {
                 macColumn.frame(maxWidth: .infinity, alignment: .leading)
             }
             Spacer(minLength: 0)
+            throughputRow
             lightStrip(height: 72)
         }
         .padding(28)
@@ -297,6 +298,37 @@ struct StandbyBoard: View {
             text = "5 AM check: on · not run yet"
         }
         return Text(text).font(.lyceumBody).foregroundStyle(.secondary)
+    }
+
+    // MARK: Throughput (E-007)
+
+    // REM  E-007 (was E-008), locked 2026-11-09 20:1x: "Throughput row at the bottom. Speed out of the Mac right now, data
+    // REM  sent today, and today's peak, from the server's own count" (Throughput.swift). One line, so the 5-inch board
+    // REM  keeps its room; read every 2 seconds. His mockup line: "THROUGHPUT now 42 Mbps out · today 18 GB · peak 96".
+    private var throughputRow: some View {
+        TimelineView(.periodic(from: .now, by: 2)) { _ in
+            let t = Throughput.shared.read()
+            let today = ByteCountFormatter.string(fromByteCount: t.todayBytes, countStyle: .file)
+            HStack(spacing: 14) {
+                Image(systemName: "arrow.up.circle").font(.system(size: 26)).foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Text("Throughput").font(.lyceumHeadline).foregroundStyle(.secondary)
+                Text("now \(Self.mbps(t.nowMbps)) out · today \(today) · peak \(Self.mbps(t.peakMbps))")
+                    .font(.lyceumHeadline)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                Spacer(minLength: 0)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Throughput: \(Self.mbps(t.nowMbps)) now, \(today) today, peak \(Self.mbps(t.peakMbps))")
+            .accessibilityIdentifier("standbyThroughput")
+        }
+    }
+
+    /// "42 Mbps", "0.8 Mbps" under 10.
+    static func mbps(_ value: Double) -> String {
+        value < 10 && value > 0 ? String(format: "%.1f Mbps", value) : String(format: "%.0f Mbps", value)
     }
 
     // MARK: The light (011)
