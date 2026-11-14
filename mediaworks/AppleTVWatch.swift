@@ -125,6 +125,7 @@ final class AppleTVWatch {
             tvs[service]?.name = state.tvName
             tvs[service]?.answering = true
             tvs[service]?.lastSeen = .now
+            DeviceSessions.shared.saw(state.tvName)   // E-009: Mediaworks open on the TV and answering
         } else {
             tvs[service]?.answering = false
         }

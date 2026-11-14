@@ -1073,6 +1073,8 @@ final class LibraryCatalog {
         var address: String?
         if case .hostPort(let host, _) = connection.endpoint { address = "\(host)".components(separatedBy: "%").first }
         if let address { streamsByAddress[address, default: 0] += 1 }
+        // REM  E-009: a stream opened counts as the device being seen, under the name that address last used.
+        if let address, let name = clientName(at: address) { DeviceSessions.shared.streamOpened(name) }
         connection.stateUpdateHandler = { state in
             switch state {
             case .cancelled, .failed:
@@ -1746,6 +1748,7 @@ extension LibraryCatalog {
         }
         guard let name = request.device, !name.isEmpty else { return }
         clients[name] = SeenClient(name: name, address: address, lastSeen: .now, lastWhat: DeviceChangesView.what(request.op))
+        DeviceSessions.shared.saw(name)   // E-009
     }
 
     /// A server ticked here, or a device he approved, calling from this address.

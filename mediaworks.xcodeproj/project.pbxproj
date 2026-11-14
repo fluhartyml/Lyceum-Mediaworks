@@ -330,7 +330,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 287;
+				CURRENT_PROJECT_VERSION = 288;
 				DEVELOPMENT_TEAM = 3X3F6UJ44H;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
@@ -362,7 +362,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=appletvos*]" = "mediaworks/mediaworks-tvOS.entitlements";
 				"CODE_SIGN_ENTITLEMENTS[sdk=appletvsimulator*]" = "mediaworks/mediaworks-tvOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 287;
+				CURRENT_PROJECT_VERSION = 288;
 				DEVELOPMENT_TEAM = 3X3F6UJ44H;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -539,7 +539,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=appletvos*]" = "mediaworks/mediaworks-tvOS.entitlements";
 				"CODE_SIGN_ENTITLEMENTS[sdk=appletvsimulator*]" = "mediaworks/mediaworks-tvOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 287;
+				CURRENT_PROJECT_VERSION = 288;
 				DEVELOPMENT_TEAM = 3X3F6UJ44H;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -600,7 +600,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=appletvos*]" = "mediaworks/mediaworks-tvOS.entitlements";
 				"CODE_SIGN_ENTITLEMENTS[sdk=appletvsimulator*]" = "mediaworks/mediaworks-tvOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 287;
+				CURRENT_PROJECT_VERSION = 288;
 				DEVELOPMENT_TEAM = 3X3F6UJ44H;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -655,7 +655,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 287;
+				CURRENT_PROJECT_VERSION = 288;
 				DEVELOPMENT_TEAM = 3X3F6UJ44H;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
@@ -681,7 +681,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 287;
+				CURRENT_PROJECT_VERSION = 288;
 				DEVELOPMENT_TEAM = 3X3F6UJ44H;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
@@ -706,7 +706,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 287;
+				CURRENT_PROJECT_VERSION = 288;
 				DEVELOPMENT_TEAM = 3X3F6UJ44H;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
@@ -731,7 +731,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 287;
+				CURRENT_PROJECT_VERSION = 288;
 				DEVELOPMENT_TEAM = 3X3F6UJ44H;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
@@ -756,7 +756,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 287;
+				CURRENT_PROJECT_VERSION = 288;
 				DEVELOPMENT_TEAM = 3X3F6UJ44H;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
@@ -837,7 +837,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = TopShelf.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 287;
+				CURRENT_PROJECT_VERSION = 288;
 				DEVELOPMENT_TEAM = 3X3F6UJ44H;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "TopShelf-Info.plist";
@@ -865,7 +865,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = TopShelf.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 287;
+				CURRENT_PROJECT_VERSION = 288;
 				DEVELOPMENT_TEAM = 3X3F6UJ44H;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "TopShelf-Info.plist";
@@ -893,7 +893,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = TopShelf.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 287;
+				CURRENT_PROJECT_VERSION = 288;
 				DEVELOPMENT_TEAM = 3X3F6UJ44H;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "TopShelf-Info.plist";

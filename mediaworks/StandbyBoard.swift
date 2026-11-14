@@ -174,7 +174,7 @@ struct StandbyBoard: View {
                 macColumn.frame(maxWidth: .infinity, alignment: .leading)
             }
             Divider()
-            NetworkWeb().frame(maxWidth: .infinity, minHeight: 300, maxHeight: .infinity)
+            NetworkWeb(asClient: asClient).frame(maxWidth: .infinity, minHeight: 300, maxHeight: .infinity)
             throughputRow
             lightStrip(height: 72)
         }

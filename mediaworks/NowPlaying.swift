@@ -55,6 +55,7 @@ enum NowPlayingBoard {
             droppingAt[report.device] = .now
         }
         latest[report.device] = (report, .now)
+        DeviceSessions.shared.report(report.device, playing: report.state == "Playing")   // E-009
         MorningRestart.saw(build: report.build, on: report.device)
         return true
     }

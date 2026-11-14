@@ -10,8 +10,13 @@
 //  under it. Shape says what it is; color says how it is: lit playing, gray idle, orange dropping frames.
 //
 // REM  WHO IS ON IT: every Apple TV running Mediaworks (AppleTVWatch, E-005 — connected or not), plus any other device
-// REM  that connected to this Mac in the last hour (the same rule the map window uses). E-009 brings the Now / Past hour /
-// REM  Since restart pages; until then this is the one view.
+// REM  that connected to this Mac in the last hour (the same rule the map window uses).
+// REM  E-009, locked 2026-11-09 19:5x — THREE PAGES OVER THE WEB: "Now: devices connected this minute. Past hour: every
+// REM  device that connected in the last 60 minutes, with when. Since restart: every device since Mediaworks last started,
+// REM  first and last seen, how many times, how much it played. Nothing is saved to disk." Who is on each page comes from
+// REM  DeviceSessions (memory only). Arrows in the heading AND the ◀ ▶ keys — "no swipe-only path, for Sticky Keys".
+// REM  The keys are bound only on the Status page (HomeLAB B's board). Where the board stands in for an empty Library
+// REM  (asClient), ◀ ▶ belong to the sidebar list, so there the arrow buttons are the path.
 // REM  "web" and "mind map" are his descriptions — never shown. The heading is just "Network".
 //
 
@@ -19,12 +24,22 @@
 import SwiftUI
 
 struct NetworkWeb: View {
+    /// The board standing in for an empty Library — the ◀ ▶ keys are left to the sidebar there.
+    var asClient = false
     @State private var tvs = AppleTVWatch.shared
+    @State private var sessions = DeviceSessions.shared
+    @AppStorage("networkWeb.page") private var page: Page = .now
     @State private var partner = LibraryPartner.shared
     private let catalog = LibraryCatalog.shared
     @State private var statsFor: String?
 
     enum Health { case playing, idle, notSeen, dropping, problem }
+
+    enum Page: String, CaseIterable {
+        case now = "Now", pastHour = "Past hour", sinceRestart = "Since restart"
+        var next: Page { Self.allCases[(Self.allCases.firstIndex(of: self)! + 1) % Self.allCases.count] }
+        var previous: Page { Self.allCases[(Self.allCases.firstIndex(of: self)! + Self.allCases.count - 1) % Self.allCases.count] }
+    }
 
     struct Node: Identifiable {
         let id: String
@@ -33,11 +48,28 @@ struct NetworkWeb: View {
         let health: Health
         let mbps: Double?
         let isServer: Bool
+        /// What this page adds under the name (E-009): when, or first–last plus visits and time played.
+        var detail: [String] = []
+        var spokenDetail = ""
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Network").font(.system(size: 26, weight: .bold)).accessibilityAddTraits(.isHeader)
+            HStack(spacing: 12) {
+                Text("Network").font(.system(size: 26, weight: .bold)).accessibilityAddTraits(.isHeader)
+                Spacer()
+                pageButton("chevron.left", to: page.previous, key: .leftArrow, spoken: "Previous page")
+                VStack(spacing: 0) {
+                    Text(page.rawValue).font(.system(size: 22, weight: .semibold))
+                    if page == .sinceRestart {
+                        Text("started " + sessions.started.formatted(date: .omitted, time: .shortened))
+                            .font(.system(size: 18)).foregroundStyle(.secondary)
+                    }
+                }
+                .frame(minWidth: 170)
+                .accessibilityElement(children: .combine)
+                pageButton("chevron.right", to: page.next, key: .rightArrow, spoken: "Next page")
+            }
             TimelineView(.animation(minimumInterval: 1.0 / 20)) { context in
                 let phase = context.date.timeIntervalSinceReferenceDate * 24
                 GeometryReader { geo in web(size: geo.size, phase: phase) }
@@ -56,29 +88,81 @@ struct NetworkWeb: View {
         }
     }
 
+    /// The devices this page holds (DeviceSessions, memory only).
+    private var onPage: [DeviceSessions.Device] {
+        switch page {
+        case .now: sessions.now
+        case .pastHour: sessions.pastHour
+        case .sinceRestart: sessions.sinceRestart
+        }
+    }
+
     private var devices: [Node] {
+        let seen = Dictionary(onPage.map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a })
         var out: [Node] = []
         var named = Set<String>()
         for tv in tvs.sorted {
             named.insert(tv.name)
+            // An Apple TV answering right now is connected now, whatever the page.
+            guard tv.status != .notSeen || seen[tv.name] != nil else { continue }
             let health: Health = switch tv.status {
             case .playing: .playing
             case .connected, .idle: .idle
             case .notSeen: .notSeen
             }
-            out.append(node(tv.name, symbol: "appletv.fill", base: health))
+            out.append(node(tv.name, symbol: "appletv.fill", base: health, seen: seen[tv.name]))
         }
         let serverNames = Set(partner.servers).union([partner.me])
-        for client in catalog.clients.values.sorted(by: { $0.name < $1.name })
-        where !named.contains(client.name) && !serverNames.contains(client.name) && Date.now.timeIntervalSince(client.lastSeen) < 3600 {
-            let streaming = client.address.map { (catalog.streamsByAddress[$0] ?? 0) > 0 } ?? false
-            out.append(node(client.name, symbol: Self.symbol(for: client.name), base: streaming ? .playing : .idle))
+        for d in onPage where !named.contains(d.name) && !serverNames.contains(d.name) {
+            let streaming = catalog.clients[d.name]?.address.map { (catalog.streamsByAddress[$0] ?? 0) > 0 } ?? false
+            let recent = Date.now.timeIntervalSince(d.lastSeen) < 60
+            out.append(node(d.name, symbol: Self.symbol(for: d.name), base: streaming ? .playing : recent ? .idle : .notSeen, seen: d))
         }
         return out
     }
 
+    private func pageButton(_ symbol: String, to target: Page, key: KeyEquivalent, spoken: String) -> some View {
+        Button { page = target } label: {
+            Image(systemName: symbol).font(.system(size: 26, weight: .semibold)).frame(width: 44, height: 44)
+        }
+        .buttonStyle(.bordered)
+        .modifier(ArrowKey(key: key, enabled: !asClient))
+        .accessibilityLabel(spoken)
+        .accessibilityValue(target.rawValue)
+    }
+
+    private struct ArrowKey: ViewModifier {
+        let key: KeyEquivalent
+        let enabled: Bool
+        func body(content: Content) -> some View {
+            if enabled { content.keyboardShortcut(key, modifiers: []) } else { content }
+        }
+    }
+
+    // MARK: What each page says under the name (E-009)
+
+    private func clock(_ date: Date) -> String { date.formatted(date: .omitted, time: .shortened) }
+
+    private func detail(_ d: DeviceSessions.Device?) -> (lines: [String], spoken: String) {
+        guard let d else { return ([], "") }
+        let live = Date.now.timeIntervalSince(d.lastSeen) < 60
+        switch page {
+        case .now:
+            return ([], "")
+        case .pastHour:
+            let line = clock(d.visitStarted) + "–" + (live ? "now" : clock(d.lastSeen))
+            return ([line], "connected " + clock(d.visitStarted) + (live ? ", still here" : ", last seen " + clock(d.lastSeen)))
+        case .sinceRestart:
+            let played = d.playedSeconds >= 1 ? DeviceSessions.duration(d.playedSeconds)
+                : d.streams > 0 ? "\(d.streams) stream\(d.streams == 1 ? "" : "s")" : "not played"
+            let span = clock(d.firstSeen) + "–" + (live ? "now" : clock(d.lastSeen))
+            return ([span, "\(d.visits)× · " + played],
+                    "first seen \(clock(d.firstSeen)), last seen \(live ? "now" : clock(d.lastSeen)), \(d.visits) visit\(d.visits == 1 ? "" : "s"), played \(played)")
+        }
+    }
+
     /// Adds what the device itself reported (E-006): its speed, and orange while its dropped frames are climbing.
-    private func node(_ name: String, symbol: String, base: Health) -> Node {
+    private func node(_ name: String, symbol: String, base: Health, seen: DeviceSessions.Device?) -> Node {
         var health = base
         var mbps: Double?
         if let entry = NowPlayingBoard.latest[name], Date.now.timeIntervalSince(entry.receivedAt) < 15 {
@@ -86,7 +170,9 @@ struct NetworkWeb: View {
             if entry.report.state == "Playing", health != .notSeen { health = .playing }
             if let rising = NowPlayingBoard.droppingAt[name], Date.now.timeIntervalSince(rising) < 15 { health = .dropping }
         }
-        return Node(id: "device:" + name, name: name, symbol: symbol, health: health, mbps: mbps, isServer: false)
+        let said = detail(seen)
+        return Node(id: "device:" + name, name: name, symbol: symbol, health: health, mbps: mbps, isServer: false,
+                    detail: said.lines, spokenDetail: said.spoken)
     }
 
     static func symbol(for name: String) -> String {
@@ -163,13 +249,22 @@ struct NetworkWeb: View {
                         DeviceStatsView(device: d.name)
                     }
                     .accessibilityLabel(Self.spokenName(d.name))
-                    .accessibilityValue(Self.spoken(d.health) + (d.mbps.map { ", " + StandbyBoard.mbps($0) } ?? ""))
+                    .accessibilityValue(Self.spoken(d.health) + (d.mbps.map { ", " + StandbyBoard.mbps($0) } ?? "")
+                                        + (d.spokenDetail.isEmpty ? "" : ", " + d.spokenDetail))
                     .accessibilityHint("Shows its Stats for Nerds")
             }
             if around.isEmpty {
-                Text("No devices yet").font(.lyceumBody).foregroundStyle(.secondary)
+                Text(emptyLine).font(.lyceumBody).foregroundStyle(.secondary)
                     .position(x: center.x, y: min(size.height - 14, center.y + 70))
             }
+        }
+    }
+
+    private var emptyLine: String {
+        switch page {
+        case .now: "No devices connected this minute"
+        case .pastHour: "No devices in the past hour"
+        case .sinceRestart: "No devices since Mediaworks started"
         }
     }
 
@@ -183,6 +278,10 @@ struct NetworkWeb: View {
                 .foregroundStyle(n.health == .notSeen ? .secondary : .primary)
                 .lineLimit(1)
                 .frame(maxWidth: 170)
+            ForEach(n.detail, id: \.self) { line in
+                Text(line).font(.system(size: 18)).monospacedDigit().foregroundStyle(.secondary)
+                    .lineLimit(1).fixedSize()
+            }
         }
         .opacity(n.health == .notSeen ? 0.6 : 1)
         .accessibilityElement(children: .ignore)
