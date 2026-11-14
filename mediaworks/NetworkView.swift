@@ -24,6 +24,7 @@ struct NetworkView: View {
     @State private var imports = ImportMaster.shared
     @State private var outbox = ImportOutbox.shared
     private let catalog = LibraryCatalog.shared
+    @State private var appleTVs = AppleTVWatch.shared
 
     struct Server: Identifiable { let name: String; let folders: [String]; let files: Int; let problem: String?; let isMaster: Bool; var id: String { name } }
 
@@ -48,9 +49,12 @@ struct NetworkView: View {
     private var clients: [LibraryCatalog.SeenClient] {
         let serverNames = Set(servers.map(\.name))
         return catalog.clients.values
-            .filter { !serverNames.contains($0.name) && Date.now.timeIntervalSince($0.lastSeen) < 3600 }
+            // REM  E-003: Apple TVs have their own row now (every one, connected or not), so they aren't listed twice.
+            .filter { !serverNames.contains($0.name) && !tvNames.contains($0.name) && Date.now.timeIntervalSince($0.lastSeen) < 3600 }
             .sorted { $0.name < $1.name }
     }
+
+    private var tvNames: Set<String> { Set(appleTVs.tvs.values.map(\.name)) }
 
     private func streaming(_ client: LibraryCatalog.SeenClient) -> Bool {
         guard let address = client.address else { return false }
@@ -97,6 +101,8 @@ struct NetworkView: View {
                     HStack(alignment: .top, spacing: 24) {
                         ForEach(servers) { server in serverCard(server).anchorPreference(key: NodeKey.self, value: .bounds) { [server.name: $0] } }
                     }
+                    // REM  E-003, his word 2026-11-09 20:0x: "yes list every apple tv and a connection status."
+                    appleTVSection
                     // Devices
                     if clients.isEmpty {
                         Text("No device has connected to this Mac in the last hour.").foregroundStyle(.secondary)
@@ -112,6 +118,70 @@ struct NetworkView: View {
                     GeometryReader { geo in lines(nodes, geo: geo, phase: phase) }
                 }
             }
+        }
+        .task { await appleTVs.keepWatching() }
+    }
+
+    // MARK: Apple TVs (E-003)
+
+    @ViewBuilder
+    private var appleTVSection: some View {
+        let tvs = appleTVs.sorted
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Apple TVs").font(.lyceumHeadline).accessibilityAddTraits(.isHeader)
+            if tvs.isEmpty {
+                Text("No Apple TV running Mediaworks found yet. Open Mediaworks on an Apple TV and it appears here.")
+                    .foregroundStyle(.secondary)
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 18)], alignment: .leading, spacing: 18) {
+                    ForEach(tvs) { tv in tvCard(tv).anchorPreference(key: NodeKey.self, value: .bounds) { ["tv:" + tv.service: $0] } }
+                }
+            }
+        }
+    }
+
+    /// Lit while playing; gray when idle or not seen.
+    private func tvColor(_ status: AppleTVWatch.Status) -> Color {
+        switch status {
+        case .playing: return .accentColor
+        case .connected: return .primary
+        case .idle, .notSeen: return .secondary
+        }
+    }
+
+    private func tvCard(_ tv: AppleTVWatch.TV) -> some View {
+        let status = tv.status
+        let color = tvColor(status)
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Image(systemName: "appletv.fill").font(.system(size: 22)).foregroundStyle(color)
+                Text(tv.name).font(.lyceumHeadline).lineLimit(1).foregroundStyle(status == .notSeen ? .secondary : .primary)
+            }
+            Text(tvLine(tv)).foregroundStyle(color).lineLimit(2)
+        }
+        .padding(12)
+        .frame(minWidth: 220, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12).fill(.background))
+        .overlay(RoundedRectangle(cornerRadius: 12)
+            .strokeBorder(status == .playing ? Color.accentColor : Color.secondary.opacity(0.3), lineWidth: status == .playing ? 2 : 1))
+        .opacity(status == .notSeen ? 0.6 : 1)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(tv.name), \(status.rawValue)")
+    }
+
+    /// "Playing · Movie name", "Idle", "Not seen · since 9:14 PM".
+    private func tvLine(_ tv: AppleTVWatch.TV) -> String {
+        let status = tv.status
+        switch status {
+        case .playing, .connected:
+            let file = tv.state?.path.flatMap { catalog.snapshot?.file(at: $0) }
+            let title = file.map { $0.info?.title ?? $0.name }
+            return [status.rawValue, title].compactMap { $0 }.joined(separator: " · ")
+        case .idle:
+            return status.rawValue
+        case .notSeen:
+            guard let seen = tv.lastSeen else { return status.rawValue }
+            return "\(status.rawValue) · since \(seen.formatted(date: .omitted, time: .shortened))"
         }
     }
 
@@ -136,6 +206,15 @@ struct NetworkView: View {
             if let a = nodes[hub], let b = nodes[server.name] {
                 let job = pulling[server.name]
                 edge(geo[a], geo[b], moving: job != nil, color: server.problem == nil ? .secondary : .orange, phase: phase)
+            }
+        }
+        // This Mac to each Apple TV (E-003): moving while it plays, faint when it isn't on the network.
+        ForEach(appleTVs.sorted) { tv in
+            if let a = nodes[me], let b = nodes["tv:" + tv.service] {
+                let status = tv.status
+                edge(geo[a], geo[b], moving: status == .playing,
+                     color: status == .playing ? .accentColor : status == .notSeen ? .secondary.opacity(0.2) : .secondary.opacity(0.5),
+                     phase: phase)
             }
         }
         // This Mac to each device that called it.
