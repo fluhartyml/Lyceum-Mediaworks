@@ -21,10 +21,11 @@ import AVFoundation
 /// The 11 visualizers, in the order of his amber line, then the ones added after it.
 // REM  ADDED AFTER THE AMBER LINE (11-14): Dot Floor and Color Squares — his "make these in addition to what we already
 // REM  have" · "they both look unique and i want them added in addition". Square Stream — his "build the streaming squares
-// REM  next" (the closer match to his squares video).
+// REM  next" (the closer match to his squares video). Dot Stream — the closer match to his dot floor video, his "yes build
+// REM  it" (11-15).
 enum VisualizerKind: String, CaseIterable, Identifiable {
     case spectrumAnalyzer, flameWave, flameWaveSong, gasFlame, ripplePond, starfieldWarp, auroraCurtain,
-         oscilloscopeGlow, digitalRain, gooOnASpeaker, graphicEqualizer, dotFloor, colorSquares, squareStream
+         oscilloscopeGlow, digitalRain, gooOnASpeaker, graphicEqualizer, dotFloor, colorSquares, squareStream, dotStream
 
     var id: String { rawValue }
 
@@ -44,6 +45,7 @@ enum VisualizerKind: String, CaseIterable, Identifiable {
         case .dotFloor: "Dot Floor"
         case .colorSquares: "Color Squares"
         case .squareStream: "Square Stream"
+        case .dotStream: "Dot Stream"
         }
     }
 
@@ -63,6 +65,7 @@ enum VisualizerKind: String, CaseIterable, Identifiable {
         case .dotFloor: VisualizerDotFloor.self
         case .colorSquares: VisualizerColorSquares.self
         case .squareStream: VisualizerSquareStream.self
+        case .dotStream: VisualizerDotStream.self
         }
     }
 
