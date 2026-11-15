@@ -24,7 +24,9 @@ import SwiftUI
 
 final class VisualizerDotFloor: VisualizerScene {
     static var modeNames: [String] { ["White", "Amber", "Green", "Ice Blue", "Violet", "Rainbow"] }
-    private static let solid: [(Double, Double, Double)] = [(1, 1, 1), (1, 0.75, 0.3), (0.4, 1, 0.55), (0.55, 0.8, 1), (0.75, 0.55, 1)]
+    // REM  VIVID — his word 11-14: "the colors arnt as vibrant as expected either". Fully saturated colors, brighter quiet
+    // REM  dots and slightly bigger dots (was pastel, 0.32 base brightness, 2.4 px).
+    private static let solid: [(Double, Double, Double)] = [(1, 1, 1), (1, 0.62, 0), (0, 1, 0.35), (0, 0.75, 1), (0.66, 0.2, 1)]
     private static let rainbowBands = 8
 
     // REM the grid. Columns run low notes (left) → high notes (right); rows run near → far.
@@ -129,8 +131,8 @@ final class VisualizerDotFloor: VisualizerScene {
             let depth = (z - 1) / (Self.zFar - 1)               // 0 near … 1 far
             let scale = focal / z
             let baseY = horizon + scale
-            let dot = max(1, (2.4 - 1.0 * depth) * s)
-            let fade = 0.95 - 0.5 * depth                       // far rows dimmer
+            let dot = max(1.5, (3.0 - 1.2 * depth) * s)
+            let fade = 1 - 0.35 * depth                       // far rows dimmer
             for c in 0..<Self.columns {
                 let loud = Double(row.loud[c])
                 var x = w / 2 + (-halfWidth + Double(c) * colStep) * scale
@@ -144,7 +146,7 @@ final class VisualizerDotFloor: VisualizerScene {
                     x += loud * side * colStep * scale * 1.2
                 }
                 guard x > -dot, x < w + dot, y > -dot, y < h + dot else { continue }
-                let bright = min(1, (0.32 + 0.68 * loud) * fade)
+                let bright = min(1, (0.55 + 0.45 * loud) * fade)
                 let step = min(Self.brightnessSteps - 1, Int(bright * Double(Self.brightnessSteps)))
                 let band = rainbow ? min(bands - 1, c * bands / Self.columns) : 0
                 paths[band * Self.brightnessSteps + step].addRect(CGRect(x: x - dot / 2, y: y - dot / 2, width: dot, height: dot))
@@ -156,7 +158,7 @@ final class VisualizerDotFloor: VisualizerScene {
             let color: Color
             if rainbow {
                 // red (low notes, left) → violet (high notes, right)
-                color = Color(hue: 0.78 * Double(band) / Double(bands - 1), saturation: 0.75, brightness: 1)
+                color = Color(hue: 0.78 * Double(band) / Double(bands - 1), saturation: 1, brightness: 1)
             } else {
                 let (r, g, b) = Self.solid[max(0, min(Self.solid.count - 1, choices.mode))]
                 color = Color(.sRGB, red: r, green: g, blue: b)
