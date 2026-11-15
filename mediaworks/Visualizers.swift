@@ -19,10 +19,11 @@ import SwiftUI
 import AVFoundation
 
 /// The 11 visualizers, in the order of his amber line, then the ones added after it.
-// REM  ADDED AFTER THE AMBER LINE (11-14): Dot Floor — his "make these in addition to what we already have".
+// REM  ADDED AFTER THE AMBER LINE (11-14): Dot Floor and Color Squares — his "make these in addition to what we already
+// REM  have" · "they both look unique and i want them added in addition".
 enum VisualizerKind: String, CaseIterable, Identifiable {
     case spectrumAnalyzer, flameWave, flameWaveSong, gasFlame, ripplePond, starfieldWarp, auroraCurtain,
-         oscilloscopeGlow, digitalRain, gooOnASpeaker, graphicEqualizer, dotFloor
+         oscilloscopeGlow, digitalRain, gooOnASpeaker, graphicEqualizer, dotFloor, colorSquares
 
     var id: String { rawValue }
 
@@ -40,6 +41,7 @@ enum VisualizerKind: String, CaseIterable, Identifiable {
         case .gooOnASpeaker: "Goo on a Speaker"
         case .graphicEqualizer: "Graphic Equalizer"
         case .dotFloor: "Dot Floor"
+        case .colorSquares: "Color Squares"
         }
     }
 
@@ -57,6 +59,7 @@ enum VisualizerKind: String, CaseIterable, Identifiable {
         case .gooOnASpeaker: VisualizerGooOnASpeaker.self
         case .graphicEqualizer: VisualizerGraphicEqualizer.self
         case .dotFloor: VisualizerDotFloor.self
+        case .colorSquares: VisualizerColorSquares.self
         }
     }
 
