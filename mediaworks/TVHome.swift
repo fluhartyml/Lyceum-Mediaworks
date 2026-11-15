@@ -341,6 +341,9 @@ struct TVPlayer: View {
     @State private var showStats = false
     @AppStorage("tvAlwaysShowFileName") private var alwaysShowFileName = false
     @AppStorage("tvMediaProcessing") private var processing = false
+    @AppStorage(ListenMode.key) private var listening = false
+    @State private var note: String?
+    @State private var noteID = 0
     private var modes: PlayModes { .shared }
 
     var body: some View {
@@ -352,6 +355,16 @@ struct TVPlayer: View {
             // E-014: or its visualizer.
             if theater.saver.isShowing { SongBackdrop(saver: theater.saver).ignoresSafeArea() }
             if let flash { Text(flash).font(.system(size: 220)).transition(.scale.combined(with: .opacity)) }
+            if let note {
+                VStack {
+                    Text(note).font(.lyceumHeadline).foregroundStyle(.white)
+                        .padding(.horizontal, 30).padding(.vertical, 14)
+                        .background(.black.opacity(0.6), in: Capsule())
+                    Spacer()
+                }
+                .padding(.top, 60)
+                .transition(.opacity)
+            }
             if showInfo || alwaysShowFileName || theater.problem != nil { infoBar }
             if showStats { TVStatsPanel(stats: theater.stats, path: theater.current) }
         }
@@ -413,8 +426,9 @@ struct TVPlayer: View {
                 }
                 // The key line only with a peek — "always" keeps just the file name on screen.
                 if showInfo {
-                    Text((processing ? "Processing   ▲ 👍 uncheck + next   ▼ 👎 uncheck + next" : "▲ 👍   ▼ 👎 + next")
-                         + "   ◀︎ back 5 s   ▶︎ ahead 5 s   hold ◀︎ previous   hold ▶︎ next   hold ● bar" + (processing ? " + trash" : "") + "   hold ▼ stats").foregroundStyle(.secondary)
+                    Text(listening ? "Listen Mode   ◀︎ previous song   ▶︎ next song   ▲ ▼ visualizer colors   hold ● bar   hold ▼ stats" :
+                         ((processing ? "Processing   ▲ 👍 uncheck + next   ▼ 👎 uncheck + next" : "▲ 👍   ▼ 👎 + next")
+                         + "   ◀︎ back 5 s   ▶︎ ahead 5 s   hold ◀︎ previous   hold ▶︎ next   hold ● bar" + (processing ? " + trash" : "") + "   hold ▼ stats")).foregroundStyle(.secondary)
                 }
             }
             .font(.lyceumBody)
@@ -438,6 +452,21 @@ struct TVPlayer: View {
             return
         }
         if press != .holdCenter { trashStep = .none }
+        // REM  LISTEN MODE — his words, 2026-11-14: "the color changers need a way the clicker remote can work, maybe a toggle
+        // REM  for listen mode and not processing mode" · "in listen mode foeward song and previous song would be needed but
+        // REM  thumbs up and thumbs down probably wouldnt so uo and down to change color modes". On: tap ◀︎ ▶︎ = previous /
+        // REM  next song; ▲ ▼ = the showing visualizer's next / previous color (its style list). No rating in this mode.
+        // REM  Holds are unchanged (hold ◀︎ ▶︎ previous / next, hold ● bar, hold ▼ stats). Claude's calls: ▲ goes forward
+        // REM  through the list, ▼ back, both wrap around; with no visualizer showing, or one with a single look, ▲ ▼ say so.
+        if listening {
+            switch press {
+            case .up: stepColor(by: 1); return
+            case .down: stepColor(by: -1); return
+            case .tapRight: theater.next(); light(.next); return
+            case .tapLeft: theater.previous(); light(.previous); return
+            default: break
+            }
+        }
         switch press {
         // REM  MEDIA FILE PROCESSING — his design, 2026-10-15: "a 'media file processing' mode where when toggled ... when
         // REM  toggled on it uncheckes for up and down when toggled off it unchecks only when thumbs downed" · "both skip forward
@@ -493,6 +522,25 @@ struct TVPlayer: View {
         }
     }
 
+    /// Listen Mode's ▲ ▼: the showing visualizer's next or previous color, saved like the Settings pick.
+    private func stepColor(by step: Int) {
+        guard theater.saver.isShowing, let kind = theater.saver.visualizer else { say("No visualizer showing"); return }
+        let names = kind.modeNames
+        guard names.count > 1 else { say("\(kind.title) has one look"); return }
+        let now = kind.choices.mode
+        let next = ((now + step) % names.count + names.count) % names.count
+        UserDefaults.standard.set(next, forKey: kind.modeKey)
+        say("\(kind.title): \(names[next])")
+    }
+
+    /// A short line at the top of the screen for 2 seconds.
+    private func say(_ text: String) {
+        noteID += 1
+        let mine = noteID
+        withAnimation { note = text }
+        Task { try? await Task.sleep(for: .seconds(2)); if mine == noteID { withAnimation { note = nil } } }
+    }
+
     /// Sends the playing file to the Mac's Lyceum Trash and moves on to the next one.
     private func trashCurrent() {
         guard let path = theater.current else { return }
@@ -542,6 +590,9 @@ struct TVPlayer: View {
         }
     }
 }
+
+/// Listen Mode's setting (TV): ◀︎ ▶︎ = songs, ▲ ▼ = visualizer colors.
+enum ListenMode { static let key = "tvListenMode" }
 
 enum RemotePress { case up, down, holdDown, tapLeft, tapRight, holdLeft, holdRight, playPause, center, holdCenter, back }
 
@@ -681,6 +732,7 @@ struct TVSettingsSheet: View {
     // REM  always show file name at the bottom of the screen". Off = the 5-second default; on = always.
     @AppStorage("tvAlwaysShowFileName") private var alwaysShowFileName = false
     @AppStorage("tvMediaProcessing") private var processing = false
+    @AppStorage(ListenMode.key) private var listening = false
     @Environment(TVTheater.self) private var theater
 
     var body: some View {
@@ -696,6 +748,11 @@ struct TVSettingsSheet: View {
                         ForEach(RepeatMode.allCases) { Text($0.title).tag($0) }
                     }
                     InfoButton("Repeat One plays the same video again when it ends; Next still moves on. Repeat All starts the folder or playlist over.")
+                }
+                // REM  LISTEN MODE (his 11-14) — see TVPlayer.handle.
+                Section("Listen Mode") {
+                    Toggle("Listen Mode", isOn: $listening)
+                    InfoButton("Listen Mode on — ◀︎ and ▶︎ go to the previous and next song, and ▲ and ▼ change the visualizer's colors. The remote doesn't rate songs in this mode.\n\nOff — the remote works as set below: ▲ 👍, ▼ 👎, ◀︎ ▶︎ back and ahead 5 seconds.")
                 }
                 Section("Rating with the remote") {
                     Toggle("Media File Processing", isOn: $processing)
