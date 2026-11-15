@@ -13,12 +13,20 @@
 // REM  copied — the math, numbers and sound mapping are ours.
 // REM  SIZE (contingent sizing, "i dont want to see black bars"): every place is a fraction of the screen; dot sizes and
 // REM  scatter are scaled by `s` = the screen's shorter side ÷ 1080, so it looks the same on a phone, a Mac and a TV.
-// REM  COST: ~9,000 dots a frame, filled as 8 paths (one per brightness step), not 9,000 separate fills.
+// REM  COST: ~9,000 dots a frame, filled as 8 paths (one per brightness step), not 9,000 separate fills; Rainbow uses
+// REM  8 color bands × 8 steps = 64 paths.
+// REM  COLORS — his word 11-14: "the one onmy screen needs an option to change the colors". The choices (Claude's picks):
+// REM  White (the video's look, the default), Amber, Green, Ice Blue, Violet, and Rainbow — red at the low notes on the
+// REM  left through to violet at the high notes on the right. Picked in Settings → Dot Floor style.
 //
 
 import SwiftUI
 
 final class VisualizerDotFloor: VisualizerScene {
+    static var modeNames: [String] { ["White", "Amber", "Green", "Ice Blue", "Violet", "Rainbow"] }
+    private static let solid: [(Double, Double, Double)] = [(1, 1, 1), (1, 0.75, 0.3), (0.4, 1, 0.55), (0.55, 0.8, 1), (0.75, 0.55, 1)]
+    private static let rainbowBands = 8
+
     // REM the grid. Columns run low notes (left) → high notes (right); rows run near → far.
     private static let columns = 128
     private static let rows = 72
@@ -112,7 +120,9 @@ final class VisualizerDotFloor: VisualizerScene {
         let rowDepth = (Self.zFar - 1) / Double(Self.rows - 1)
         let colStep = 2 * halfWidth / Double(Self.columns - 1)
 
-        var paths = [Path](repeating: Path(), count: Self.brightnessSteps)
+        let rainbow = choices.mode >= Self.solid.count
+        let bands = rainbow ? Self.rainbowBands : 1
+        var paths = [Path](repeating: Path(), count: Self.brightnessSteps * bands)
         for (k, row) in floor.enumerated() {
             let z = 1 + (Double(k) - phase) * rowDepth
             guard z > 0.5 else { continue }
@@ -136,12 +146,22 @@ final class VisualizerDotFloor: VisualizerScene {
                 guard x > -dot, x < w + dot, y > -dot, y < h + dot else { continue }
                 let bright = min(1, (0.32 + 0.68 * loud) * fade)
                 let step = min(Self.brightnessSteps - 1, Int(bright * Double(Self.brightnessSteps)))
-                paths[step].addRect(CGRect(x: x - dot / 2, y: y - dot / 2, width: dot, height: dot))
+                let band = rainbow ? min(bands - 1, c * bands / Self.columns) : 0
+                paths[band * Self.brightnessSteps + step].addRect(CGRect(x: x - dot / 2, y: y - dot / 2, width: dot, height: dot))
             }
         }
         for (i, path) in paths.enumerated() where !path.isEmpty {
-            let opacity = (Double(i) + 0.5) / Double(Self.brightnessSteps)
-            context.fill(path, with: .color(.white.opacity(opacity)))
+            let band = i / Self.brightnessSteps, step = i % Self.brightnessSteps
+            let opacity = (Double(step) + 0.5) / Double(Self.brightnessSteps)
+            let color: Color
+            if rainbow {
+                // red (low notes, left) → violet (high notes, right)
+                color = Color(hue: 0.78 * Double(band) / Double(bands - 1), saturation: 0.75, brightness: 1)
+            } else {
+                let (r, g, b) = Self.solid[max(0, min(Self.solid.count - 1, choices.mode))]
+                color = Color(.sRGB, red: r, green: g, blue: b)
+            }
+            context.fill(path, with: .color(color.opacity(opacity)))
         }
     }
 }
