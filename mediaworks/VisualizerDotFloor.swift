@@ -16,8 +16,8 @@
 // REM  COST: ~9,000 dots a frame, filled as 8 paths (one per brightness step), not 9,000 separate fills; Rainbow uses
 // REM  8 color bands × 8 steps = 64 paths.
 // REM  COLORS — his word 11-14: "the one onmy screen needs an option to change the colors". The choices (Claude's picks):
-// REM  White (the video's look, the default), Amber, Green, Ice Blue, Violet, and Rainbow — red at the low notes on the
-// REM  left through to violet at the high notes on the right. Picked in Settings → Dot Floor style.
+// REM  White (the video's look, the default), Amber, Green, Ice Blue, Violet, and Rainbow — colored by height like a
+// REM  topographic map (his 11-14; it ran left to right by note before). Picked in Settings → Dot Floor style.
 //
 
 import SwiftUI
@@ -137,19 +137,25 @@ final class VisualizerDotFloor: VisualizerScene {
                 let loud = Double(row.loud[c])
                 var x = w / 2 + (-halfWidth + Double(c) * colStep) * scale
                 var y = baseY
+                var lift = 0.0
                 if loud > 0.001 {
                     // REM scatter: each dot has its own direction and drifts slowly, so a loud band shimmers instead
                     // REM of jumping. Up more than down — the sparkle lifts off the floor.
                     let up = Self.hash(row.serial, c, 1), side = Self.hash(row.serial, c, 2)
                     let drift = sin(time * 1.7 + up * 6.283)
-                    y -= loud * (abs(up) * 1.4 + 0.3 * drift) * 70 * s / z
+                    lift = loud * (abs(up) * 1.4 + 0.3 * drift)
+                    y -= lift * 70 * s / z
                     x += loud * side * colStep * scale * 1.2
                 }
                 guard x > -dot, x < w + dot, y > -dot, y < h + dot else { continue }
                 let bright = min(1, (0.85 + 0.15 * loud) * fade)
                 let size = dot * (1 + 0.5 * loud)          // loud dots swell
                 let step = min(Self.brightnessSteps - 1, Int(bright * Double(Self.brightnessSteps)))
-                let band = rainbow ? min(bands - 1, c * bands / Self.columns) : 0
+                // REM  RAINBOW BY HEIGHT — his word 11-14: "for rainbow can it go vertical color changes rather than its
+                // REM  horizontal color changes so the sound wawes turn into topigraphical maps in a way". The color is how
+                // REM  high the sound lifts the dot: flat floor blue, then green, yellow, and red at the peaks.
+                let height = max(0, min(1, lift / 1.4))
+                let band = rainbow ? min(bands - 1, Int(height * Double(bands))) : 0
                 paths[band * Self.brightnessSteps + step].addRect(CGRect(x: x - size / 2, y: y - size / 2, width: size, height: size))
             }
         }
@@ -158,8 +164,8 @@ final class VisualizerDotFloor: VisualizerScene {
             let opacity = (Double(step) + 0.5) / Double(Self.brightnessSteps)
             let color: Color
             if rainbow {
-                // red (low notes, left) → violet (high notes, right)
-                color = Color(hue: 0.78 * Double(band) / Double(bands - 1), saturation: 1, brightness: 1)
+                // blue (flat floor) → green → yellow → red (the peaks)
+                color = Color(hue: 0.66 * (1 - Double(band) / Double(bands - 1)), saturation: 1, brightness: 1)
             } else {
                 let (r, g, b) = Self.solid[max(0, min(Self.solid.count - 1, choices.mode))]
                 color = Color(.sRGB, red: r, green: g, blue: b)
