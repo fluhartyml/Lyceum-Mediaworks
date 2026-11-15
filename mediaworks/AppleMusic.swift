@@ -273,6 +273,20 @@ struct AppleMusicView: View {
 /// The screensaver, the song's name, and the controls.
 struct AppleMusicScreen: View {
     @State private var music = AppleMusicPlayback.shared
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    #endif
+
+    private var playButton: some View {
+        Button(music.isPlaying ? "Pause" : "Play", systemImage: music.isPlaying ? "pause.fill" : "play.fill") { music.togglePlay() }
+            .fixedSize()
+    }
+    private var nextButton: some View { Button("Next", systemImage: "forward.end.fill") { music.next() }.fixedSize() }
+    private var stopButton: some View { Button("Stop", systemImage: "stop.fill") { music.stop() }.fixedSize() }
+    private var backButton: some View { Button("Back to Lists", systemImage: "list.bullet") { music.fullScreen = false }.fixedSize() }
+    private var buttonRow: some View {
+        HStack(spacing: 24) { playButton; nextButton; stopButton; backButton }
+    }
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
@@ -292,13 +306,25 @@ struct AppleMusicScreen: View {
                     if let artist = music.songArtist { Text(artist).font(.lyceumHeadline) }
                 }
                 if let name = music.playingName { Text(name).font(.lyceumBody).opacity(0.8) }
-                HStack(spacing: 24) {
-                    Button(music.isPlaying ? "Pause" : "Play", systemImage: music.isPlaying ? "pause.fill" : "play.fill") { music.togglePlay() }
-                    Button("Next", systemImage: "forward.end.fill") { music.next() }
-                    Button("Stop", systemImage: "stop.fill") { music.stop() }
-                    Button("Back to Lists", systemImage: "list.bullet") { music.fullScreen = false }
+                // REM  HIS WORD 11-15 "yes fix the buttons": on an iPhone the four labels broke mid-word ("Pau se", "Ne xt",
+                // REM  "Sto p" — his TestFlight screenshot, build 297). Labels never wrap now, and a narrow iPhone gets
+                // REM  two rows of two. Not ViewThatFits — see the Commander toolbar note (it builds both rows).
+                Group {
+                    #if os(iOS)
+                    if sizeClass == .compact {
+                        Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 16) {
+                            GridRow { playButton; nextButton }
+                            GridRow { stopButton; backButton }
+                        }
+                    } else {
+                        buttonRow
+                    }
+                    #else
+                    buttonRow
+                    #endif
                 }
                 .font(.lyceumBody)
+                .lineLimit(1)
             }
             .foregroundStyle(.white)
             .shadow(color: .black, radius: 6)
