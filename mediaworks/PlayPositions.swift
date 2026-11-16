@@ -17,6 +17,7 @@
 // REM  · A file moved or renamed by Mediaworks keeps its place (LibraryCatalog.filesMoved).
 
 import Foundation
+import SwiftUI
 import AVFoundation
 import CloudKit
 import CryptoKit
@@ -125,15 +126,56 @@ final class PlayPositions {
         return t >= 3600 ? String(format: "%d:%02d:%02d", t / 3600, t / 60 % 60, t % 60) : String(format: "%d:%02d", t / 60, t % 60)
     }
 
-    /// Where `key` should start, in seconds (0 = the top): the newer of this device's mark and iCloud's.
+    // REM  RESET PLAYBACK POSITIONS — his "yes build the reset playback positions", 2026-11-16 ~17:0x, after asking "can the
+    // REM  media works settings have a reset video playback position?". One button in Settings on every client (Mac, iPhone,
+    // REM  iPad, TV — all clients are equal). It clears this device's marks and leaves ONE dated "reset" note in iCloud
+    // REM  (the same PlayPosition record type, a reserved name — no new CloudKit schema to deploy). Every device then treats
+    // REM  any mark older than that date as gone: its own copy on the next play, and iCloud's old records, which stay but
+    // REM  are never believed again. A file played after the reset keeps its new spot as usual.
+    // REM  Recently Viewed keeps its list (it has its own Clear); the files themselves are never touched.
+    private static let resetKey = "playPositionsResetAt"
+    /// The reserved iCloud name for the reset note — a "/" first and a NUL inside, so no library path can be it.
+    private static let cloudResetKey = "/\u{0}playPositionsReset"
+    private var resetAt: Date { (UserDefaults.standard.object(forKey: Self.resetKey) as? Date) ?? .distantPast }
+    private var resetCheckedAt = Date.distantPast
+
+    /// Settings → Reset Playback Positions: every file starts from the top next time, here and on the other devices.
+    func resetAll() {
+        let now = Date.now
+        marks = [:]
+        sent = [:]
+        UserDefaults.standard.set(now, forKey: Self.resetKey)
+        save(force: true)
+        Task { await PositionCloud.store(Self.cloudResetKey, Mark(seconds: 0, when: now)) }
+    }
+
+    /// Another device's reset, read from iCloud at most once a minute: this device's older marks go too.
+    private func adopt(cloudReset: PlayPositions.Mark?) {
+        guard let when = cloudReset?.when, when > resetAt else { return }
+        UserDefaults.standard.set(when, forKey: Self.resetKey)
+        marks = marks.filter { $0.value.when > when }
+        save(force: true)
+    }
+
+    /// Where `key` should start, in seconds (0 = the top): the newer of this device's mark and iCloud's — neither older
+    /// than the last reset.
     func start(_ key: String) async -> Double {
-        var best = marks[key]
-        if Self.isSynced(key), let cloud = await PositionCloud.fetch(key), cloud.when > (best?.when ?? .distantPast) {
-            best = cloud
-            marks[key] = cloud
-            save(force: true)
+        if Self.isSynced(key) {
+            let checkReset = Date.now.timeIntervalSince(resetCheckedAt) > 60
+            if checkReset { resetCheckedAt = .now }
+            async let reset = checkReset ? PositionCloud.fetch(Self.cloudResetKey) : nil
+            async let cloud = PositionCloud.fetch(key)
+            let (r, c) = await (reset, cloud)
+            adopt(cloudReset: r)
+            var best = marks[key]
+            if let c, c.when > resetAt, c.when > (best?.when ?? .distantPast) {
+                best = c
+                marks[key] = c
+                save(force: true)
+            }
+            return best?.seconds ?? 0
         }
-        return best?.seconds ?? 0
+        return marks[key]?.seconds ?? 0
     }
 
     /// Where `key` is now. `now` = paused, stopped or leaving the file: saved and sent to iCloud at once.
@@ -283,6 +325,31 @@ nonisolated enum PositionCloud {
 
     static func remove(_ key: String) async {
         _ = try? await database.modifyRecords(saving: [], deleting: [id(key)])
+    }
+}
+
+// MARK: - Settings button
+
+/// Settings → Reset Playback Positions, on the Mac, iPhone, iPad and TV.
+// REM  ASKS FIRST — unlike Clear Recently Viewed (nothing lost there), a reset loses every saved spot on every device and
+// REM  cannot be undone, so one confirmation stands between the press and the reset.
+struct ResetPositionsButton: View {
+    @State private var asking = false
+    @State private var done = false
+
+    var body: some View {
+        Button(done ? "Playback Positions Reset" : "Reset Playback Positions…") { asking = true }
+            .disabled(done)
+            .accessibilityLabel("Reset positions")
+            .confirmationDialog("Reset playback positions?", isPresented: $asking, titleVisibility: .visible) {
+                Button("Reset", role: .destructive) {
+                    PlayPositions.shared.resetAll()
+                    done = true
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Every video and song starts from the beginning next time, on all your devices. Your files and Recently Viewed stay as they are.")
+            }
     }
 }
 

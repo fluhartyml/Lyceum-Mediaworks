@@ -61,6 +61,9 @@ struct SettingsView: View {
                 #if !os(macOS)
                 NoBlackBarsToggle()
                 #endif
+                // REM  RESET PLAYBACK POSITIONS — his yes 2026-11-16 (PlayPositions.resetAll).
+                ResetPositionsButton()
+                    .info("Every video and song forgets where you stopped and starts from the beginning next time — on this device and, through iCloud, on your other devices. A file you play afterward remembers its new spot as usual.")
             } header: {
                 Text("Playback").font(.lyceumHeadline)
             }

@@ -765,6 +765,11 @@ struct TVSettingsSheet: View {
                 }
                 // REM  BUFFER BEFORE PLAYING — his word 2026-11-09 (StartBuffer.swift).
                 Section("Buffer before playing") { StartBufferPicker() }
+                // REM  RESET PLAYBACK POSITIONS — his yes 2026-11-16 (PlayPositions.resetAll).
+                Section("Where you stopped") {
+                    ResetPositionsButton()
+                    InfoButton("Every video and song forgets where you stopped and starts from the beginning next time — on this Apple TV and, through iCloud, on your other devices. A file you play afterward remembers its new spot as usual.")
+                }
                 // REM  E-012.1 — the same tags and pairings as the Mac's Settings tab, kept on the Mac.
                 Section { NavigationLink("Music Over Video") { MusicOverVideoSettings().navigationTitle("Music Over Video") } }
                 MacPickerSection()
