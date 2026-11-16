@@ -47,6 +47,8 @@ nonisolated final class EBMLReader {
     deinit { try? handle.close() }
 
     private func fill(_ count: Int) throws {
+        // REM  A jump outside what is held (back to the Cues, or far ahead) starts a fresh buffer at the new place.
+        if position < bufferStart || position > bufferStart + UInt64(buffer.count) { buffer = Data(); bufferStart = position }
         let have = Int(bufferStart + UInt64(buffer.count) - position)
         guard have < count else { return }
         let keep = buffer.suffix(max(0, have))
@@ -133,6 +135,11 @@ nonisolated final class MKVDemuxer {
     private(set) var title: String?
     private(set) var duration: Double?       // seconds
     private var scale: UInt64 = 1_000_000   // TimecodeScale, ns
+    // REM  E-013 MKV LIVE (his 11-16 "yes build it"): where the Segment's contents begin (cue and seek positions count from
+    // REM  here), where the first cluster sits, and where the Cues index is — so a live run can start mid-file.
+    private var segmentStart: UInt64 = 0
+    private var firstCluster: UInt64?
+    private var cuesAt: UInt64?
 
     private static let topLevel: Set<UInt32> = [0x1F43B675, 0x1C53BB6B, 0x1254C367, 0x1941A469, 0x114D9B74, 0x1549A966, 0x1654AE6B, 0x1043A770]
 
@@ -144,6 +151,7 @@ nonisolated final class MKVDemuxer {
         r.skip(headerSize)
         guard try r.id() == 0x18538067 else { throw MKVProblem.notMKV }
         _ = try r.size()
+        segmentStart = r.position
         while r.position < r.fileSize {
             let start = r.position
             let id = try r.id()
@@ -151,10 +159,128 @@ nonisolated final class MKVDemuxer {
             switch id {
             case 0x1549A966: try readInfo(end: r.position + size)
             case 0x1654AE6B: try readTracks(end: r.position + size)
-            case 0x1F43B675: r.seek(start); return     // first cluster — the frames start here
+            case 0x114D9B74:                            // SeekHead — only the Cues' place is wanted; never fatal
+                let end = r.position + size
+                readSeekHead(end: end)
+                r.seek(end)
+            case 0x1C53BB6B: cuesAt = start - segmentStart; r.skip(size)   // Cues ahead of the clusters
+            case 0x1F43B675: firstCluster = start; r.seek(start); return     // first cluster — the frames start here
             default: r.skip(size)
             }
         }
+    }
+
+    private func readSeekHead(end: UInt64) {
+        while r.position < end {
+            guard let id = try? r.id(), let size = try? r.size() else { return }
+            guard id == 0x4DBB else { r.skip(size); continue }
+            let entryEnd = r.position + size
+            var target: Data?, place: UInt64?
+            while r.position < entryEnd {
+                guard let cid = try? r.id(), let csize = try? r.size() else { return }
+                switch cid {
+                case 0x53AB: target = try? r.bytes(Int(csize))
+                case 0x53AC: place = try? r.uint(csize)
+                default: r.skip(csize)
+                }
+            }
+            if target == Data([0x1C, 0x53, 0xBB, 0x6B]), let place, cuesAt == nil { cuesAt = place }
+        }
+    }
+
+    // MARK: Starting mid-file, and frames one at a time (the live run, LiveConvertEngine.swift)
+
+    /// The Cues index: (time in ns, the cluster's place in the file), oldest first. Empty when the file has none.
+    func cuePoints(track: UInt64) -> [(ns: Int64, at: UInt64)] {
+        guard let cuesAt else { return [] }
+        let back = r.position
+        defer { r.seek(back) }
+        r.seek(segmentStart + cuesAt)
+        guard (try? r.id()) == 0x1C53BB6B, let size = try? r.size() else { return [] }
+        let end = r.position + size
+        var points: [(ns: Int64, at: UInt64)] = []
+        while r.position < end {
+            guard let id = try? r.id(), let psize = try? r.size() else { break }
+            guard id == 0xBB else { r.skip(psize); continue }
+            let pointEnd = r.position + psize
+            var time: UInt64?, places: [(UInt64?, UInt64?)] = []
+            while r.position < pointEnd {
+                guard let cid = try? r.id(), let csize = try? r.size() else { break }
+                if cid == 0xB3 { time = try? r.uint(csize); continue }
+                guard cid == 0xB7 else { r.skip(csize); continue }
+                let posEnd = r.position + csize
+                var t: UInt64?, p: UInt64?
+                while r.position < posEnd {
+                    guard let did = try? r.id(), let dsize = try? r.size() else { break }
+                    switch did {
+                    case 0xF7: t = try? r.uint(dsize)
+                    case 0xF1: p = try? r.uint(dsize)
+                    default: r.skip(dsize)
+                    }
+                }
+                r.seek(posEnd)
+                places.append((t, p))
+            }
+            r.seek(pointEnd)
+            if let time, let p = (places.first { $0.0 == track } ?? places.first)?.1 {
+                points.append((Int64(time) * Int64(scale), segmentStart + p))
+            }
+        }
+        return points.sorted { $0.ns < $1.ns }
+    }
+
+    private var pending: [(UInt64, Int64, Bool, Data)] = []
+    private var clusterEnd: UInt64?
+    private var clusterUnknown = false
+    private var clusterTime: Int64 = 0
+
+    /// Moves the reading place to the last cluster the Cues name at or before `ns` (the first cluster without Cues).
+    func seek(toNs ns: Int64, track: UInt64) {
+        let start = cuePoints(track: track).last { $0.ns <= ns }?.at ?? firstCluster ?? r.position
+        r.seek(start)
+        pending = []
+        clusterEnd = nil
+    }
+
+    /// The next frame in file order — (track, time in ns, keyframe, bytes) — or nil at the end. Same walk as `frames`.
+    func nextFrame() throws -> (UInt64, Int64, Bool, Data)? {
+        while pending.isEmpty {
+            guard let end = clusterEnd else {
+                guard r.position < r.fileSize else { return nil }
+                let id: UInt32
+                do { id = try r.id() } catch { return nil }             // a few stray bytes at the very end
+                let size = try r.size()
+                guard id == 0x1F43B675 else {
+                    guard let size else { continue }
+                    r.skip(size); continue
+                }
+                clusterUnknown = size == nil
+                clusterEnd = size.map { r.position + $0 } ?? r.fileSize
+                clusterTime = 0
+                continue
+            }
+            guard r.position < end else { clusterEnd = nil; continue }
+            let elementStart = r.position
+            let cid = try r.id()
+            if clusterUnknown, Self.topLevel.contains(cid) { r.seek(elementStart); clusterEnd = nil; continue }
+            guard let csize = try r.size() else { continue }
+            let collect: (UInt64, Int64, Bool, Data) throws -> Bool = { [unowned self] in pending.append(($0, $1, $2, $3)); return true }
+            switch cid {
+            case 0xE7: clusterTime = Int64(try r.uint(csize))
+            case 0xA3: _ = try block(try r.bytes(Int(csize)), clusterTime, simple: true, collect)
+            case 0xA0:
+                let gEnd = r.position + csize
+                var data: Data?, isKey = true
+                while r.position < gEnd {
+                    let gid = try r.id(); guard let gsize = try r.size() else { break }
+                    if gid == 0xA1 { data = try r.bytes(Int(gsize)) }
+                    else { if gid == 0xFB { isKey = false }; r.skip(gsize) }
+                }
+                if let data { _ = try block(data, clusterTime, simple: false, keyHint: isKey, collect) }
+            default: r.skip(csize)
+            }
+        }
+        return pending.removeFirst()
     }
 
     private func readInfo(end: UInt64) throws {
@@ -411,7 +537,7 @@ nonisolated enum MKVRemux {
     }
 
     /// One frame as a CoreMedia sample.
-    private static func sampleBuffer(_ data: Data, format: CMFormatDescription, pts: CMTime, duration: CMTime) -> CMSampleBuffer? {
+    static func sampleBuffer(_ data: Data, format: CMFormatDescription, pts: CMTime, duration: CMTime) -> CMSampleBuffer? {
         var block: CMBlockBuffer?
         guard CMBlockBufferCreateWithMemoryBlock(allocator: nil, memoryBlock: nil, blockLength: data.count, blockAllocator: nil,
                                                  customBlockSource: nil, offsetToData: 0, dataLength: data.count, flags: 0,

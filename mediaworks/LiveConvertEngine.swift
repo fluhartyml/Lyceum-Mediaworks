@@ -70,15 +70,24 @@ nonisolated struct LiveSource: @unchecked Sendable {
     let audioCodecs: String?
     /// An anamorphic file's stretch (wide pixels), carried over so the TV stretches it back. Nil for square pixels.
     let pixelAspect: CFDictionary?
+    /// Read through Mediaworks' own MKV reader (MKVRemux.swift) instead of Apple's — Apple's frameworks cannot open MKV.
+    var isMKV = false
 
     var shortSide: Int { min(naturalWidth, naturalHeight) }
     var pieceCount: Int { max(1, Int((duration / Self.pieceSeconds).rounded(.up))) }
     /// Sizes below the file's own — a file at or under 1080p is never converted, so this is empty for it.
-    var tiers: [LiveTier] { LiveTier.allCases.filter { $0.rawValue < shortSide } }
+    // REM  EXCEPT AN MKV (his 11-16: "i want them to be left alone and transcoded and presented to the apple tv"). The Apple
+    // REM  TV cannot play an MKV as it is, so every MKV is converted live: at its own size too (up to 1080p), and a picture
+    // REM  smaller than 480p is offered once, at its own size. The file itself is only read, never replaced.
+    var tiers: [LiveTier] {
+        guard isMKV else { return LiveTier.allCases.filter { $0.rawValue < shortSide } }
+        let fits = LiveTier.allCases.filter { $0.rawValue <= shortSide }
+        return fits.isEmpty ? [.p480] : fits
+    }
 
-    /// The encoded size of a tier, in the file's own orientation, even numbers only.
+    /// The encoded size of a tier, in the file's own orientation, even numbers only — never larger than the file.
     func size(_ tier: LiveTier) -> (width: Int, height: Int) {
-        let scale = Double(tier.rawValue) / Double(shortSide)
+        let scale = min(1, Double(tier.rawValue) / Double(shortSide))
         return (Int((Double(naturalWidth) * scale / 2).rounded()) * 2, Int((Double(naturalHeight) * scale / 2).rounded()) * 2)
     }
 
@@ -99,6 +108,7 @@ nonisolated struct LiveSource: @unchecked Sendable {
 
     /// Nil when Apple's frameworks cannot read it or it holds no picture.
     static func load(_ url: URL) async -> LiveSource? {
+        if ["mkv", "webm"].contains(url.pathExtension.lowercased()) { return loadMKV(url) }
         let asset = AVURLAsset(url: url)
         guard (try? await asset.load(.isReadable)) == true,
               let video = try? await asset.loadTracks(withMediaType: .video).first,
@@ -120,6 +130,230 @@ nonisolated struct LiveSource: @unchecked Sendable {
                           transform: transform, frameRate: fps > 0 ? Double(fps) : 30, audioPassthrough: passthrough,
                           hasAudio: audio != nil, audioCodecs: codecs,
                           pixelAspect: formats.first.flatMap { CMFormatDescriptionGetExtension($0, extensionKey: kCMFormatDescriptionExtension_PixelAspectRatio) as! CFDictionary? })
+    }
+
+    /// An MKV the MKV reader can convert (VP9 picture, AAC sound or none) — nil for any other mix, which plays as before.
+    static func loadMKV(_ url: URL) -> LiveSource? {
+        guard let mkv = try? MKVDemuxer(url), (try? mkv.readHeader()) != nil, MKVRemux.canConvert(url),
+              let video = mkv.tracks.values.first(where: { $0.type == 1 }), video.width > 0, video.height > 0,
+              let duration = mkv.duration, duration.isFinite, duration > 0 else { return nil }
+        var fps = video.defaultDuration.map { 1e9 / Double($0) } ?? 30
+        if !(1...120).contains(fps) { fps = 30 }
+        var passthrough: CMFormatDescription?
+        var codecs: String?
+        if let audio = mkv.tracks.values.first(where: { $0.type == 2 }), let asc = audio.codecPrivate, let first = asc.first {
+            passthrough = try? MKVRemux.aacFormat(asc: asc, sampleRate: audio.sampleRate, channels: audio.channels)
+            codecs = (first >> 3) == 5 ? "mp4a.40.5" : "mp4a.40.2"     // AudioSpecificConfig's object type: 5 = HE-AAC
+        }
+        var source = LiveSource(url: url, duration: duration, naturalWidth: video.width, naturalHeight: video.height,
+                                transform: .identity, frameRate: fps, audioPassthrough: passthrough,
+                                hasAudio: passthrough != nil, audioCodecs: passthrough != nil ? codecs : nil, pixelAspect: nil)
+        source.isMKV = true
+        return source
+    }
+}
+
+// MARK: - Where a run's frames come from
+
+/// A run's picture and sound, from Apple's reader or from the MKV reader. Pictures come decoded; sound comes as samples.
+nonisolated protocol LiveInput: AnyObject {
+    var hasAudio: Bool { get }
+    /// The next decoded picture — (image, time, duration) — or nil at the end.
+    func nextVideo() throws -> (CVImageBuffer, CMTime, CMTime)?
+    /// The next sound sample, or nil at the end.
+    func nextAudio() throws -> CMSampleBuffer?
+    /// Throws if reading stopped on a fault rather than at the end of the file.
+    func checkEnded() throws
+    func close()
+}
+
+/// Apple's reader — what every run used before MKV (unchanged behavior).
+nonisolated final class AVLiveInput: LiveInput {
+    private let reader: AVAssetReader
+    private let videoOut: AVAssetReaderTrackOutput
+    private let audioOut: AVAssetReaderTrackOutput?
+    var hasAudio: Bool { audioOut != nil }
+
+    init(source: LiveSource, from t0: CMTime) throws {
+        let asset = AVURLAsset(url: source.url)
+        let found = Gate<(AVAssetTrack?, AVAssetTrack?)>()
+        Task.detached { [asset] in
+            let video = try? await asset.loadTracks(withMediaType: .video).first
+            let audio = try? await asset.loadTracks(withMediaType: .audio).first
+            found.open((video, audio))
+        }
+        let (videoTrack, audioTrack) = found.wait()
+        guard let videoTrack else { throw LiveRun.Stop.because("The file has no picture Apple's frameworks can read.") }
+
+        reader = try AVAssetReader(asset: asset)
+        reader.timeRange = CMTimeRange(start: t0, end: .positiveInfinity)
+        // REM  BT.709 asked for by name — an HDR file comes out in ordinary color instead of washed out.
+        videoOut = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+            AVVideoColorPropertiesKey: [AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
+                                        AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
+                                        AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2],
+        ])
+        videoOut.alwaysCopiesSampleData = false
+        reader.add(videoOut)
+        if let audioTrack {
+            let settings: [String: Any]? = source.audioPassthrough != nil ? nil
+                : [AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 48_000, AVNumberOfChannelsKey: 2]
+            let out = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: settings)
+            out.alwaysCopiesSampleData = false
+            reader.add(out)
+            audioOut = out
+        } else {
+            audioOut = nil
+        }
+        guard reader.startReading() else { throw LiveRun.Stop.because(reader.error?.localizedDescription ?? "The file could not be read.") }
+    }
+
+    func nextVideo() throws -> (CVImageBuffer, CMTime, CMTime)? {
+        while let frame = videoOut.copyNextSampleBuffer() {
+            guard let image = CMSampleBufferGetImageBuffer(frame) else { continue }
+            return (image, CMSampleBufferGetPresentationTimeStamp(frame), CMSampleBufferGetDuration(frame))
+        }
+        return nil
+    }
+
+    func nextAudio() throws -> CMSampleBuffer? { audioOut?.copyNextSampleBuffer() }
+
+    func checkEnded() throws {
+        if reader.status == .failed { throw LiveRun.Stop.because(reader.error?.localizedDescription ?? "The file stopped reading.") }
+    }
+
+    func close() { reader.cancelReading() }
+}
+
+/// The MKV reader (MKVRemux.swift) — VP9 decoded by Apple's own VP9 decoder, AAC handed on as it is.
+// REM  STARTING MID-FILE: the reader jumps to the cluster the file's Cues name at or before the piece's start, then keeps the
+// REM  compressed frames from the last keyframe before the start and decodes only those — so a jump to minute 90 of a
+// REM  10-hour screensaver reads ahead without decoding it all. Pictures before the start are dropped by the run, as with
+// REM  Apple's reader.
+nonisolated final class MKVLiveInput: LiveInput, @unchecked Sendable {
+    private let mkv: MKVDemuxer
+    private let videoTrack: UInt64
+    private let audioTrack: UInt64?
+    private let width: Int, height: Int
+    private let frameDuration: CMTime
+    private let audioFormat: CMFormatDescription?
+    private let audioSampleRate: Double
+    private let startNs: Int64
+    private var decoder: VTDecompressionSession?
+    private var videoFormat: CMVideoFormatDescription?
+    private var packets: [(data: Data, ns: Int64, key: Bool)] = []
+    /// Compressed frames since the last keyframe, held until the start is reached.
+    private var lead: [(data: Data, ns: Int64, key: Bool)] = []
+    private var reachedStart = false
+    private var sounds: [CMSampleBuffer] = []
+    private var ended = false
+    private let lock = NSLock()
+    private var decoded: [(CVImageBuffer, CMTime)] = []
+    private var decodeFault: OSStatus?
+    var hasAudio: Bool { audioFormat != nil }
+
+    init(source: LiveSource, from t0: CMTime) throws {
+        mkv = try MKVDemuxer(source.url)
+        try mkv.readHeader()
+        guard let video = mkv.tracks.values.first(where: { $0.type == 1 }), video.codec == "V_VP9" else {
+            throw LiveRun.Stop.because("The MKV holds no VP9 picture the MKV reader converts.")
+        }
+        videoTrack = video.number
+        width = video.width
+        height = video.height
+        frameDuration = video.defaultDuration.map { CMTime(value: Int64($0), timescale: 1_000_000_000) } ?? .invalid
+        let audio = mkv.tracks.values.first { $0.type == 2 }
+        audioFormat = source.audioPassthrough
+        audioTrack = audioFormat != nil ? audio?.number : nil
+        audioSampleRate = audio?.sampleRate ?? 48_000
+        startNs = Int64((max(0, t0.seconds) * 1e9).rounded())
+        VTRegisterSupplementalVideoDecoderIfAvailable(kCMVideoCodecType_VP9)
+        mkv.seek(toNs: startNs, track: videoTrack)
+    }
+
+    /// Reads one frame from the file and files it as picture or sound. False at the end.
+    private func readOne() throws -> Bool {
+        guard !ended else { return false }
+        guard let (track, ns, key, data) = try mkv.nextFrame() else { ended = true; return false }
+        if track == videoTrack {
+            packets.append((data, ns, key))
+        } else if let audioTrack, track == audioTrack, let audioFormat {
+            let duration = CMTime(value: 1024, timescale: CMTimeScale(audioSampleRate))
+            let pts = CMTime(value: ns, timescale: 1_000_000_000)
+            if (pts + duration).seconds * 1e9 < Double(startNs) { return true }     // sound from before the start
+            if let sample = MKVRemux.sampleBuffer(data, format: audioFormat, pts: pts, duration: duration) { sounds.append(sample) }
+        }
+        return true
+    }
+
+    private func decode(_ packet: (data: Data, ns: Int64, key: Bool)) throws {
+        if decoder == nil {
+            guard packet.key else { return }                                   // a picture can only start at a keyframe
+            let format = try MKVRemux.vp9Format(width: width, height: height, firstFrame: packet.data)
+            let attrs = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange] as CFDictionary
+            var session: VTDecompressionSession?
+            let status = VTDecompressionSessionCreate(allocator: nil, formatDescription: format, decoderSpecification: nil,
+                                                      imageBufferAttributes: attrs, outputCallback: nil, decompressionSessionOut: &session)
+            guard status == noErr, let session else { throw LiveRun.Stop.because("Apple's VP9 decoder would not start (\(status)).") }
+            decoder = session
+            videoFormat = format
+        }
+        let pts = CMTime(value: packet.ns, timescale: 1_000_000_000)
+        guard let decoder, let videoFormat,
+              let sample = MKVRemux.sampleBuffer(packet.data, format: videoFormat, pts: pts, duration: frameDuration) else { return }
+        let status = VTDecompressionSessionDecodeFrame(decoder, sampleBuffer: sample, flags: [], infoFlagsOut: nil) { [weak self] status, _, image, time, _ in
+            guard let self else { return }
+            self.lock.withLock {
+                if status != noErr, status != kVTVideoDecoderBadDataErr { self.decodeFault = status }
+                if status == noErr, let image, time.isValid { self.decoded.append((image, time)) }
+            }
+        }
+        if status != noErr, status != kVTVideoDecoderBadDataErr { throw LiveRun.Stop.because("Apple's VP9 decoder stopped (\(status)).") }
+    }
+
+    /// Turns the next compressed picture into a decoded one — holding the lead-in until the start is reached.
+    private func step() throws -> Bool {
+        while packets.isEmpty { if try !readOne() { return false } }
+        let packet = packets.removeFirst()
+        if !reachedStart {
+            if packet.ns < startNs {
+                if packet.key { lead = [packet] } else if !lead.isEmpty { lead.append(packet) }
+                return true
+            }
+            reachedStart = true
+            if !packet.key { for held in lead { try decode(held) } }
+            lead = []
+        }
+        try decode(packet)
+        return true
+    }
+
+    func nextVideo() throws -> (CVImageBuffer, CMTime, CMTime)? {
+        while true {
+            if let fault = lock.withLock({ decodeFault }) { throw LiveRun.Stop.because("Apple's VP9 decoder stopped (\(fault)).") }
+            if let (image, time) = lock.withLock({ decoded.isEmpty ? nil : decoded.removeFirst() }) { return (image, time, frameDuration) }
+            if try !step() {
+                if let decoder { VTDecompressionSessionWaitForAsynchronousFrames(decoder) }
+                return lock.withLock { decoded.isEmpty ? nil : decoded.removeFirst() }.map { ($0.0, $0.1, frameDuration) }
+            }
+        }
+    }
+
+    /// Sound is read ahead of the picture only as far as needed — the pictures it passes stay compressed until asked for.
+    func nextAudio() throws -> CMSampleBuffer? {
+        guard audioFormat != nil else { return nil }
+        while sounds.isEmpty { if try !readOne() { return nil } }
+        return sounds.removeFirst()
+    }
+
+    func checkEnded() throws {
+        if let fault = lock.withLock({ decodeFault }) { throw LiveRun.Stop.because("Apple's VP9 decoder stopped (\(fault)).") }
+    }
+
+    func close() {
+        if let decoder { VTDecompressionSessionInvalidate(decoder) }
+        decoder = nil
     }
 }
 
@@ -196,7 +430,7 @@ nonisolated final class LiveRun: NSObject, AVAssetWriterDelegate, @unchecked Sen
 
     // MARK: The work
 
-    private enum Stop: Error { case because(String) }
+    enum Stop: Error { case because(String) }
 
     private func work() {
         do { try convert() } catch Stop.because(let why) { lock.withLock { problem = why } } catch { lock.withLock { problem = error.localizedDescription } }
@@ -217,39 +451,11 @@ nonisolated final class LiveRun: NSObject, AVAssetWriterDelegate, @unchecked Sen
     }
 
     private func convert() throws {
-        let asset = AVURLAsset(url: source.url)
-        let found = Gate<(AVAssetTrack?, AVAssetTrack?)>()
-        Task.detached { [asset] in
-            let video = try? await asset.loadTracks(withMediaType: .video).first
-            let audio = try? await asset.loadTracks(withMediaType: .audio).first
-            found.open((video, audio))
-        }
-        let (videoTrack, audioTrack) = found.wait()
-        guard let videoTrack else { throw Stop.because("The file has no picture Apple's frameworks can read.") }
-
         let t0 = CMTime(seconds: Double(start) * LiveSource.pieceSeconds, preferredTimescale: 90_000)
-        let reader = try AVAssetReader(asset: asset)
-        reader.timeRange = CMTimeRange(start: t0, end: .positiveInfinity)
-        // REM  BT.709 asked for by name — an HDR file comes out in ordinary color instead of washed out.
-        let videoOut = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
-            AVVideoColorPropertiesKey: [AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
-                                        AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
-                                        AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2],
-        ])
-        videoOut.alwaysCopiesSampleData = false
-        reader.add(videoOut)
-        var audioOut: AVAssetReaderTrackOutput?
-        if let audioTrack {
-            let settings: [String: Any]? = source.audioPassthrough != nil ? nil
-                : [AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 48_000, AVNumberOfChannelsKey: 2]
-            let out = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: settings)
-            out.alwaysCopiesSampleData = false
-            reader.add(out)
-            audioOut = out
-        }
-        guard reader.startReading() else { throw Stop.because(reader.error?.localizedDescription ?? "The file could not be read.") }
-        defer { reader.cancelReading() }
+        // REM  E-013 MKV LIVE (his 11-16): an MKV's frames come from the MKV reader; everything else from Apple's reader,
+        // REM  exactly as before. From here on the run is the same for both.
+        let reading: LiveInput = source.isMKV ? try MKVLiveInput(source: source, from: t0) : try AVLiveInput(source: source, from: t0)
+        defer { reading.close() }
 
         // The Mac's hardware encoder, at this run's size.
         let (width, height) = source.size(tier)
@@ -294,7 +500,7 @@ nonisolated final class LiveRun: NSObject, AVAssetWriterDelegate, @unchecked Sen
         /// The keyframes forced at a 6-second mark, oldest first — each one opens a new piece.
         var cuts: [CMTime] = []
         var heldAudio: CMSampleBuffer?
-        var audioFinished = audioOut == nil
+        var audioFinished = !reading.hasAudio
 
         func waitFor(_ input: AVAssetWriterInput) {
             var waited = 0
@@ -309,7 +515,7 @@ nonisolated final class LiveRun: NSObject, AVAssetWriterDelegate, @unchecked Sen
             input.transform = source.transform
             writer.add(input)
             videoIn = input
-            if audioOut != nil {
+            if reading.hasAudio {
                 let audio = source.audioPassthrough != nil
                     ? AVAssetWriterInput(mediaType: .audio, outputSettings: nil, sourceFormatHint: source.audioPassthrough)
                     : AVAssetWriterInput(mediaType: .audio, outputSettings: [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 48_000,
@@ -324,9 +530,9 @@ nonisolated final class LiveRun: NSObject, AVAssetWriterDelegate, @unchecked Sen
 
         /// Sound that starts before `limit` — never past the next piece's first frame, so each piece holds its own sound.
         func sendAudio(before limit: CMTime) throws {
-            guard let audioOut, !audioFinished else { return }
+            guard !audioFinished else { return }
             while !shouldStop {
-                guard let sample = heldAudio ?? audioOut.copyNextSampleBuffer() else {
+                guard let sample = try heldAudio ?? reading.nextAudio() else {
                     audioFinished = true
                     return
                 }
@@ -362,9 +568,7 @@ nonisolated final class LiveRun: NSObject, AVAssetWriterDelegate, @unchecked Sen
         while !shouldStop {
             pace()
             if shouldStop { break }
-            guard let frame = videoOut.copyNextSampleBuffer() else { break }
-            guard let image = CMSampleBufferGetImageBuffer(frame) else { continue }
-            let time = CMSampleBufferGetPresentationTimeStamp(frame)
+            guard let (image, time, frameDuration) = try reading.nextVideo() else { break }
             if time < t0 { continue }      // the decoder's lead-in before this run's first piece
             // REM  A KEYFRAME AT EVERY 6-SECOND MARK — the first frame at or past it. A run started later at that piece
             // REM  begins on the same frame, so its pieces line up with this run's.
@@ -375,7 +579,7 @@ nonisolated final class LiveRun: NSObject, AVAssetWriterDelegate, @unchecked Sen
                 while boundary <= time { boundary = boundary + CMTime(seconds: LiveSource.pieceSeconds, preferredTimescale: 90_000) }
             }
             let result = VTCompressionSessionEncodeFrame(encoder, imageBuffer: image, presentationTimeStamp: time,
-                                                         duration: CMSampleBufferGetDuration(frame), frameProperties: properties,
+                                                         duration: frameDuration, frameProperties: properties,
                                                          infoFlagsOut: nil) { status, _, sample in
                 guard status == noErr, let sample else { return }
                 encoded.add(sample)
@@ -386,7 +590,7 @@ nonisolated final class LiveRun: NSObject, AVAssetWriterDelegate, @unchecked Sen
             try sendAudio(before: min(time + half, boundary))
         }
         if shouldStop { writer.cancelWriting(); return }
-        if reader.status == .failed { throw Stop.because(reader.error?.localizedDescription ?? "The file stopped reading.") }
+        try reading.checkEnded()
         VTCompressionSessionCompleteFrames(encoder, untilPresentationTimeStamp: .invalid)
         try sendEncoded()
         try sendAudio(before: .positiveInfinity)
